@@ -11,3 +11,6 @@ detection_results/*
 RaspberryPi\Multi_Camera_Adapter/*
 
 testDate/*
+logs/*
+*.log
+testDate
