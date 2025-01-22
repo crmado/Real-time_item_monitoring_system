@@ -1,7 +1,7 @@
 import signal
 import subprocess
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from tkinter import scrolledtext
 import cv2
 import threading
@@ -17,6 +17,7 @@ class ObjectDetectionSystem:
     def __init__(self, root):
         self.root = root
         self.root.title("物件監測系統")
+        self.version = "1.0.0"  # 版本號
 
         # 設置界面樣式
         self.setup_styles()
@@ -56,6 +57,9 @@ class ObjectDetectionSystem:
         self.target_count = 1000  # 預設預計數量
         self.buffer_point = 950  # 預設緩衝點
         self.alert_shown = False  # 用於追蹤是否已顯示警告
+
+        # 啟動時檢查更新
+        self.check_for_updates()
 
 
     def setup_logging(self):
@@ -175,6 +179,27 @@ class ObjectDetectionSystem:
             wrap=tk.WORD
         )
         self.log_text.grid(row=1, column=0, pady=5, sticky=(tk.W, tk.E))
+
+        # 右下角資訊區域
+        info_frame = ttk.Frame(main_frame)
+        info_frame.grid(row=2, column=1, padx=30, pady=10, sticky=(tk.E, tk.S))
+
+        ttk.Label(info_frame, text="當前時間:").grid(row=0, column=0, sticky=tk.W)
+        self.time_label = ttk.Label(info_frame, text="")
+        self.time_label.grid(row=1, column=0, sticky=tk.W)
+
+        ttk.Label(info_frame, text="Version:").grid(row=2, column=0, sticky=tk.W)
+        self.version_label = ttk.Label(info_frame, text=self.version)
+        self.version_label.grid(row=2, column=1, sticky=tk.W)
+
+        # Start updating the time
+        self.update_time()
+
+    def update_time(self):
+        """Update the current time display"""
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.time_label.configure(text=current_time)
+        self.root.after(1000, self.update_time)
 
     def apply_settings(self):
         """應用新的設定值"""
@@ -589,6 +614,30 @@ class ObjectDetectionSystem:
 
         # 寫入系統日誌
         logging.info(message)
+
+    def check_for_updates(self):
+        try:
+            # 檢查遠端倉庫更新
+            subprocess.run(['git', 'fetch', 'origin'], check=True)
+            result = subprocess.run(['git', 'status', '-uno'],
+                                    capture_output=True,
+                                    text=True)
+            if "Your branch is behind" in result.stdout:
+                self.prompt_update()
+        except Exception as e:
+            self.log_message(f"檢查更新失敗: {e}")
+
+    def prompt_update(self):
+        if messagebox.askyesno("更新提示", "發現新版本，是否更新？"):
+            self.perform_update()
+
+    def perform_update(self):
+        try:
+            subprocess.run(['git', 'pull'], check=True)
+            messagebox.showinfo("更新完成", "程式已更新，請重新啟動")
+            self.root.quit()
+        except Exception as e:
+            messagebox.showerror("更新失敗", f"更新過程發生錯誤: {e}")
 
 
 def main():
