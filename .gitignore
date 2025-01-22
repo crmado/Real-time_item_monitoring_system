@@ -14,3 +14,6 @@ testDate/*
 logs/*
 *.log
 testDate
+dist/*
+build/*
+*.spec

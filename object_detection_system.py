@@ -1,13 +1,27 @@
+import os
+
+# Get the directory containing the script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Add OpenCV binary and library paths
+cv2_bin_path = os.path.join(script_dir, 'bin')
+cv2_lib_path = os.path.join(script_dir, 'lib')
+
+if os.path.exists(cv2_bin_path):
+    os.environ['PATH'] = cv2_bin_path + os.pathsep + os.environ['PATH']
+if os.path.exists(cv2_lib_path):
+    os.environ['PATH'] = cv2_lib_path + os.pathsep + os.environ['PATH']
+
+import cv2
+
 import signal
 import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter import scrolledtext
-import cv2
 import threading
 import datetime
 import logging
-import os
 import time
 from PIL import Image, ImageTk
 import numpy as np
@@ -30,6 +44,7 @@ class ObjectDetectionSystem:
         self.current_count = 0
         self.camera = None
         self.detection_thread = None
+        self.TEST_MODE = False  # 測試模式
 
         # 建立使用者介面
         self.create_ui()
@@ -225,7 +240,7 @@ class ObjectDetectionSystem:
 
     def get_available_sources(self):
         """獲取可用的視訊來源"""
-        sources = ["測試影片"]
+        sources = ["測試影片"] if self.TEST_MODE else []
 
         # 檢查 libcamera 是否可用
         try:
@@ -264,6 +279,9 @@ class ObjectDetectionSystem:
             if source == "測試影片":
                 # 使用指定的測試影片路徑
                 video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
+                if not os.path.exists(video_path):
+                    self.log_message(f"找不到測試影片: {video_path}")
+                    return
                 self.camera = cv2.VideoCapture(video_path)
 
                 # 初始化 ROI 線位置
