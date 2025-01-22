@@ -1,3 +1,5 @@
+import signal
+import subprocess
 import tkinter as tk
 from tkinter import ttk
 from tkinter import scrolledtext
@@ -49,6 +51,7 @@ class ObjectDetectionSystem:
         self.total_counter = 0
         self.frame_index = 1
         self.total_frames = 0
+        self.camera_fps = 0
 
         self.target_count = 1000  # 預設預計數量
         self.buffer_point = 950  # 預設緩衝點
@@ -195,13 +198,22 @@ class ObjectDetectionSystem:
         except ValueError:
             self.log_message("錯誤：請輸入有效的數字")
 
-
     def get_available_sources(self):
         """獲取可用的視訊來源"""
-        sources = ["測試影片"]  # 加入測試影片選項
+        sources = ["測試影片"]
+
+        # 檢查 libcamera 是否可用
+        try:
+            result = subprocess.run(['libcamera-vid', '--help'],
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+            if result.returncode == 0:
+                sources.append("libcamera")
+        except FileNotFoundError:
+            pass
 
         # 尋找可用的攝像頭
-        for i in range(5):  # 檢查前5個可能的攝像頭索引
+        for i in range(5):
             cap = cv2.VideoCapture(i)
             if cap.isOpened():
                 sources.append(f"攝像頭 {i}")
@@ -237,6 +249,25 @@ class ObjectDetectionSystem:
                     self.total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
                     # 重置視訊位置
                     self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            elif source == "libcamera":
+                # 設定 libcamera 參數
+                raw_video_file = '/tmp/raw_output.h264'
+                width = 640
+                height = 480
+                fps = 206
+
+                command = f"libcamera-vid -o {raw_video_file} --width {width} --height {height} --framerate {fps} --codec h264 --denoise cdn_off --awb auto --level 4.2 -n --timeout 0"
+
+                # 創建停止事件和執行緒
+                self.stop_event = threading.Event()
+                self.libcamera_thread = threading.Thread(
+                    target=self.run_libcamera,
+                    args=(command, self.stop_event)
+                )
+                self.libcamera_thread.start()
+
+                # 設定相機為讀取 raw_video_file
+                self.camera = cv2.VideoCapture(raw_video_file)
             else:
                 camera_index = int(source.split()[-1])
                 self.camera = cv2.VideoCapture(camera_index)
@@ -254,6 +285,7 @@ class ObjectDetectionSystem:
             self.object_tracks = {}  # 重置軌跡追蹤
             self.total_counter = 0  # 重置計數器
             self.frame_index = 1  # 重置幀計數
+            self.camera_fps = self.camera.get(cv2.CAP_PROP_FPS)
 
             # 在新執行緒中開始處理
             self.detection_thread = threading.Thread(
@@ -267,7 +299,9 @@ class ObjectDetectionSystem:
             self.is_monitoring = False
 
     def stop_monitoring(self):
-        """停止監測"""
+        if hasattr(self, 'stop_event'):
+            self.stop_event.set()
+            self.libcamera_thread.join()
         self.is_monitoring = False
         if self.camera:
             self.camera.release()
@@ -330,11 +364,11 @@ class ObjectDetectionSystem:
                             2
                         )
 
-                # 添加資訊文字
+                # 添加資訊文字 - 顯示相機幀數
                 cv2.putText(
                     frame_with_detections,
-                    f"Frame: {self.frame_index}/{self.total_frames}",
-                    (10, 60),
+                    f"FPS: {self.camera_fps:.2f}",
+                    (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1,
                     (0, 255, 0),
@@ -346,7 +380,7 @@ class ObjectDetectionSystem:
                 self.frame_index += 1
 
                 # 控制處理速率，根據影片 FPS 調整
-                time.sleep(1 / 206)  # 約206FPS
+                time.sleep(1 / self.camera_fps)
 
 
             except Exception as e:
@@ -457,6 +491,21 @@ class ObjectDetectionSystem:
             if count >= self.target_count:
                 self.show_target_reached()
                 self.stop_monitoring()
+
+    def run_libcamera(self, command, stop_event):
+        try:
+            pipe = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True,
+                preexec_fn=os.setsid
+            )
+            while not stop_event.is_set():
+                time.sleep(0.1)
+            os.killpg(os.getpgid(pipe.pid), signal.SIGTERM)
+        except Exception as e:
+            self.log_message(f"libcamera 執行錯誤：{e}")
 
     def show_buffer_alert(self):
         """顯示緩衝點警告"""
