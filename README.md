@@ -60,7 +60,15 @@ pip install -r requirements.txt
 python object_detection_system.py
 ```
 
-2. 操作流程：
+2. 打包執行檔：
+```bash
+# 產生 spec 檔案
+pyinstaller --clean object_detection_system.spec
+# 執行打包後的程式，並將錯誤日誌導向到 logs 資料夾
+.\dist\object_detection_system.exe 2> logs\error.log
+```
+
+3. 操作流程：
    - 從下拉選單選擇視訊來源
    - 設定預期數量和緩衝點（可選）
    - 點擊「開始監測」按鈕開始處理
@@ -110,12 +118,3 @@ python object_detection_system.py
 
 本項目採用 MIT 授權條款。您可以自由使用、修改和分發本程式碼，但請保留原作者資訊。
 ```
-
-這個 README.md 更準確地反映了您的專案結構和環境配置，包含了：
-- 正確的 Python 版本（3.8.19）
-- 實際的目錄結構
-- 準確的虛擬環境名稱（RPi_4_camera）
-- 具體的檔案配置
-- 實際使用的系統參數
-
-需要我針對某個部分進行更詳細的說明嗎？
