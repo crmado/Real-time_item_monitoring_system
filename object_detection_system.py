@@ -73,6 +73,11 @@ class ObjectDetectionSystem:
         self.buffer_point = 950  # 預設緩衝點
         self.alert_shown = False  # 用於追蹤是否已顯示警告
 
+        # 初始化 ROI 相關變數
+        self.dragging_roi = False
+        self.roi_lines = [240]  # 預設在畫面中間偏上的位置
+        self.saved_roi_percentage = 0.2  # 預設值為 20%
+
         # 啟動時檢查更新
         self.check_for_updates()
 
@@ -153,6 +158,11 @@ class ObjectDetectionSystem:
             text="請選擇攝像頭"
         )
         self.image_label.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+        # 綁定滑鼠事件
+        self.image_label.bind('<Button-1>', self.start_roi_drag)
+        self.image_label.bind('<B1-Motion>', self.drag_roi)
+        self.image_label.bind('<ButtonRelease-1>', self.stop_roi_drag)
 
         # 右側設定區域
         settings_frame = ttk.Frame(video_frame)
@@ -309,11 +319,25 @@ class ObjectDetectionSystem:
                 self.log_message("錯誤：無法開啟攝像頭")
                 return
 
+            # 讀取一幀來初始化 ROI 線位置（如果還沒設定的話）
+            ret, frame = self.test_camera_obj.read()
+            if ret:
+                height = frame.shape[0]
+                if not hasattr(self, 'roi_lines') or self.roi_lines is None:
+                    self.roi_lines = [int(height * 0.2)]  # 預設位置在上方 20%
+
+                # 確保 ROI 線在有效範圍內
+                self.roi_lines = [max(0, min(self.roi_lines[0], height))]
+
             # 顯示攝像頭資訊
             width = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_WIDTH)
             height = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_HEIGHT)
             fps = self.test_camera_obj.get(cv2.CAP_PROP_FPS)
             self.log_message(f"攝像頭資訊 - 解析度: {width}x{height}, FPS: {fps}")
+
+            # 顯示當前 ROI 線位置
+            roi_percentage = (self.roi_lines[0] / height) * 100
+            self.log_message(f"當前 ROI 線位置: {roi_percentage:.1f}%")
 
             # 設置測試狀態和按鈕文字
             self.is_testing = True
@@ -333,26 +357,78 @@ class ObjectDetectionSystem:
             while self.is_testing:
                 ret, frame = self.test_camera_obj.read()
                 if ret:
-                    self.update_image_display(frame)
-                time.sleep(1 / 30)  # 控制更新頻率
+                    frame_with_roi = frame.copy()
+                    height, width = frame.shape[:2]
+
+                    if self.roi_lines is not None:
+                        line_y = self.roi_lines[0]
+
+                        # 畫主要的 ROI 線
+                        cv2.line(frame_with_roi,
+                                 (0, line_y),
+                                 (width, line_y),
+                                 (0, 255, 0), 2)
+
+                        # 畫檢測區域
+                        cv2.rectangle(frame_with_roi,
+                                      (0, line_y),
+                                      (width, line_y + self.roi_height),
+                                      (255, 0, 0), 1)
+
+                        # 顯示 ROI 位置百分比
+                        percentage = (line_y / height) * 100
+                        text = f"ROI: {percentage:.1f}%"
+                        cv2.putText(frame_with_roi,
+                                    text,
+                                    (10, 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    1,
+                                    (0, 255, 0),
+                                    2)
+
+                        # 使用自定義函數顯示中文提示訊息
+                        frame_with_roi = self.draw_chinese_text(
+                            frame_with_roi,
+                            "拖曳綠線可調整 ROI 位置",
+                            (10, 60)
+                        )
+
+                    self.update_image_display(frame_with_roi)
+                time.sleep(1 / 30)
         except Exception as e:
             self.log_message(f"攝像頭測試執行錯誤：{str(e)}")
         finally:
             self.stop_camera_test()
 
     def stop_camera_test(self):
-        """停止攝像頭測試"""
-        self.is_testing = False
-        if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
-            self.test_camera_obj.release()
-            self.test_camera_obj = None
-        self.test_button.configure(text="測試鏡頭")
-        self.log_message("停止攝像頭測試")
+        """停止攝像頭測試並保存設定"""
+        try:
+            # 保存最後的 ROI 位置設定
+            if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
+                ret, frame = self.test_camera_obj.read()
+                if ret and self.roi_lines is not None and len(self.roi_lines) > 0:
+                    height = frame.shape[0]
+                    self.saved_roi_percentage = self.roi_lines[0] / height
+                    self.log_message(f"已保存 ROI 線位置設定: {self.saved_roi_percentage * 100:.1f}%")
+        except Exception as e:
+            self.log_message(f"保存 ROI 設定時發生錯誤：{str(e)}")
+        finally:
+            self.is_testing = False
+            if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
+                self.test_camera_obj.release()
+                self.test_camera_obj = None
+            self.test_button.configure(text="測試鏡頭")
+            self.log_message("停止攝像頭測試")
 
 
     def start_monitoring(self, source):
         """開始監測"""
         try:
+            # 檢查是否正在測試中
+            if hasattr(self, 'is_testing') and self.is_testing:
+                self.log_message("請先停止測試再開始監測")
+                return
+
             if source == "測試影片":
                 # 使用指定的測試影片路徑
                 video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
@@ -362,13 +438,13 @@ class ObjectDetectionSystem:
                 self.camera = cv2.VideoCapture(video_path)
 
                 # 初始化 ROI 線位置
-                _, first_frame = self.camera.read()
-                if first_frame is not None:
-                    height, _ = first_frame.shape[:2]
-                    self.roi_lines = [int(height * 0.2)]
-                    self.total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
-                    # 重置視訊位置
-                    self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                if self.camera.isOpened():
+                    _, first_frame = self.camera.read()
+                    if first_frame is not None:
+                        height = first_frame.shape[0]
+                        self.roi_lines = [int(height * self.saved_roi_percentage)]
+                        self.total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
+                        self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 重置影片位置
             elif source == "libcamera":
                 # 設定 libcamera 參數
                 raw_video_file = '/tmp/raw_output.h264'
@@ -393,8 +469,10 @@ class ObjectDetectionSystem:
                 self.camera = cv2.VideoCapture(camera_index)
                 if self.camera.isOpened():
                     _, first_frame = self.camera.read()
-                    height, _ = first_frame.shape[:2]
-                    self.roi_lines = [int(height * 0.2)]
+                    if first_frame is not None:
+                        height = first_frame.shape[0]
+                        self.roi_lines = [int(height * self.saved_roi_percentage)]
+                        self.log_message(f"使用已保存的 ROI 線位置: {self.saved_roi_percentage * 100:.1f}%")
 
             if not self.camera.isOpened():
                 raise Exception("無法開啟視訊來源")
@@ -733,6 +811,70 @@ class ObjectDetectionSystem:
             self.root.quit()
         except Exception as e:
             messagebox.showerror("更新失敗", f"更新過程發生錯誤: {e}")
+
+    def start_roi_drag(self, event):
+        """開始拖動 ROI 線"""
+        if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
+            self.dragging_roi = True
+            self.update_roi_from_mouse(event.y)
+
+    def drag_roi(self, event):
+        """拖動 ROI 線"""
+        if self.dragging_roi:
+            self.update_roi_from_mouse(event.y)
+
+    def stop_roi_drag(self, event):
+        """停止拖動 ROI 線"""
+        self.dragging_roi = False
+
+    def update_roi_from_mouse(self, mouse_y):
+        """根據滑鼠位置更新 ROI 線"""
+        try:
+            if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
+                # 獲取顯示區域的實際大小
+                display_height = self.image_label.winfo_height()
+
+                # 防止超出範圍
+                mouse_y = max(0, min(mouse_y, display_height))
+
+                # 計算實際影像中的位置
+                ret, frame = self.test_camera_obj.read()
+                if ret:
+                    actual_height = frame.shape[0]
+                    roi_y = int((mouse_y / display_height) * actual_height)
+
+                    # 更新 ROI 線位置
+                    self.roi_lines = [roi_y]
+
+                    # 暫存位置百分比
+                    percentage = roi_y / actual_height
+                    self.saved_roi_percentage = percentage  # 即時更新暫存值
+
+                    # 記錄位置到日誌
+                    self.log_message(f"ROI 線位置已更新: {percentage * 100:.1f}%")
+
+        except Exception as e:
+            self.log_message(f"更新 ROI 位置時發生錯誤：{str(e)}")
+
+    def draw_chinese_text(self, img, text, position, font_size=0.6, color=(0, 255, 0), thickness=2):
+        """在圖片上繪製中文文字"""
+        from PIL import Image, ImageDraw, ImageFont
+        img_pil = Image.fromarray(img)
+        draw = ImageDraw.Draw(img_pil)
+
+        # 使用 Windows 的微軟正黑體或其他中文字體
+        fontpath = "c:/windows/fonts/msjh.ttc" if os.name == 'nt' else "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
+        try:
+            font = ImageFont.truetype(fontpath, int(font_size * 40))
+        except:
+            # 如果找不到指定字體，使用默認字體
+            font = ImageFont.load_default()
+
+        # 繪製文字
+        draw.text(position, text, font=font, fill=color[::-1])  # 注意：PIL 使用 RGB，而 OpenCV 使用 BGR
+
+        # 轉回 OpenCV 格式
+        return np.array(img_pil)
 
 
 def main():
