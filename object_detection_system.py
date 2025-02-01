@@ -31,7 +31,7 @@ class ObjectDetectionSystem:
     def __init__(self, root):
         self.root = root
         self.root.title("物件監測系統")
-        self.version = "1.0.0"  # 版本號
+        self.version = "1.0.1"  # 版本號
 
         # 設置界面樣式
         self.setup_styles()
@@ -121,13 +121,21 @@ class ObjectDetectionSystem:
         self.camera_combo = ttk.Combobox(control_frame, width=30)
         self.camera_combo.grid(row=0, column=1, padx=5)
 
+        self.test_button = ttk.Button(
+            control_frame,
+            text="測試鏡頭",
+            command=self.test_camera,
+            style='Accent.TButton'
+        )
+        self.test_button.grid(row=0, column=2, padx=5)
+
         self.start_button = ttk.Button(
             control_frame,
             text="開始監測",
             command=self.toggle_monitoring,
             style='Accent.TButton'
         )
-        self.start_button.grid(row=0, column=2, padx=5)
+        self.start_button.grid(row=0, column=3, padx=5)
 
         # 中間影像顯示區域
         video_frame = ttk.Frame(main_frame, style='Video.TFrame')
@@ -252,11 +260,14 @@ class ObjectDetectionSystem:
         except FileNotFoundError:
             pass
 
-        # 尋找可用的攝像頭
+        # 尋找可用的 USB 攝像頭
         for i in range(5):
             cap = cv2.VideoCapture(i)
             if cap.isOpened():
-                sources.append(f"攝像頭 {i}")
+                # 讀取一幀來確認攝像頭是否真的可用
+                ret, _ = cap.read()
+                if ret:
+                    sources.append(f"USB攝像頭 {i}")
                 cap.release()
 
         return sources
@@ -272,6 +283,72 @@ class ObjectDetectionSystem:
             self.start_monitoring(selected_source)
         else:
             self.stop_monitoring()
+
+    def test_camera(self):
+        """測試選擇的攝像頭"""
+        selected_source = self.camera_combo.get()
+        if not selected_source:
+            self.log_message("錯誤：請選擇視訊來源")
+            return
+
+        # 如果已經在測試中，則停止測試
+        if hasattr(self, 'is_testing') and self.is_testing:
+            self.stop_camera_test()
+            return
+
+        try:
+            if selected_source == "libcamera":
+                self.log_message("libcamera 需要完整啟動才能測試")
+                return
+
+            # 取得攝像頭索引
+            camera_index = int(selected_source.split()[-1])
+            self.test_camera_obj = cv2.VideoCapture(camera_index)
+
+            if not self.test_camera_obj.isOpened():
+                self.log_message("錯誤：無法開啟攝像頭")
+                return
+
+            # 顯示攝像頭資訊
+            width = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_WIDTH)
+            height = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            fps = self.test_camera_obj.get(cv2.CAP_PROP_FPS)
+            self.log_message(f"攝像頭資訊 - 解析度: {width}x{height}, FPS: {fps}")
+
+            # 設置測試狀態和按鈕文字
+            self.is_testing = True
+            self.test_button.configure(text="停止測試")
+
+            # 在新的執行緒中執行攝像頭測試
+            self.test_thread = threading.Thread(target=self.run_camera_test, daemon=True)
+            self.test_thread.start()
+
+        except Exception as e:
+            self.log_message(f"測試攝像頭時發生錯誤：{str(e)}")
+            self.stop_camera_test()
+
+    def run_camera_test(self):
+        """執行攝像頭測試的執行緒函數"""
+        try:
+            while self.is_testing:
+                ret, frame = self.test_camera_obj.read()
+                if ret:
+                    self.update_image_display(frame)
+                time.sleep(1 / 30)  # 控制更新頻率
+        except Exception as e:
+            self.log_message(f"攝像頭測試執行錯誤：{str(e)}")
+        finally:
+            self.stop_camera_test()
+
+    def stop_camera_test(self):
+        """停止攝像頭測試"""
+        self.is_testing = False
+        if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
+            self.test_camera_obj.release()
+            self.test_camera_obj = None
+        self.test_button.configure(text="測試鏡頭")
+        self.log_message("停止攝像頭測試")
+
 
     def start_monitoring(self, source):
         """開始監測"""
