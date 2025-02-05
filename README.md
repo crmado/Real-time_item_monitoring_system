@@ -19,6 +19,39 @@ Real-time_item_monitoring_system/
 ├── object_detection_system.py  # 主程式文件
 ├── README.md                   # 項目說明文件
 └── requirements.txt            # 依賴套件清單
+
+
+project_root/
+│
+├── main.py                 # 主程式入口
+├── requirements.txt        # 專案依賴
+│
+├── models/                 # Model 層 - 處理資料和業務邏輯
+│   ├── __init__.py
+│   ├── system_config.py    # 系統配置
+│   ├── image_processor.py  # 影像處理
+│   └── camera_manager.py   # 攝影機管理
+│
+├── views/                  # View 層 - 使用者介面
+│   ├── __init__.py
+│   ├── ui_manager.py      # UI 樣式管理
+│   ├── main_window.py     # 主視窗
+│   └── components/        # UI 元件
+│       ├── __init__.py
+│       ├── control_panel.py
+│       ├── video_panel.py
+│       └── settings_panel.py
+│
+├── controllers/           # Controller 層 - 控制邏輯
+│   ├── __init__.py
+│   ├── detection_controller.py    # 物件偵測控制器
+│   └── system_controller.py       # 系統控制器
+│
+└── utils/                # 工具類
+    ├── __init__.py
+    ├── logger.py        # 日誌工具
+    └── config.py        # 配置檔
+
 ```
 
 ## 主要功能

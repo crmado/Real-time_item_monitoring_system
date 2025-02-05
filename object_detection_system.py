@@ -25,6 +25,23 @@ import logging
 import time
 from PIL import Image, ImageTk
 import numpy as np
+import sys
+import locale
+
+# 設定系統編碼
+sys.setdefaultencoding('utf-8') if hasattr(sys, 'setdefaultencoding') else None
+locale.setlocale(locale.LC_ALL, 'zh_TW.UTF-8')
+
+# 設定 logging 的編碼
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("detection.log", encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
 
 
 class ObjectDetectionSystem:
@@ -93,12 +110,13 @@ class ObjectDetectionSystem:
             f"detection_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         )
 
+        # 設定 logging 處理中文
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler(sys.stdout)
             ]
         )
 
@@ -122,13 +140,13 @@ class ObjectDetectionSystem:
         control_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.W)
 
         # 攝像頭選擇和按鈕並排
-        ttk.Label(control_frame, text="選擇視訊來源：").grid(row=0, column=0, padx=5)
+        ttk.Label(control_frame, text="Select Video Source:").grid(row=0, column=0, padx=5)
         self.camera_combo = ttk.Combobox(control_frame, width=30)
         self.camera_combo.grid(row=0, column=1, padx=5)
 
         self.test_button = ttk.Button(
             control_frame,
-            text="測試鏡頭",
+            text="Test Lenses",
             command=self.test_camera,
             style='Accent.TButton'
         )
@@ -136,7 +154,7 @@ class ObjectDetectionSystem:
 
         self.start_button = ttk.Button(
             control_frame,
-            text="開始監測",
+            text="Start monitoring",
             command=self.toggle_monitoring,
             style='Accent.TButton'
         )
@@ -155,7 +173,7 @@ class ObjectDetectionSystem:
         self.image_label = ttk.Label(
             image_container,
             style='Video.TLabel',
-            text="請選擇攝像頭"
+            text="Please select a camera"
         )
         self.image_label.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
@@ -171,14 +189,14 @@ class ObjectDetectionSystem:
         # 當前計數顯示
         count_frame = ttk.Frame(settings_frame)
         count_frame.grid(row=0, column=0, pady=5, sticky=tk.EW)
-        ttk.Label(count_frame, text="當前計數：", style='Counter.TLabel').grid(row=0, column=0)
+        ttk.Label(count_frame, text="Current count：", style='Counter.TLabel').grid(row=0, column=0)
         self.count_label = ttk.Label(count_frame, text="0", style='CounterNum.TLabel')
         self.count_label.grid(row=0, column=1)
 
         # 預計數量設定
         target_frame = ttk.Frame(settings_frame)
         target_frame.grid(row=1, column=0, pady=5, sticky=tk.EW)
-        ttk.Label(target_frame, text="預計數量：").grid(row=0, column=0)
+        ttk.Label(target_frame, text="Estimated quantity：").grid(row=0, column=0)
         self.target_entry = ttk.Entry(target_frame, width=10)
         self.target_entry.grid(row=0, column=1, padx=5)
         self.target_entry.insert(0, "1000")  # 預設值
@@ -186,7 +204,7 @@ class ObjectDetectionSystem:
         # 緩衝點設定
         buffer_frame = ttk.Frame(settings_frame)
         buffer_frame.grid(row=2, column=0, pady=5, sticky=tk.EW)
-        ttk.Label(buffer_frame, text="緩衝點：").grid(row=0, column=0)
+        ttk.Label(buffer_frame, text="Buffer Point：").grid(row=0, column=0)
         self.buffer_entry = ttk.Entry(buffer_frame, width=10)
         self.buffer_entry.grid(row=0, column=1, padx=5)
         self.buffer_entry.insert(0, "950")  # 預設值
@@ -194,7 +212,7 @@ class ObjectDetectionSystem:
         # 設定按鈕
         self.apply_settings_button = ttk.Button(
             settings_frame,
-            text="應用設定",
+            text="Application Settings",
             command=self.apply_settings,
             style='Accent.TButton'
         )
@@ -203,7 +221,7 @@ class ObjectDetectionSystem:
         # 下方日誌區域
         log_frame = ttk.Frame(main_frame)
         log_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
-        ttk.Label(log_frame, text="系統日誌：").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(log_frame, text="System log：").grid(row=0, column=0, sticky=tk.W)
 
         self.log_text = scrolledtext.ScrolledText(
             log_frame,
@@ -217,7 +235,7 @@ class ObjectDetectionSystem:
         info_frame = ttk.Frame(main_frame)
         info_frame.grid(row=2, column=1, padx=30, pady=10, sticky=(tk.E, tk.S))
 
-        ttk.Label(info_frame, text="當前時間:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(info_frame, text="Current time:").grid(row=0, column=0, sticky=tk.W)
         self.time_label = ttk.Label(info_frame, text="")
         self.time_label.grid(row=1, column=0, sticky=tk.W)
 
@@ -241,24 +259,24 @@ class ObjectDetectionSystem:
             new_buffer = int(self.buffer_entry.get())
 
             if new_buffer >= new_target:
-                self.log_message("錯誤：緩衝點必須小於預計數量")
+                self.log_message("Error: Buffer points must be less than the expected number")
                 return
 
             if new_buffer < 0 or new_target < 0:
-                self.log_message("錯誤：數值不能為負數")
+                self.log_message("Error: Value cannot be negative")
                 return
 
             self.target_count = new_target
             self.buffer_point = new_buffer
             self.alert_shown = False  # 重設警告狀態
-            self.log_message(f"已更新設定 - 預計數量：{new_target}，緩衝點：{new_buffer}")
+            self.log_message(f"Updated settings - Estimated quantity: {new_target}, Buffer point: {new_buffer}")
 
         except ValueError:
-            self.log_message("錯誤：請輸入有效的數字")
+            self.log_message("Error: Please enter a valid number")
 
     def get_available_sources(self):
         """獲取可用的視訊來源"""
-        sources = ["測試影片"] if self.TEST_MODE else []
+        sources = ["Test video"] if self.TEST_MODE else []
 
         # 檢查 libcamera 是否可用
         try:
@@ -277,7 +295,7 @@ class ObjectDetectionSystem:
                 # 讀取一幀來確認攝像頭是否真的可用
                 ret, _ = cap.read()
                 if ret:
-                    sources.append(f"USB攝像頭 {i}")
+                    sources.append(f"USB Camera {i}")
                 cap.release()
 
         return sources
@@ -287,7 +305,7 @@ class ObjectDetectionSystem:
         if not self.is_monitoring:
             selected_source = self.camera_combo.get()
             if not selected_source:
-                self.log_message("錯誤：請選擇視訊來源")
+                self.log_message("Error: Please select a video source")
                 return
 
             self.start_monitoring(selected_source)
@@ -298,7 +316,7 @@ class ObjectDetectionSystem:
         """測試選擇的攝像頭"""
         selected_source = self.camera_combo.get()
         if not selected_source:
-            self.log_message("錯誤：請選擇視訊來源")
+            self.log_message("Error: Please select a video source")
             return
 
         # 如果已經在測試中，則停止測試
@@ -308,47 +326,88 @@ class ObjectDetectionSystem:
 
         try:
             if selected_source == "libcamera":
-                self.log_message("libcamera 需要完整啟動才能測試")
+                # 設定 libcamera 測試參數
+                test_video_file = '/tmp/camera_test.h264'
+                width = 640
+                height = 480
+                fps = 30
+
+                # 建立 libcamera 測試命令
+                command = f"libcamera-vid -o {test_video_file} --width {width} --height {height} " \
+                          f"--framerate {fps} --codec h264 --denoise cdn_off --awb auto --level 4.2 -n --timeout 0"
+
+                # 創建停止事件和執行緒
+                self.test_stop_event = threading.Event()
+                self.test_libcamera_thread = threading.Thread(
+                    target=self.run_libcamera_test,
+                    args=(command, self.test_stop_event, test_video_file)
+                )
+                self.test_libcamera_thread.start()
+
+                # 等待檔案建立
+                time.sleep(1)
+
+                # 開啟影片串流
+                self.test_camera_obj = cv2.VideoCapture(test_video_file)
+
+                if not self.test_camera_obj.isOpened():
+                    self.log_message("Error: Unable to open libcamera test stream")
+                    return
+
+                # 設定測試狀態和按鈕文字
+                self.is_testing = True
+                self.test_button.configure(text="Stop Test")
+
+                # 啟動影像顯示執行緒
+                self.test_display_thread = threading.Thread(
+                    target=self.run_camera_test,
+                    daemon=True
+                )
+                self.test_display_thread.start()
+
+                # 設定測試狀態和按鈕文字
+                self.is_testing = True
+                self.test_button.configure(text="Stop Test")
+
                 return
 
-            # 取得攝像頭索引
+            # USB 攝像頭的處理邏輯
             camera_index = int(selected_source.split()[-1])
             self.test_camera_obj = cv2.VideoCapture(camera_index)
 
             if not self.test_camera_obj.isOpened():
-                self.log_message("錯誤：無法開啟攝像頭")
+                self.log_message("Error: Unable to open camera")
                 return
 
-            # 讀取一幀來初始化 ROI 線位置（如果還沒設定的話）
+            # 讀取一幀來初始化 ROI 線位置
             ret, frame = self.test_camera_obj.read()
             if ret:
                 height = frame.shape[0]
                 if not hasattr(self, 'roi_lines') or self.roi_lines is None:
-                    self.roi_lines = [int(height * 0.2)]  # 預設位置在上方 20%
+                    self.roi_lines = [int(height * 0.2)]
 
                 # 確保 ROI 線在有效範圍內
                 self.roi_lines = [max(0, min(self.roi_lines[0], height))]
 
-            # 顯示攝像頭資訊
-            width = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_WIDTH)
-            height = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            fps = self.test_camera_obj.get(cv2.CAP_PROP_FPS)
-            self.log_message(f"攝像頭資訊 - 解析度: {width}x{height}, FPS: {fps}")
+                # 顯示攝像頭資訊
+                width = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_WIDTH)
+                height = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                fps = self.test_camera_obj.get(cv2.CAP_PROP_FPS)
+                self.log_message(f"Camera Information - Resolution: {width}x{height}, FPS: {fps}")
 
-            # 顯示當前 ROI 線位置
-            roi_percentage = (self.roi_lines[0] / height) * 100
-            self.log_message(f"當前 ROI 線位置: {roi_percentage:.1f}%")
+                roi_percentage = (self.roi_lines[0] / height) * 100
+                self.log_message(f"Current ROI line position: {roi_percentage:.1f}%")
 
             # 設置測試狀態和按鈕文字
             self.is_testing = True
-            self.test_button.configure(text="停止測試")
+            self.test_button.configure(text="Stop Test")
 
             # 在新的執行緒中執行攝像頭測試
             self.test_thread = threading.Thread(target=self.run_camera_test, daemon=True)
             self.test_thread.start()
 
         except Exception as e:
-            self.log_message(f"測試攝像頭時發生錯誤：{str(e)}")
+            self.log_message(f"Camera test error: {str(e)}")
             self.stop_camera_test()
 
     def run_camera_test(self):
@@ -389,36 +448,45 @@ class ObjectDetectionSystem:
                         # 使用自定義函數顯示中文提示訊息
                         frame_with_roi = self.draw_chinese_text(
                             frame_with_roi,
-                            "拖曳綠線可調整 ROI 位置",
+                            "Drag the green line to adjust the ROI position",
                             (10, 60)
                         )
 
                     self.update_image_display(frame_with_roi)
                 time.sleep(1 / 30)
         except Exception as e:
-            self.log_message(f"攝像頭測試執行錯誤：{str(e)}")
+            self.log_message(f"Camera test execution error：{str(e)}")
         finally:
             self.stop_camera_test()
 
     def stop_camera_test(self):
         """停止攝像頭測試並保存設定"""
         try:
+            # 停止 libcamera 進程
+            if hasattr(self, 'test_stop_event'):
+                self.test_stop_event.set()
+                if hasattr(self, 'test_libcamera_thread'):
+                    self.test_libcamera_thread.join()
+
+            # 停止並清理一般攝像頭資源
+            self.is_testing = False
+
             # 保存最後的 ROI 位置設定
             if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
                 ret, frame = self.test_camera_obj.read()
                 if ret and self.roi_lines is not None and len(self.roi_lines) > 0:
                     height = frame.shape[0]
                     self.saved_roi_percentage = self.roi_lines[0] / height
-                    self.log_message(f"已保存 ROI 線位置設定: {self.saved_roi_percentage * 100:.1f}%")
+                    self.log_message(f"ROI line position settings saved: {self.saved_roi_percentage * 100:.1f}%")
         except Exception as e:
-            self.log_message(f"保存 ROI 設定時發生錯誤：{str(e)}")
+            self.log_message(f"An error occurred while saving ROI settings.：{str(e)}")
         finally:
             self.is_testing = False
             if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
                 self.test_camera_obj.release()
                 self.test_camera_obj = None
-            self.test_button.configure(text="測試鏡頭")
-            self.log_message("停止攝像頭測試")
+            self.test_button.configure(text="Test Lenses")
+            self.log_message("Stop camera test")
 
 
     def start_monitoring(self, source):
@@ -426,14 +494,14 @@ class ObjectDetectionSystem:
         try:
             # 檢查是否正在測試中
             if hasattr(self, 'is_testing') and self.is_testing:
-                self.log_message("請先停止測試再開始監測")
+                self.log_message("Please stop the test before starting it again")
                 return
 
-            if source == "測試影片":
+            if source == "Test video":
                 # 使用指定的測試影片路徑
                 video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
                 if not os.path.exists(video_path):
-                    self.log_message(f"找不到測試影片: {video_path}")
+                    self.log_message(f"No test video found: {video_path}")
                     return
                 self.camera = cv2.VideoCapture(video_path)
 
@@ -472,14 +540,14 @@ class ObjectDetectionSystem:
                     if first_frame is not None:
                         height = first_frame.shape[0]
                         self.roi_lines = [int(height * self.saved_roi_percentage)]
-                        self.log_message(f"使用已保存的 ROI 線位置: {self.saved_roi_percentage * 100:.1f}%")
+                        self.log_message(f"Use saved ROI line position: {self.saved_roi_percentage * 100:.1f}%")
 
             if not self.camera.isOpened():
-                raise Exception("無法開啟視訊來源")
+                raise Exception("Unable to open video source")
 
             self.is_monitoring = True
-            self.start_button.configure(text="停止監測")
-            self.log_message(f"開始監測 - {source}")
+            self.start_button.configure(text="Stop monitoring")
+            self.log_message(f"Start monitoring - {source}")
             self.object_tracks = {}  # 重置軌跡追蹤
             self.total_counter = 0  # 重置計數器
             self.frame_index = 1  # 重置幀計數
@@ -493,7 +561,7 @@ class ObjectDetectionSystem:
             self.detection_thread.start()
 
         except Exception as e:
-            self.log_message(f"錯誤：{str(e)}")
+            self.log_message(f"Error：{str(e)}")
             self.is_monitoring = False
 
     def stop_monitoring(self):
@@ -504,8 +572,8 @@ class ObjectDetectionSystem:
         if self.camera:
             self.camera.release()
         self.camera = None
-        self.start_button.configure(text="開始監測")
-        self.log_message("停止監測")
+        self.start_button.configure(text="Start monitoring")
+        self.log_message("Stop monitoring")
 
     def process_video(self):
         """處理視訊流"""
@@ -513,7 +581,7 @@ class ObjectDetectionSystem:
             try:
                 ret, frame = self.camera.read()
                 if not ret:
-                    self.log_message("視訊讀取完畢或無法讀取影像")
+                    self.log_message("Video reading completed or unable to read the image")
                     break
 
                 frame_with_detections = frame.copy()
@@ -582,7 +650,7 @@ class ObjectDetectionSystem:
 
 
             except Exception as e:
-                self.log_message(f"處理錯誤：{str(e)}")
+                self.log_message(f"Handling Errors：{str(e)}")
                 break
 
         self.stop_monitoring()
@@ -671,7 +739,7 @@ class ObjectDetectionSystem:
             self.image_label.image = img_tk
 
         except Exception as e:
-            self.log_message(f"更新影像顯示時發生錯誤：{str(e)}")
+            self.log_message(f"An error occurred while updating the image display：{str(e)}")
 
     def update_count(self, count):
         """更新計數顯示並檢查閾值"""
@@ -703,22 +771,46 @@ class ObjectDetectionSystem:
                 time.sleep(0.1)
             os.killpg(os.getpgid(pipe.pid), signal.SIGTERM)
         except Exception as e:
-            self.log_message(f"libcamera 執行錯誤：{e}")
+            self.log_message(f"libcamera Execution Error：{e}")
+
+    def run_libcamera_test(self, command, stop_event, video_file):
+        """執行 libcamera 測試"""
+        try:
+            # 啟動 libcamera-vid 進程
+            process = subprocess.Popen(
+                command.split(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                preexec_fn=os.setsid
+            )
+
+            while not stop_event.is_set():
+                time.sleep(0.1)
+
+            # 清理資源
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            if os.path.exists(video_file):
+                os.remove(video_file)
+
+        except Exception as e:
+            self.log_message(f"libcamera test error: {str(e)}")
+        finally:
+            self.stop_camera_test()
 
     def show_buffer_alert(self):
         """顯示緩衝點警告"""
         import tkinter.messagebox as messagebox
         messagebox.showwarning(
-            "緩衝點警告",
-            f"已達到緩衝點（{self.buffer_point}個），即將達到預計數量！"
+            "Buffer point warning",
+            f"The buffer point ({self.buffer_point}) has been reached and the expected number is about to be reached!"
         )
 
     def show_target_reached(self):
         """顯示達到預計數量通知"""
         import tkinter.messagebox as messagebox
         messagebox.showinfo(
-            "完成通知",
-            f"已達到預計數量（{self.target_count}個）！"
+            "Completion Notification",
+            f"The expected number ({self.target_count}) has been reached!"
         )
 
     def setup_styles(self):
@@ -775,42 +867,63 @@ class ObjectDetectionSystem:
             padding=2
         )
 
-
     def log_message(self, message):
         """記錄訊息到日誌"""
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{timestamp}] {message}\n"
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = f"[{timestamp}] {message}\n"
 
-        # 更新UI日誌
-        self.log_text.insert(tk.END, log_entry)
-        self.log_text.see(tk.END)
+            # 更新UI日誌
+            self.log_text.insert(tk.END, log_entry)
+            self.log_text.see(tk.END)
 
-        # 寫入系統日誌
-        logging.info(message)
+            # 寫入系統日誌
+            logging.info(message.encode('utf-8').decode('utf-8'))
+        except Exception as e:
+            print(f"An error occurred while logging：{str(e)}")
 
     def check_for_updates(self):
+        """檢查更新"""
         try:
+            # 檢查是否為 Git 倉庫
+            if not os.path.exists('.git'):
+                self.log_message("Version control not set, skipping update check")
+                return
+
             # 檢查遠端倉庫更新
+            result = subprocess.run(
+                ['git', 'remote', '-v'],
+                capture_output=True,
+                text=True
+            )
+
+            if 'origin' not in result.stdout:
+                self.log_message("Remote repository not set, skipping update check")
+                return
+
             subprocess.run(['git', 'fetch', 'origin'], check=True)
-            result = subprocess.run(['git', 'status', '-uno'],
-                                    capture_output=True,
-                                    text=True)
+            result = subprocess.run(
+                ['git', 'status', '-uno'],
+                capture_output=True,
+                text=True
+            )
+
             if "Your branch is behind" in result.stdout:
                 self.prompt_update()
         except Exception as e:
-            self.log_message(f"檢查更新失敗: {e}")
+            self.log_message(f"An error occurred while checking for updates: {e}")
 
     def prompt_update(self):
-        if messagebox.askyesno("更新提示", "發現新版本，是否更新？"):
+        if messagebox.askyesno("Update Tips", "A new version has been found. Do you want to update?"):
             self.perform_update()
 
     def perform_update(self):
         try:
             subprocess.run(['git', 'pull'], check=True)
-            messagebox.showinfo("更新完成", "程式已更新，請重新啟動")
+            messagebox.showinfo("Update Complete", "The program has been updated, please restart")
             self.root.quit()
         except Exception as e:
-            messagebox.showerror("更新失敗", f"更新過程發生錯誤: {e}")
+            messagebox.showerror("Update failed", f"An error occurred during the update process: {e}")
 
     def start_roi_drag(self, event):
         """開始拖動 ROI 線"""
@@ -851,30 +964,62 @@ class ObjectDetectionSystem:
                     self.saved_roi_percentage = percentage  # 即時更新暫存值
 
                     # 記錄位置到日誌
-                    self.log_message(f"ROI 線位置已更新: {percentage * 100:.1f}%")
+                    self.log_message(f"ROI Line position updated: {percentage * 100:.1f}%")
 
         except Exception as e:
-            self.log_message(f"更新 ROI 位置時發生錯誤：{str(e)}")
+            self.log_message(f"An error occurred while updating the ROI position：{str(e)}")
 
     def draw_chinese_text(self, img, text, position, font_size=0.6, color=(0, 255, 0), thickness=2):
         """在圖片上繪製中文文字"""
         from PIL import Image, ImageDraw, ImageFont
-        img_pil = Image.fromarray(img)
+        import numpy as np
+
+        # 將 OpenCV 的 BGR 圖片轉換為 PIL 的 RGB 圖片
+        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
 
-        # 使用 Windows 的微軟正黑體或其他中文字體
-        fontpath = "c:/windows/fonts/msjh.ttc" if os.name == 'nt' else "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
+        # 字體路徑優先順序
+        font_paths = [
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",  # Linux WQY微米黑
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",  # 另一個可能的路徑
+            "/usr/share/fonts/chinese/TrueType/wqy-microhei.ttc",
+            "c:/windows/fonts/msjh.ttc"  # Windows 微軟正黑體
+        ]
+
+        # 嘗試載入字體
+        font = None
+        for font_path in font_paths:
+            try:
+                font = ImageFont.truetype(font_path, int(font_size * 40))
+                break
+            except:
+                continue
+
+        # 如果沒有找到任何中文字體，使用默認字體
+        if font is None:
+            try:
+                # 嘗試使用系統默認字體
+                font = ImageFont.load_default()
+                self.log_message("Warning: Chinese font not found, using system default font")
+            except:
+                self.log_message("Error: Unable to load any fonts")
+                return img
+
+        # 計算文字大小來調整位置
         try:
-            font = ImageFont.truetype(fontpath, int(font_size * 40))
+            text_width, text_height = draw.textsize(text, font=font)
         except:
-            # 如果找不到指定字體，使用默認字體
-            font = ImageFont.load_default()
+            text_width, text_height = font.getbbox(text)[2:]
 
         # 繪製文字
-        draw.text(position, text, font=font, fill=color[::-1])  # 注意：PIL 使用 RGB，而 OpenCV 使用 BGR
+        try:
+            draw.text(position, text, font=font, fill=color[::-1])  # 注意：PIL 使用 RGB，而 OpenCV 使用 BGR
+        except Exception as e:
+            self.log_message(f"An error occurred while drawing text：{str(e)}")
+            return img
 
-        # 轉回 OpenCV 格式
-        return np.array(img_pil)
+        # 將 PIL 圖片轉回 OpenCV 格式
+        return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 
 def main():
