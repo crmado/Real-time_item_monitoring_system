@@ -62,7 +62,7 @@ class MainWindow:
         log_frame = ttk.Frame(self.main_frame)
         log_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
 
-        ttk.Label(log_frame, text="系統日誌：").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(log_frame, text="System log：").grid(row=0, column=0, sticky=tk.W)
 
         self.log_text = scrolledtext.ScrolledText(
             log_frame,
@@ -77,7 +77,7 @@ class MainWindow:
         info_frame = ttk.Frame(self.main_frame)
         info_frame.grid(row=2, column=1, padx=30, pady=10, sticky=(tk.E, tk.S))
 
-        ttk.Label(info_frame, text="當前時間：").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(info_frame, text="Current time：").grid(row=0, column=0, sticky=tk.W)
         self.time_label = ttk.Label(info_frame, text="")
         self.time_label.grid(row=1, column=0, sticky=tk.W)
 

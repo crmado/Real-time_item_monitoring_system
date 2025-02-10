@@ -27,7 +27,7 @@ class ControlPanel(ttk.Frame):
     def create_widgets(self):
         """創建控制面板組件"""
         # 視訊來源選擇
-        ttk.Label(self, text="選擇視訊來源：").grid(row=0, column=0, padx=5)
+        ttk.Label(self, text="Select video source：").grid(row=0, column=0, padx=5)
 
         self.camera_combo = ttk.Combobox(self, width=30)
         self.camera_combo.grid(row=0, column=1, padx=5)
@@ -35,7 +35,7 @@ class ControlPanel(ttk.Frame):
         # 測試按鈕
         self.test_button = ttk.Button(
             self,
-            text="測試鏡頭",
+            text="Test Lenses",
             style='Accent.TButton'
         )
         self.test_button.grid(row=0, column=2, padx=5)
@@ -43,7 +43,7 @@ class ControlPanel(ttk.Frame):
         # 開始/停止按鈕
         self.start_button = ttk.Button(
             self,
-            text="開始監測",
+            text="Start monitoring",
             style='Accent.TButton'
         )
         self.start_button.grid(row=0, column=3, padx=5)
@@ -88,7 +88,7 @@ class ControlPanel(ttk.Frame):
             is_monitoring: 是否正在監測
         """
         self.start_button.configure(
-            text="停止監測" if is_monitoring else "開始監測"
+            text="Stop monitoring" if is_monitoring else "Start monitoring"
         )
 
     def update_test_button_text(self, is_testing):
@@ -99,5 +99,5 @@ class ControlPanel(ttk.Frame):
             is_testing: 是否正在測試
         """
         self.test_button.configure(
-            text="停止測試" if is_testing else "測試鏡頭"
+            text="Stop the test" if is_testing else "Test Lenses"
         )

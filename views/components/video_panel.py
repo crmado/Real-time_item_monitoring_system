@@ -47,7 +47,7 @@ class VideoPanel(ttk.Frame):
         self.image_label = ttk.Label(
             self.image_container,
             style='Video.TLabel',
-            text="請選擇攝影機"
+            text="Please select a camera"
         )
         self.image_label.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 

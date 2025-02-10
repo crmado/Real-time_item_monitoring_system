@@ -45,7 +45,7 @@ class SettingsPanel(ttk.Frame):
 
         ttk.Label(
             count_frame,
-            text="目前計數：",
+            text="Current count：",
             style='Counter.TLabel'
         ).grid(row=0, column=0)
 
@@ -61,7 +61,7 @@ class SettingsPanel(ttk.Frame):
         target_frame = ttk.Frame(self)
         target_frame.grid(row=1, column=0, pady=5, sticky=tk.EW)
 
-        ttk.Label(target_frame, text="預計數量：").grid(row=0, column=0)
+        ttk.Label(target_frame, text="Estimated quantity：").grid(row=0, column=0)
 
         self.target_entry = ttk.Entry(target_frame, width=10)
         self.target_entry.grid(row=0, column=1, padx=5)
@@ -72,7 +72,7 @@ class SettingsPanel(ttk.Frame):
         buffer_frame = ttk.Frame(self)
         buffer_frame.grid(row=2, column=0, pady=5, sticky=tk.EW)
 
-        ttk.Label(buffer_frame, text="緩衝點：").grid(row=0, column=0)
+        ttk.Label(buffer_frame, text="Buffer Point：").grid(row=0, column=0)
 
         self.buffer_entry = ttk.Entry(buffer_frame, width=10)
         self.buffer_entry.grid(row=0, column=1, padx=5)
@@ -82,7 +82,7 @@ class SettingsPanel(ttk.Frame):
         """創建設定按鈕"""
         self.apply_settings_button = ttk.Button(
             self,
-            text="應用設定",
+            text="Application Settings",
             style='Accent.TButton'
         )
         self.apply_settings_button.grid(row=3, column=0, pady=10)
