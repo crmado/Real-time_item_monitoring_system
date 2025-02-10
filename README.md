@@ -11,17 +11,9 @@
 ## 目錄結構
 
 ```plaintext
+
+
 Real-time_item_monitoring_system/
-├── .idea/                      # IDE 配置文件
-├── logs/                       # 系統運行日誌
-├── testDate/                   # 測試用影片
-├── .gitignore                  # Git 忽略文件配置
-├── object_detection_system.py  # 主程式文件
-├── README.md                   # 項目說明文件
-└── requirements.txt            # 依賴套件清單
-
-
-project_root/
 │
 ├── main.py                 # 主程式入口
 ├── requirements.txt        # 專案依賴
@@ -47,10 +39,12 @@ project_root/
 │   ├── detection_controller.py    # 物件偵測控制器
 │   └── system_controller.py       # 系統控制器
 │
-└── utils/                # 工具類
-    ├── __init__.py
-    ├── logger.py        # 日誌工具
-    └── config.py        # 配置檔
+|── utils/                # 工具類
+|    ├── __init__.py
+|    ├── logger.py        # 日誌工具
+|    └── config.py        # 配置檔
+├── README.md                   # 項目說明文件
+└── requirements.txt            # 依賴套件清單
 
 ```
 
@@ -76,9 +70,8 @@ project_root/
 
 1. 建立並啟動虛擬環境：
 ```bash
-python -m venv RPi_4_camera
-.\RPi_4_camera\Scripts\activate  # Windows
-source RPi_4_camera/bin/activate # Linux/macOS
+conda create -n RPi_4_camera python=3.8
+conda activate RPi_4_camera
 ```
 
 2. 安裝依賴套件：
@@ -90,7 +83,7 @@ pip install -r requirements.txt
 
 1. 啟動程式：
 ```bash
-python object_detection_system.py
+python3 main.py
 ```
 
 2. 打包執行檔：
