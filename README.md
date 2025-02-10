@@ -92,6 +92,9 @@ python3 main.py
 pyinstaller --clean object_detection_system.spec
 # 執行打包後的程式，並將錯誤日誌導向到 logs 資料夾
 .\dist\object_detection_system.exe 2> logs\error.log
+
+# lixux 系統格式專用
+pyinstaller --onefile main.py
 ```
 
 3. 操作流程：
