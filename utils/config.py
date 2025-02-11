@@ -49,7 +49,7 @@ class Config:
                     return json.load(f)
             return self.DEFAULT_CONFIG.copy()
         except Exception as e:
-            logging.error(f"載入配置檔案時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while loading the configuration file：{str(e)}")
             return self.DEFAULT_CONFIG.copy()
 
     def save_config(self):
@@ -58,7 +58,7 @@ class Config:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            logging.error(f"儲存配置檔案時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while saving the configuration file：{str(e)}")
 
     def get(self, key, default=None):
         """

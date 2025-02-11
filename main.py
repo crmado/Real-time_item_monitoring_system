@@ -55,7 +55,7 @@ def main():
         root.mainloop()
 
     except Exception as e:
-        logging.error(f"程式執行時發生錯誤：{str(e)}")
+        logging.error(f"An error occurred while executing the program：{str(e)}")
         sys.exit(1)
 
 

@@ -105,7 +105,7 @@ class SystemController:
         """處理測試攝影機"""
         selected_source = self.components['control_panel'].get_selected_source()
         if not selected_source:
-            self.main_window.log_message("錯誤：請選擇視訊來源")
+            self.main_window.log_message("Error: Please select a video source")
             return
 
         # 輸出畫面到視窗
@@ -117,16 +117,16 @@ class SystemController:
         if not self.detection_controller.is_monitoring:
             selected_source = self.components['control_panel'].get_selected_source()
             if not selected_source:
-                self.main_window.log_message("錯誤：請選擇視訊來源")
+                self.main_window.log_message("Error: Please select a video source")
                 return
 
             if self.detection_controller.start_monitoring(selected_source):
-                self.main_window.log_message(f"開始監測 - {selected_source}")
+                self.main_window.log_message(f"Start monitoring - {selected_source}")
             else:
-                self.main_window.log_message("啟動監測失敗")
+                self.main_window.log_message("Failed to start monitoring")
         else:
             self.detection_controller.stop_monitoring()
-            self.main_window.log_message("停止監測")
+            self.main_window.log_message("Stop monitoring")
 
     def handle_apply_settings(self):
         """處理應用設定"""
@@ -137,11 +137,11 @@ class SystemController:
                 settings['buffer_point']
             ):
                 self.main_window.log_message(
-                    f"更新設定 - 預計數量: {settings['target_count']}, "
-                    f"緩衝點: {settings['buffer_point']}"
+                    f"Update Settings - Estimated Quantity: {settings['target_count']}, "
+                    f"Buffer Point: {settings['buffer_point']}"
                 )
             else:
-                self.main_window.log_message("設定更新失敗")
+                self.main_window.log_message("Settings update failed")
 
     def handle_roi_drag_start(self, event):
         """
@@ -174,7 +174,7 @@ class SystemController:
         """檢查系統更新"""
         try:
             if not os.path.exists('.git'):
-                self.main_window.log_message("未設定版本控制，跳過更新檢查")
+                self.main_window.log_message("Version control not set, skipping update check")
                 return
 
             result = subprocess.run(
@@ -184,7 +184,7 @@ class SystemController:
             )
 
             if 'origin' not in result.stdout:
-                self.main_window.log_message("未設定遠端倉庫，跳過更新檢查")
+                self.main_window.log_message("Remote repository not set, skipping update check")
                 return
 
             subprocess.run(['git', 'fetch', 'origin'], check=True)
@@ -199,21 +199,21 @@ class SystemController:
                 self.prompt_update()
 
         except Exception as e:
-            self.main_window.log_message(f"檢查更新時發生錯誤：{str(e)}")
+            self.main_window.log_message(f"An error occurred while checking for updates：{str(e)}")
 
     def prompt_update(self):
         """提示更新"""
-        if messagebox.askyesno("更新提示", "發現新版本，是否要更新？"):
+        if messagebox.askyesno("Update Tips", "A new version has been found. Do you want to update?"):
             self.perform_update()
 
     def perform_update(self):
         """執行更新"""
         try:
             subprocess.run(['git', 'pull'], check=True)
-            messagebox.showinfo("更新完成", "程式已更新，請重新啟動")
+            messagebox.showinfo("Update Complete", "The program has been updated, please restart")
             self.main_window.root.quit()
         except Exception as e:
             messagebox.showerror(
-                "更新失敗",
-                f"更新過程中發生錯誤：{str(e)}"
+                "Update failed",
+                f"An error occurred during the update process：{str(e)}"
             )

@@ -112,7 +112,7 @@ class SettingsPanel(ttk.Frame):
                 'buffer_point': buffer_point
             }
         except ValueError:
-            logging.error("設定值必須為整數")
+            logging.error("The setting value must be an integer")
             return None
 
     def set_callback(self, callback):

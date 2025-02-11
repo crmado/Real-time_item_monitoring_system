@@ -97,10 +97,10 @@ class DetectionController:
                 # 更新儲存的百分比位置
                 self.saved_roi_percentage = roi_y / height
 
-                logging.info(f"ROI 線位置更新: {self.saved_roi_percentage * 100:.1f}%")
+                logging.info(f"ROI Line position update:: {self.saved_roi_percentage * 100:.1f}%")
 
         except Exception as e:
-            logging.error(f"更新 ROI 位置時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while updating the ROI position：{str(e)}")
 
     def stop_roi_drag(self):
         """停止拖動 ROI 線"""
@@ -120,10 +120,10 @@ class DetectionController:
             if frame is not None and self.roi_lines:
                 height = frame.shape[0]
                 self.saved_roi_percentage = self.roi_lines[0] / height
-                logging.info(f"ROI 線位置設定已儲存: {self.saved_roi_percentage * 100:.1f}%")
+                logging.info(f"ROI Line position settings saved: {self.saved_roi_percentage * 100:.1f}%")
 
         except Exception as e:
-            logging.error(f"儲存 ROI 設定時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while saving ROI settings.：{str(e)}")
         finally:
             self.dragging_roi = False
 
@@ -136,7 +136,7 @@ class DetectionController:
         """
         try:
             if self.is_testing:
-                logging.warning("請先停止測試再開始監測")
+                logging.warning("Please stop the test before starting it again")
                 return False
 
             if not self.camera_manager.open_camera(source):
@@ -158,7 +158,7 @@ class DetectionController:
             return True
 
         except Exception as e:
-            logging.error(f"啟動監測時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while starting the check：{str(e)}")
             return False
 
     def stop_monitoring(self):
@@ -174,7 +174,7 @@ class DetectionController:
             try:
                 ret, frame = self.camera_manager.read_frame()
                 if not ret or frame is None:
-                    logging.warning("無法讀取影像或影片已結束")
+                    logging.warning("Unable to read image or video has ended")
                     break
 
                 frame_with_detections = frame.copy()
@@ -205,7 +205,7 @@ class DetectionController:
                 time.sleep(1 / self.camera_manager.get_camera_info()['fps'])
 
             except Exception as e:
-                logging.error(f"處理影像時發生錯誤：{str(e)}")
+                logging.error(f"An error occurred while processing the image：{str(e)}")
                 break
 
         self.stop_monitoring()
@@ -306,15 +306,15 @@ class DetectionController:
     def _show_buffer_alert(self):
         """顯示緩衝點警告"""
         messagebox.showwarning(
-            "緩衝點警告",
-            f"已達到緩衝點 ({self.buffer_point})，即將達到預計數量！"
+            "Buffer point warning",
+            f"Buffer point reached ({self.buffer_point}), estimated number almost reached!"
         )
 
     def _show_target_reached(self):
         """顯示達到目標數量通知"""
         messagebox.showinfo(
-            "完成通知",
-            f"已達到預計數量 ({self.target_count})！"
+            "Completion Notification",
+            f"The target number ({self.target_count}) has been reached!"
         )
 
     def set_callback(self, event_name, callback):
@@ -347,11 +347,11 @@ class DetectionController:
             buffer_point: 緩衝點
         """
         if buffer_point >= target_count:
-            logging.error("緩衝點必須小於預計數量")
+            logging.error("The buffer point must be less than the expected number")
             return False
 
         if buffer_point < 0 or target_count < 0:
-            logging.error("數值不能為負數")
+            logging.error("Numbers cannot be negative")
             return False
 
         self.target_count = target_count
@@ -367,7 +367,7 @@ class DetectionController:
             source: 視訊來源名稱
         """
         if not source:
-            logging.error("錯誤：請選擇視訊來源")
+            logging.error("Error: Please select a video source")
             return False
 
         # 如果已經在測試中，則停止測試
@@ -384,7 +384,7 @@ class DetectionController:
                 return self._test_usb_camera(source)
 
         except Exception as e:
-            logging.error(f"攝像頭測試錯誤：{str(e)}")
+            logging.error(f"Camera test error:{str(e)}")
             self.stop_camera_test()
             return False
 
@@ -414,7 +414,7 @@ class DetectionController:
 
         self.test_camera_obj = cv2.VideoCapture(test_video_file)
         if not self.test_camera_obj.isOpened():
-            logging.error("無法開啟 libcamera 測試串流")
+            logging.error("Unable to open libcamera test stream")
             return False
 
         self.is_testing = True
@@ -427,7 +427,7 @@ class DetectionController:
         self.test_camera_obj = cv2.VideoCapture(camera_index)
 
         if not self.test_camera_obj.isOpened():
-            logging.error("無法開啟攝像頭")
+            logging.error("Unable to turn on camera")
             return False
 
         # 讀取一幀來初始化 ROI 線位置
@@ -461,7 +461,7 @@ class DetectionController:
                     self._notify('frame_processed', frame_with_roi)
                 time.sleep(1 / 30)
         except Exception as e:
-            logging.error(f"攝像頭測試執行錯誤：{str(e)}")
+            logging.error(f"Camera test execution error：{str(e)}")
         finally:
             self.stop_camera_test()
 
@@ -566,6 +566,6 @@ class DetectionController:
             self._notify('test_stopped')
 
         except Exception as e:
-            logging.error(f"停止攝像頭測試時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while stopping the camera test：{str(e)}")
         finally:
             self.is_testing = False

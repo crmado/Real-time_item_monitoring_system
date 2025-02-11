@@ -121,7 +121,7 @@ class VideoPanel(ttk.Frame):
             self.image_label.image = img_tk
 
         except Exception as e:
-            logging.error(f"更新影像顯示時發生錯誤：{str(e)}")
+            logging.error(f"An error occurred while updating the image display：{str(e)}")
 
     def set_callback(self, event_name, callback):
         """
