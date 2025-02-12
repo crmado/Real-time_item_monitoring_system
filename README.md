@@ -1,4 +1,3 @@
-```markdown
 # 即時物件監測系統（Real-time Item Monitoring System）
 
 這是一個使用 Python 開發的即時物件監測系統，專門用於工業生產線上的物件即時檢測和計數。系統提供圖形使用者介面，支援攝像頭即時監測和預先錄製的視頻分析。
@@ -70,31 +69,31 @@ Real-time_item_monitoring_system/
 
 1. 建立並啟動虛擬環境：
 ```bash
-conda create -n RPi_4_camera python=3.8
-conda activate RPi_4_camera
+    conda create -n RPi_4_camera python=3.8
+    conda activate RPi_4_camera
 ```
 
 2. 安裝依賴套件：
 ```bash
-pip install -r requirements.txt
+    pip install -r requirements.txt
 ```
 
 ## 使用說明
 
 1. 啟動程式：
 ```bash
-python3 main.py
+    python3 main.py
 ```
 
 2. 打包執行檔：
 ```bash
-# 產生 spec 檔案
-pyinstaller --clean object_detection_system.spec
-# 執行打包後的程式，並將錯誤日誌導向到 logs 資料夾
-.\dist\object_detection_system.exe 2> logs\error.log
-
-# lixux 系統格式專用
-pyinstaller --onefile main.py
+    # 產生 spec 檔案
+    pyinstaller --clean object_detection_system.spec
+    # 執行打包後的程式，並將錯誤日誌導向到 logs 資料夾
+    .\dist\object_detection_system.exe 2> logs\error.log
+    
+    # lixux 系統格式專用
+    pyinstaller --onefile main.py
 ```
 
 3. 操作流程：
