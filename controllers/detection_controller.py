@@ -48,14 +48,16 @@ class DetectionController:
         # 物件追蹤資料
         self.object_tracks = {}
         self.frame_index = 1
-        self.frame_count = 0
-        self.total_frames = 0  # 總幀數
-        self.start_time = time.time()  # 添加起始時間追蹤
-        self.last_time = time.time()  # 添加上次更新時間
-        self.fps = 0  # 添加 FPS 追蹤
-        self.fps_update_interval = 1.0  # 更新 FPS 的時間間隔（秒）
-        self.fps_history = []  # FPS 歷史記錄
-        self.processing_times = []  # 處理時間歷史記錄
+
+        # 效能追蹤相關變數
+        self.frame_stats = {
+            'captured': 0,  # 擷取的幀數
+            'processed': 0,  # 處理的幀數
+            'displayed': 0,  # 顯示的幀數
+            'dropped': 0  # 丟棄的幀數
+        }
+        self.last_time = time.time()
+        self.performance_lock = threading.Lock()
 
         self.frame_queue = Queue(maxsize=30)  # 原始影像佇列
         self.result_queue = Queue(maxsize=30)  # 處理結果佇列
@@ -219,10 +221,12 @@ class DetectionController:
                 self.frame_queue.put(None)
                 break
 
-            # 如果佇列已滿，丟棄最舊的幀
+            self._update_frame_stats('captured')
+
             if self.frame_queue.full():
                 try:
                     self.frame_queue.get_nowait()
+                    self._update_frame_stats('dropped')
                 except Empty:
                     pass
 
@@ -245,18 +249,17 @@ class DetectionController:
                 self._draw_detection_results(frame_with_detections, objects, line_y)
 
             # 計算處理時間
-            process_time = time.time() - start_process_time
-            self.processing_times.append(process_time)
+            process_time = (time.time() - start_process_time) * 1000  # 轉換為毫秒
 
-            # 保持歷史記錄在合理範圍內
-            if len(self.processing_times) > 100:
-                self.processing_times.pop(0)
+            # 記錄處理時間
+            with self.performance_lock:
+                self.current_frame_time = process_time
 
-            # 更新效能統計
-            self._update_performance_stats()
-
-            # 將結果放入佇列
+            self._update_frame_stats('processed')
             self.result_queue.put(frame_with_detections)
+
+            # 記錄到日誌
+            logging.debug(f"Frame processing time: {process_time:.2f}ms")
 
         except Exception as e:
             logging.error(f"處理影像時發生錯誤：{str(e)}")
@@ -304,7 +307,7 @@ class DetectionController:
                     break
 
                 self._notify('frame_processed', frame_with_detections)
-                self.frame_index += 1
+                self._update_frame_stats('displayed')
 
             except Empty:
                 continue
@@ -349,14 +352,7 @@ class DetectionController:
         self.object_tracks = new_tracks
 
     def _draw_detection_results(self, frame, objects, line_y):
-        """
-        在影像上繪製檢測結果
-
-        Args:
-            frame: 原始影像幀
-            objects: 檢測到的物件列表
-            line_y: ROI 線的 y 座標
-        """
+        """在影像上繪製檢測結果和效能資訊"""
         # 繪製檢測結果
         height, width = frame.shape[:2]
         cv2.line(frame, (0, line_y), (width, line_y), (0, 255, 0), 2)
@@ -369,51 +365,40 @@ class DetectionController:
                 2
             )
 
-        # 計算即時 FPS
-        self.frame_count += 1
-        current_time = time.time()
-        time_diff = current_time - self.last_time
+        # 顯示效能資訊
+        with self.performance_lock:
+            # 計算每秒的 FPS
+            current_time = time.time()
+            time_diff = current_time - self.last_time
 
-        # 每秒更新一次 FPS
-        if time_diff >= self.fps_update_interval:
-            self.fps = self.frame_count / time_diff
-            self.frame_count = 0  # 重置幀數計數器
-            self.last_time = current_time  # 更新時間戳
+            if time_diff >= 1.0:
+                self.current_fps = {
+                    'capture': self.frame_stats['captured'] / time_diff,
+                    'process': self.frame_stats['processed'] / time_diff,
+                    'display': self.frame_stats['displayed'] / time_diff
+                }
+                self.frame_stats = {k: 0 for k in self.frame_stats}  # 重置計數器
+                self.last_time = current_time
 
-        # 顯示FPS
-        cv2.putText(
-            frame,
-            f"FPS: {self.fps:.2f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2
-        )
+            # 使用多行顯示效能資訊
+            line_height = 30  # 行高
+            stats_texts = [
+                f"Capture FPS: {getattr(self, 'current_fps', {}).get('capture', 0):.1f}",
+                f"Process FPS: {getattr(self, 'current_fps', {}).get('process', 0):.1f}",
+                f"Display FPS: {getattr(self, 'current_fps', {}).get('display', 0):.1f}",
+                f"Dropped Frames: {self.frame_stats['dropped']}"
+            ]
 
-        # 添加效能資訊
-        avg_process_time = sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0
-
-        # 繪製效能資訊
-        cv2.putText(
-            frame,
-            f"FPS: {self.fps:.1f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2
-        )
-
-        cv2.putText(
-            frame,
-            f"Process Time: {avg_process_time * 1000:.1f}ms",
-            (10, 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2
-        )
+            for i, text in enumerate(stats_texts):
+                cv2.putText(
+                    frame,
+                    text,
+                    (10, 30 + i * line_height),  # 每行向下移動 line_height 像素
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2
+                )
 
         return frame
 
@@ -705,3 +690,34 @@ class DetectionController:
             logging.error(f"An error occurred while stopping the camera test：{str(e)}")
         finally:
             self.is_testing = False
+
+    def _update_frame_stats(self, stat_type):
+        """統一更新幀統計"""
+        with self.performance_lock:
+            self.frame_stats[stat_type] += 1
+            current_time = time.time()
+            time_diff = current_time - self.last_time
+
+            if time_diff >= 1.0:
+                # 計算真實的 FPS（考慮時間差）
+                capture_fps = self.frame_stats['captured'] / time_diff
+                process_fps = self.frame_stats['processed'] / time_diff
+                display_fps = self.frame_stats['displayed'] / time_diff
+                drop_rate = self.frame_stats['dropped'] / max(1, self.frame_stats['captured'])
+
+                # 確保 FPS 不超過相機設定
+                camera_fps = self.camera_manager.get_camera_info()['fps']
+                capture_fps = min(capture_fps, camera_fps)
+
+                logging.info(
+                    f"Performance Stats:\n"
+                    f"Capture FPS: {capture_fps:.2f}\n"
+                    f"Process FPS: {process_fps:.2f}\n"
+                    f"Display FPS: {display_fps:.2f}\n"
+                    f"Drop Rate: {drop_rate * 100:.1f}%\n"
+                    f"Frame Process Time: {getattr(self, 'current_frame_time', 0):.2f}ms"
+                )
+
+                # 重置計數器
+                self.frame_stats = {k: 0 for k in self.frame_stats}
+                self.last_time = current_time
