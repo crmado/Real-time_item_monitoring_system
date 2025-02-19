@@ -9,6 +9,8 @@ import logging
 from tkinter import messagebox
 
 import cv2
+from queue import Queue, Empty
+import concurrent.futures
 
 
 class DetectionController:
@@ -47,10 +49,17 @@ class DetectionController:
         self.object_tracks = {}
         self.frame_index = 1
         self.frame_count = 0
+        self.total_frames = 0  # 總幀數
         self.start_time = time.time()  # 添加起始時間追蹤
         self.last_time = time.time()  # 添加上次更新時間
         self.fps = 0  # 添加 FPS 追蹤
         self.fps_update_interval = 1.0  # 更新 FPS 的時間間隔（秒）
+        self.fps_history = []  # FPS 歷史記錄
+        self.processing_times = []  # 處理時間歷史記錄
+
+        self.frame_queue = Queue(maxsize=30)  # 原始影像佇列
+        self.result_queue = Queue(maxsize=30)  # 處理結果佇列
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         # 測試相關變數
         self.is_testing = False
@@ -174,46 +183,132 @@ class DetectionController:
         self._notify('monitoring_stopped')
 
     def _process_video(self):
-        """處理視訊流"""
+        """改進的視訊處理主函數"""
+        # 啟動影像擷取線程
+        capture_thread = threading.Thread(
+            target=self._capture_frames,
+            daemon=True
+        )
+        capture_thread.start()
+
+        # 啟動結果處理線程
+        display_thread = threading.Thread(
+            target=self._display_results,
+            daemon=True
+        )
+        display_thread.start()
+
+        # 主處理循環
         while self.is_monitoring:
             try:
-                ret, frame = self.camera_manager.read_frame()
-                if not ret or frame is None:
-                    logging.warning("Unable to read image or video has ended")
+                frame = self.frame_queue.get(timeout=0.1)
+                if frame is None:
                     break
 
-                frame_with_detections = frame.copy()
+                # 提交處理任務到線程池
+                self.thread_pool.submit(self._process_single_frame, frame)
 
-                # 處理每個 ROI 線
-                for line_y in self.roi_lines:
-                    # 確保 frame 不為 None
-                    if frame is not None:
-                        # 繪製 ROI 線和檢測區域
-                        # frame_with_detections = self._draw_roi_on_frame(frame_with_detections)
+            except Empty:
+                continue
 
-                        # 擷取 ROI 區域
-                        roi = frame[line_y:line_y + self.roi_height, :]
-                        processed = self.image_processor.process_frame(roi)
-                        objects = self.image_processor.detect_objects(processed)
+    def _capture_frames(self):
+        """專門的影像擷取線程"""
+        while self.is_monitoring:
+            ret, frame = self.camera_manager.read_frame()
+            if not ret or frame is None:
+                self.frame_queue.put(None)
+                break
 
-                        # 更新物件追蹤
-                        self._update_object_tracking(objects, line_y)
+            # 如果佇列已滿，丟棄最舊的幀
+            if self.frame_queue.full():
+                try:
+                    self.frame_queue.get_nowait()
+                except Empty:
+                    pass
 
-                        # 更新影像顯示
-                        self._draw_detection_results(frame_with_detections, objects, line_y)
+            self.frame_queue.put(frame)
 
-                # 通知更新顯示
+    def _process_single_frame(self, frame):
+        """處理單一影像幀並監控效能"""
+        try:
+            # 記錄開始時間
+            start_process_time = time.time()
+
+            frame_with_detections = frame.copy()
+
+            # 處理每個 ROI 線
+            for line_y in self.roi_lines:
+                roi = frame[line_y:line_y + self.roi_height, :]
+                processed = self.image_processor.process_frame(roi)
+                objects = self.image_processor.detect_objects(processed)
+                self._update_object_tracking(objects, line_y)
+                self._draw_detection_results(frame_with_detections, objects, line_y)
+
+            # 計算處理時間
+            process_time = time.time() - start_process_time
+            self.processing_times.append(process_time)
+
+            # 保持歷史記錄在合理範圍內
+            if len(self.processing_times) > 100:
+                self.processing_times.pop(0)
+
+            # 更新效能統計
+            self._update_performance_stats()
+
+            # 將結果放入佇列
+            self.result_queue.put(frame_with_detections)
+
+        except Exception as e:
+            logging.error(f"處理影像時發生錯誤：{str(e)}")
+
+    def _update_performance_stats(self):
+        """更新效能統計資訊"""
+        self.frame_count += 1
+        self.total_frames += 1
+        current_time = time.time()
+        time_diff = current_time - self.last_time
+
+        # 每秒更新一次統計資訊
+        if time_diff >= 1.0:
+            # 計算 FPS
+            current_fps = self.frame_count / time_diff
+            self.fps = current_fps
+            self.fps_history.append(current_fps)
+
+            # 保持 FPS 歷史記錄在合理範圍內
+            if len(self.fps_history) > 60:  # 保留最近一分鐘的數據
+                self.fps_history.pop(0)
+
+            # 計算平均處理時間
+            avg_process_time = sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0
+
+            # 記錄統計資訊
+            logging.info(
+                f"Performance Stats:\n"
+                f"Current FPS: {current_fps:.2f}\n"
+                f"Average FPS: {sum(self.fps_history) / len(self.fps_history):.2f}\n"
+                f"Average Processing Time: {avg_process_time * 1000:.2f}ms\n"
+                f"Total Frames: {self.total_frames}"
+            )
+
+            # 重置計數器
+            self.frame_count = 0
+            self.last_time = current_time
+
+    def _display_results(self):
+        """顯示處理結果的專門線程"""
+        while self.is_monitoring:
+            try:
+                frame_with_detections = self.result_queue.get(timeout=0.1)
+                if frame_with_detections is None:
+                    break
+
                 self._notify('frame_processed', frame_with_detections)
                 self.frame_index += 1
 
-                # 控制處理速率
-                time.sleep(0.001)
+            except Empty:
+                continue
 
-            except Exception as e:
-                logging.error(f"An error occurred while processing the image：{str(e)}")
-                break
-
-        self.stop_monitoring()
 
     def _update_object_tracking(self, objects, line_y):
         """
@@ -290,6 +385,30 @@ class DetectionController:
             frame,
             f"FPS: {self.fps:.2f}",
             (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+
+        # 添加效能資訊
+        avg_process_time = sum(self.processing_times) / len(self.processing_times) if self.processing_times else 0
+
+        # 繪製效能資訊
+        cv2.putText(
+            frame,
+            f"FPS: {self.fps:.1f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+
+        cv2.putText(
+            frame,
+            f"Process Time: {avg_process_time * 1000:.1f}ms",
+            (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             (0, 255, 0),
@@ -476,7 +595,7 @@ class DetectionController:
                 if ret:
                     frame_with_roi = self._draw_roi_on_frame_test(frame.copy())
                     self._notify('frame_processed', frame_with_roi)
-                time.sleep(0.01)
+                # time.sleep(0.01)
         except Exception as e:
             logging.error(f"Camera test execution error：{str(e)}")
         finally:
