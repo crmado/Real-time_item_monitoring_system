@@ -46,6 +46,11 @@ class DetectionController:
         # 物件追蹤資料
         self.object_tracks = {}
         self.frame_index = 1
+        self.frame_count = 0
+        self.start_time = time.time()  # 添加起始時間追蹤
+        self.last_time = time.time()  # 添加上次更新時間
+        self.fps = 0  # 添加 FPS 追蹤
+        self.fps_update_interval = 1.0  # 更新 FPS 的時間間隔（秒）
 
         # 測試相關變數
         self.is_testing = False
@@ -202,7 +207,7 @@ class DetectionController:
                 self.frame_index += 1
 
                 # 控制處理速率
-                time.sleep(1 / self.camera_manager.get_camera_info()['fps'])
+                time.sleep(0.001)
 
             except Exception as e:
                 logging.error(f"An error occurred while processing the image：{str(e)}")
@@ -268,10 +273,22 @@ class DetectionController:
                 (0, 0, 255),
                 2
             )
-        # 添加資訊文字 - 顯示相機幀數
+
+        # 計算即時 FPS
+        self.frame_count += 1
+        current_time = time.time()
+        time_diff = current_time - self.last_time
+
+        # 每秒更新一次 FPS
+        if time_diff >= self.fps_update_interval:
+            self.fps = self.frame_count / time_diff
+            self.frame_count = 0  # 重置幀數計數器
+            self.last_time = current_time  # 更新時間戳
+
+        # 顯示FPS
         cv2.putText(
             frame,
-            f"FPS: {self.camera_manager.get_camera_info()['fps']}",
+            f"FPS: {self.fps:.2f}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -459,7 +476,7 @@ class DetectionController:
                 if ret:
                     frame_with_roi = self._draw_roi_on_frame_test(frame.copy())
                     self._notify('frame_processed', frame_with_roi)
-                time.sleep(1 / 30)
+                time.sleep(0.01)
         except Exception as e:
             logging.error(f"Camera test execution error：{str(e)}")
         finally:
@@ -531,21 +548,21 @@ class DetectionController:
                 2
             )
 
-            # 顯示攝像頭資訊
-            if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
-                cam_width = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_WIDTH)
-                cam_height = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_HEIGHT)
-                cam_fps = self.test_camera_obj.get(cv2.CAP_PROP_FPS)
-                cam_info = f"Resolution: {int(cam_width)}x{int(cam_height)}, FPS: {int(cam_fps)}"
-                cv2.putText(
-                    frame,
-                    cam_info,
-                    (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 0),
-                    2
-                )
+            # # 顯示攝像頭資訊
+            # if hasattr(self, 'test_camera_obj') and self.test_camera_obj is not None:
+            #     cam_width = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_WIDTH)
+            #     cam_height = self.test_camera_obj.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            #     cam_fps = self.test_camera_obj.get(cv2.CAP_PROP_FPS)
+            #     cam_info = f"Resolution: {int(cam_width)}x{int(cam_height)}, FPS: {int(cam_fps)}"
+            #     cv2.putText(
+            #         frame,
+            #         cam_info,
+            #         (10, 60),
+            #         cv2.FONT_HERSHEY_SIMPLEX,
+            #         0.7,
+            #         (0, 255, 0),
+            #         2
+            #     )
 
         return frame
 
