@@ -4,7 +4,7 @@
 
 ## 系統環境
 
-- Python 3.8.19
+- Python 3.12
 - 虛擬環境：RPi_4_camera
 
 ## 目錄結構
@@ -69,7 +69,7 @@ Real-time_item_monitoring_system/
 
 1. 建立並啟動虛擬環境：
 ```bash
-    conda create -n RPi_4_camera python=3.8
+    conda create -n RPi_4_camera python=3.12
     conda activate RPi_4_camera
 ```
 
