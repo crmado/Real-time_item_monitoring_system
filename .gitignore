@@ -3,7 +3,6 @@ images/*
 output*
 deep_sort/*
 RaspberryPi/*
-models/*
 video/*
 jetson_videoData/*
 rawDate/*
