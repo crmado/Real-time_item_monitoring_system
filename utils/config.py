@@ -1,95 +1,330 @@
 """
 配置工具
-管理系統配置參數
+管理系統配置參數 - 改進版本
 """
 
 import json
 import os
 import logging
+import yaml
+import shutil
+from pathlib import Path
+
+from utils.exceptions import ConfigError, InvalidSettingError
 
 
 class Config:
-    """配置管理類別"""
+    """配置管理類別 - 改進版本"""
 
     DEFAULT_CONFIG = {
-        'target_count': 1000,
-        'buffer_point': 950,
-        'roi_height': 16,
-        'roi_default_position': 0.2,  # ROI 線的預設位置（畫面高度的比例）
-        'min_object_area': 10,
-        'max_object_area': 150,
-        'camera_width': 640,
-        'camera_height': 480,
-        'camera_fps': 30
+        'system': {
+            'language': 'zh_TW',            # 預設語言
+            'check_updates': True,          # 是否自動檢查更新
+            'log_level': 'INFO',            # 預設日誌等級
+            'backup_config': True           # 是否在修改前備份配置
+        },
+        'camera': {
+            'default_width': 640,           # 預設相機寬度
+            'default_height': 480,          # 預設相機高度
+            'default_fps': 30,              # 預設相機 FPS
+            'auto_reconnect': True,         # 是否自動重連相機
+            'reconnect_timeout': 5,         # 重連超時秒數
+            'preferred_source': None        # 預設選用的相機
+        },
+        'detection': {
+            'target_count': 1000,           # 預設預計數量
+            'buffer_point': 950,            # 預設緩衝點
+            'roi_height': 16,               # ROI 高度
+            'roi_default_position': 0.2,    # ROI 線的預設位置（畫面高度的比例）
+            'min_object_area': 10,          # 最小物件面積
+            'max_object_area': 150,         # 最大物件面積
+            'track_tolerance_x': 64,        # X 軸追蹤容許誤差
+            'track_tolerance_y': 48,        # Y 軸追蹤容許誤差
+            'canny_threshold1': 50,         # Canny 檢測器閾值 1
+            'canny_threshold2': 110,        # Canny 檢測器閾值 2
+            'binary_threshold': 30,         # 二值化閾值
+            'bg_history': 20000,            # 背景模型歷史
+            'bg_threshold': 16,             # 背景模型閾值
+            'detect_shadows': True          # 是否檢測陰影
+        },
+        'ui': {
+            'theme': 'system',              # UI 主題 (system, light, dark)
+            'font_size': 'medium',          # 字體大小 (small, medium, large)
+            'show_performance': True,       # 是否顯示效能資訊
+            'video_quality': 'high',        # 視訊顯示品質 (low, medium, high)
+            'roi_line_color': '#00FF00',    # ROI 線顏色
+            'object_box_color': '#FF0000'   # 物件邊框顏色
+        }
     }
 
-    def __init__(self, config_file="config.json"):
+    def __init__(self, config_file="config.yaml"):
         """
-        初始化配置管理器
+        初始化配置管理器 - 改進版本
 
         Args:
             config_file: 配置檔案名稱
         """
-        self.config_file = os.path.join(
+        self.config_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            config_file
+            "config"
         )
+
+        # 確保配置目錄存在
+        if not os.path.exists(self.config_dir):
+            os.makedirs(self.config_dir)
+
+        self.config_file = os.path.join(self.config_dir, config_file)
         self.config = self.load_config()
 
     def load_config(self):
         """
-        載入配置
+        載入配置 - 支援多種檔案格式
 
         Returns:
             dict: 配置字典
         """
+        config = self.DEFAULT_CONFIG.copy()
+
         try:
             if os.path.exists(self.config_file):
+                # 根據副檔名選擇載入方式
+                ext = os.path.splitext(self.config_file)[1].lower()
+
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return self.DEFAULT_CONFIG.copy()
-        except Exception as e:
-            logging.error(f"An error occurred while loading the configuration file：{str(e)}")
-            return self.DEFAULT_CONFIG.copy()
+                    if ext == '.yaml' or ext == '.yml':
+                        file_config = yaml.safe_load(f)
+                    elif ext == '.json':
+                        file_config = json.load(f)
+                    else:
+                        logging.warning(f"不支援的配置文件格式：{ext}，使用預設配置")
+                        return config
 
-    def save_config(self):
-        """儲存配置"""
-        try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            logging.error(f"An error occurred while saving the configuration file：{str(e)}")
+                # 深度合併配置
+                self._deep_update(config, file_config)
+                logging.info(f"已從 {self.config_file} 載入配置")
+            else:
+                # 建立預設配置文件
+                self.save_config(config)
+                logging.info(f"已建立預設配置文件：{self.config_file}")
 
-    def get(self, key, default=None):
+            return config
+
+        except Exception as e:
+            logging.error(f"載入配置文件時發生錯誤：{str(e)}")
+            return config
+
+    def save_config(self, config=None):
         """
-        獲取配置值
+        儲存配置
 
         Args:
-            key: 配置鍵名
+            config: 要儲存的配置，預設為目前的配置
+        """
+        if config is None:
+            config = self.config
+
+        try:
+            # 備份原有配置
+            if os.path.exists(self.config_file) and self.get('system.backup_config', True):
+                backup_file = f"{self.config_file}.bak"
+                shutil.copy2(self.config_file, backup_file)
+                logging.info(f"已備份配置到 {backup_file}")
+
+            # 根據副檔名選擇儲存方式
+            ext = os.path.splitext(self.config_file)[1].lower()
+
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                if ext == '.yaml' or ext == '.yml':
+                    yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+                elif ext == '.json':
+                    json.dump(config, f, indent=4, ensure_ascii=False)
+                else:
+                    # 預設使用 YAML 格式
+                    yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+
+            logging.info(f"已儲存配置到 {self.config_file}")
+
+        except Exception as e:
+            logging.error(f"儲存配置文件時發生錯誤：{str(e)}")
+            raise ConfigError(f"儲存配置失敗：{str(e)}")
+
+    def get(self, key_path, default=None):
+        """
+        獲取配置值 - 支援層級路徑
+
+        Args:
+            key_path: 配置鍵路徑，例如 'detection.roi_height'
             default: 預設值
 
         Returns:
             配置值
         """
-        return self.config.get(key, default)
+        keys = key_path.split('.')
+        value = self.config
 
-    def set(self, key, value):
+        try:
+            for key in keys:
+                value = value[key]
+            return value
+        except (KeyError, TypeError):
+            if default is not None:
+                return default
+            raise ConfigError(f"找不到配置項：{key_path}", key_path)
+
+    def set(self, key_path, value):
         """
-        設置配置值
+        設置配置值 - 支援層級路徑
 
         Args:
-            key: 配置鍵名
+            key_path: 配置鍵路徑，例如 'detection.roi_height'
             value: 配置值
-        """
-        self.config[key] = value
-        self.save_config()
 
-    def update(self, new_config):
+        Returns:
+            bool: 是否成功設置
+        """
+        keys = key_path.split('.')
+        target = self.config
+
+        # 驗證配置有效性
+        if not self._validate_setting(key_path, value):
+            return False
+
+        try:
+            # 遍歷路徑直到最後一個鍵
+            for i, key in enumerate(keys[:-1]):
+                if key not in target:
+                    target[key] = {}
+                target = target[key]
+
+            # 設置最後一個鍵的值
+            target[keys[-1]] = value
+
+            # 儲存配置
+            self.save_config()
+            logging.info(f"已設置配置 {key_path} = {value}")
+            return True
+
+        except Exception as e:
+            logging.error(f"設置配置 {key_path} 時發生錯誤：{str(e)}")
+            return False
+
+    def update(self, updates, save=True):
         """
         更新多個配置值
 
         Args:
-            new_config: 新的配置字典
+            updates: 格式為 {'section.key': value} 的更新字典
+            save: 是否立即儲存更新
+
+        Returns:
+            bool: 是否全部成功更新
         """
-        self.config.update(new_config)
-        self.save_config()
+        success = True
+
+        for key_path, value in updates.items():
+            if not self.set(key_path, value):
+                success = False
+
+        # 如果已經在 set 中儲存了，這裡不需要再儲存
+        if save and success and not any('.' in k for k in updates.keys()):
+            self.save_config()
+
+        return success
+
+    def get_section(self, section):
+        """
+        獲取完整配置區段
+
+        Args:
+            section: 區段名稱
+
+        Returns:
+            dict: 區段配置字典
+        """
+        if section in self.config:
+            return self.config[section]
+        return {}
+
+    def reset_to_default(self, section=None):
+        """
+        重設配置為預設值
+
+        Args:
+            section: 要重設的區段，None 表示全部重設
+
+        Returns:
+            bool: 是否成功重設
+        """
+        try:
+            if section is None:
+                self.config = self.DEFAULT_CONFIG.copy()
+                logging.info("已重設所有配置為預設值")
+            elif section in self.DEFAULT_CONFIG:
+                self.config[section] = self.DEFAULT_CONFIG[section].copy()
+                logging.info(f"已重設區段 {section} 為預設值")
+            else:
+                logging.warning(f"找不到區段 {section}")
+                return False
+
+            self.save_config()
+            return True
+
+        except Exception as e:
+            logging.error(f"重設配置時發生錯誤：{str(e)}")
+            return False
+
+    def _deep_update(self, target_dict, source_dict):
+        """遞迴更新字典"""
+        for key, value in source_dict.items():
+            if isinstance(value, dict) and key in target_dict and isinstance(target_dict[key], dict):
+                self._deep_update(target_dict[key], value)
+            else:
+                target_dict[key] = value
+
+    def _validate_setting(self, key_path, value):
+        """
+        驗證配置值的有效性
+
+        Args:
+            key_path: 配置鍵路徑
+            value: 配置值
+
+        Returns:
+            bool: 是否有效
+        """
+        try:
+            # 檢查常見配置項
+            if key_path == 'detection.target_count':
+                if not isinstance(value, int) or value <= 0:
+                    raise InvalidSettingError("預計數量必須為正整數", key_path)
+
+            elif key_path == 'detection.buffer_point':
+                if not isinstance(value, int) or value < 0:
+                    raise InvalidSettingError("緩衝點必須為非負整數", key_path)
+                # 檢查緩衝點是否小於目標數量
+                target_count = self.get('detection.target_count', 1000)
+                if value >= target_count:
+                    raise InvalidSettingError("緩衝點必須小於預計數量", key_path)
+
+            elif key_path == 'detection.roi_height':
+                if not isinstance(value, int) or value <= 0:
+                    raise InvalidSettingError("ROI 高度必須為正整數", key_path)
+
+            elif key_path == 'detection.roi_default_position':
+                if not isinstance(value, (int, float)) or not 0 <= value <= 1:
+                    raise InvalidSettingError("ROI 預設位置必須為 0 到 1 之間的數值", key_path)
+
+            elif key_path == 'camera.default_fps':
+                if not isinstance(value, (int, float)) or value <= 0:
+                    raise InvalidSettingError("FPS 必須為正數", key_path)
+
+            elif key_path == 'system.language':
+                # 語言代碼格式驗證
+                if not isinstance(value, str) or not (len(value) == 5 and value[2] == '_'):
+                    raise InvalidSettingError("語言代碼格式必須為 'xx_XX'", key_path)
+
+            return True
+
+        except InvalidSettingError as e:
+            logging.error(str(e))
+            return False

@@ -1,0 +1,34 @@
+camera:
+  auto_reconnect: true
+  default_fps: 30
+  default_height: 480
+  default_width: 640
+  preferred_source: null
+  reconnect_timeout: 5
+detection:
+  bg_history: 20000
+  bg_threshold: 16
+  binary_threshold: 30
+  buffer_point: 950
+  canny_threshold1: 50
+  canny_threshold2: 110
+  detect_shadows: true
+  max_object_area: 150
+  min_object_area: 10
+  roi_default_position: 0.2
+  roi_height: 16
+  target_count: 1000
+  track_tolerance_x: 64
+  track_tolerance_y: 48
+system:
+  backup_config: true
+  check_updates: true
+  language: zh_TW
+  log_level: INFO
+ui:
+  font_size: medium
+  object_box_color: '#FF0000'
+  roi_line_color: '#00FF00'
+  show_performance: true
+  theme: system
+  video_quality: high

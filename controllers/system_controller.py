@@ -8,6 +8,9 @@ import os
 import subprocess
 from tkinter import messagebox
 
+from utils.language import get_text
+
+
 class SystemController:
     """系統控制器類別"""
 
@@ -45,7 +48,8 @@ class SystemController:
 
         # 設定面板事件
         settings_panel = self.components['settings_panel']
-        settings_panel.set_callback(self.handle_apply_settings)
+        settings_panel.set_callback('settings_applied', self.handle_apply_settings)
+        settings_panel.set_callback('language_changed', self.handle_language_change)
 
         # 視訊面板事件
         video_panel = self.components['video_panel']
@@ -105,28 +109,27 @@ class SystemController:
         """處理測試攝影機"""
         selected_source = self.components['control_panel'].get_selected_source()
         if not selected_source:
-            self.main_window.log_message("Error: Please select a video source")
+            self.main_window.log_message(get_text("error_source", "錯誤：請選擇視訊來源"))
             return
 
         # 輸出畫面到視窗
         self.detection_controller.test_camera(selected_source)
-
 
     def handle_toggle_monitoring(self):
         """處理開始/停止監測"""
         if not self.detection_controller.is_monitoring:
             selected_source = self.components['control_panel'].get_selected_source()
             if not selected_source:
-                self.main_window.log_message("Error: Please select a video source")
+                self.main_window.log_message(get_text("error_source", "錯誤：請選擇視訊來源"))
                 return
 
             if self.detection_controller.start_monitoring(selected_source):
-                self.main_window.log_message(f"Start monitoring - {selected_source}")
+                self.main_window.log_message(get_text("start_monitoring", "開始監測 - {}").format(selected_source))
             else:
-                self.main_window.log_message("Failed to start monitoring")
+                self.main_window.log_message(get_text("monitoring_failed", "監測啟動失敗"))
         else:
             self.detection_controller.stop_monitoring()
-            self.main_window.log_message("Stop monitoring")
+            self.main_window.log_message(get_text("stop_monitoring", "停止監測"))
 
     def handle_apply_settings(self):
         """處理應用設定"""
@@ -137,11 +140,23 @@ class SystemController:
                 settings['buffer_point']
             ):
                 self.main_window.log_message(
-                    f"Update Settings - Estimated Quantity: {settings['target_count']}, "
-                    f"Buffer Point: {settings['buffer_point']}"
+                    get_text("settings_updated", "更新設定 - 預計數量：{0}，緩衝點：{1}").format(
+                        settings['target_count'],
+                        settings['buffer_point']
+                    )
                 )
             else:
-                self.main_window.log_message("Settings update failed")
+                self.main_window.log_message(get_text("settings_update_failed", "設定更新失敗"))
+
+    def handle_language_change(self, language_code):
+        """
+        處理語言變更
+
+        Args:
+            language_code: 語言代碼
+        """
+        # 更新主視窗和所有組件的語言
+        self.main_window.on_language_changed(language_code)
 
     def handle_roi_drag_start(self, event):
         """
@@ -174,7 +189,7 @@ class SystemController:
         """檢查系統更新"""
         try:
             if not os.path.exists('.git'):
-                self.main_window.log_message("Version control not set, skipping update check")
+                self.main_window.log_message(get_text("version_control_not_set", "版本控制未設定，跳過更新檢查"))
                 return
 
             result = subprocess.run(
@@ -184,7 +199,7 @@ class SystemController:
             )
 
             if 'origin' not in result.stdout:
-                self.main_window.log_message("Remote repository not set, skipping update check")
+                self.main_window.log_message(get_text("remote_not_set", "遠端儲存庫未設定，跳過更新檢查"))
                 return
 
             subprocess.run(['git', 'fetch', 'origin'], check=True)
@@ -199,21 +214,27 @@ class SystemController:
                 self.prompt_update()
 
         except Exception as e:
-            self.main_window.log_message(f"An error occurred while checking for updates：{str(e)}")
+            self.main_window.log_message(get_text("update_check_error", "檢查更新時發生錯誤：{}").format(str(e)))
 
     def prompt_update(self):
         """提示更新"""
-        if messagebox.askyesno("Update Tips", "A new version has been found. Do you want to update?"):
+        if messagebox.askyesno(
+            get_text("update_tips", "更新提示"),
+            get_text("update_tips_msg", "發現新版本，是否更新？")
+        ):
             self.perform_update()
 
     def perform_update(self):
         """執行更新"""
         try:
             subprocess.run(['git', 'pull'], check=True)
-            messagebox.showinfo("Update Complete", "The program has been updated, please restart")
+            messagebox.showinfo(
+                get_text("update_complete", "更新完成"),
+                get_text("update_complete_msg", "程式已更新，請重新啟動")
+            )
             self.main_window.root.quit()
         except Exception as e:
             messagebox.showerror(
-                "Update failed",
-                f"An error occurred during the update process：{str(e)}"
+                get_text("update_failed", "更新失敗"),
+                get_text("update_failed_msg", "更新過程中發生錯誤：{}").format(str(e))
             )

@@ -7,6 +7,8 @@ import tkinter as tk
 from tkinter import ttk
 import logging
 
+from utils.language import get_text
+
 
 class ControlPanel(ttk.Frame):
     """控制面板類別"""
@@ -27,7 +29,7 @@ class ControlPanel(ttk.Frame):
     def create_widgets(self):
         """創建控制面板組件"""
         # 視訊來源選擇
-        ttk.Label(self, text="Select video source：").grid(row=0, column=0, padx=5)
+        ttk.Label(self, text=get_text("select_source", "選擇視訊來源：")).grid(row=0, column=0, padx=5)
 
         self.camera_combo = ttk.Combobox(self, width=30)
         self.camera_combo.grid(row=0, column=1, padx=5)
@@ -35,7 +37,7 @@ class ControlPanel(ttk.Frame):
         # 測試按鈕
         self.test_button = ttk.Button(
             self,
-            text="Test Lenses",
+            text=get_text("test_button", "測試鏡頭"),
             style='Accent.TButton'
         )
         self.test_button.grid(row=0, column=2, padx=5)
@@ -43,7 +45,7 @@ class ControlPanel(ttk.Frame):
         # 開始/停止按鈕
         self.start_button = ttk.Button(
             self,
-            text="Start monitoring",
+            text=get_text("start_button", "開始監測"),
             style='Accent.TButton'
         )
         self.start_button.grid(row=0, column=3, padx=5)
@@ -88,7 +90,7 @@ class ControlPanel(ttk.Frame):
             is_monitoring: 是否正在監測
         """
         self.start_button.configure(
-            text="Stop monitoring" if is_monitoring else "Start monitoring"
+            text=get_text("stop_button", "停止監測") if is_monitoring else get_text("start_button", "開始監測")
         )
 
     def update_test_button_text(self, is_testing):
@@ -99,5 +101,24 @@ class ControlPanel(ttk.Frame):
             is_testing: 是否正在測試
         """
         self.test_button.configure(
-            text="Stop the test" if is_testing else "Test Lenses"
+            text=get_text("stop_test", "停止測試") if is_testing else get_text("test_button", "測試鏡頭")
         )
+
+    def update_language(self):
+        """更新組件語言"""
+        # 更新標籤文字
+        for widget in self.winfo_children():
+            if isinstance(widget, ttk.Label):
+                if "選擇視訊來源" in widget.cget('text') or "Select Video Source" in widget.cget('text'):
+                    widget.configure(text=get_text("select_source", "選擇視訊來源："))
+
+        # 更新按鈕文字
+        if "Stop" in self.test_button.cget('text') or "停止" in self.test_button.cget('text'):
+            self.test_button.configure(text=get_text("stop_test", "停止測試"))
+        else:
+            self.test_button.configure(text=get_text("test_button", "測試鏡頭"))
+
+        if "Stop" in self.start_button.cget('text') or "停止" in self.start_button.cget('text'):
+            self.start_button.configure(text=get_text("stop_button", "停止監測"))
+        else:
+            self.start_button.configure(text=get_text("start_button", "開始監測"))

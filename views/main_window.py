@@ -11,6 +11,7 @@ import datetime
 from .components.control_panel import ControlPanel
 from .components.video_panel import VideoPanel
 from .components.settings_panel import SettingsPanel
+from utils.language import get_text
 
 
 class MainWindow:
@@ -24,10 +25,11 @@ class MainWindow:
             root: Tkinter root 物件
         """
         self.root = root
-        self.root.title("物件監測系統")
+        self.root.title(get_text("app_title", "物件監測系統"))
         self.setup_window()
         self.create_components()
         self.setup_layout()
+        self.register_callbacks()
         self.start_time_update()
 
     def setup_window(self):
@@ -62,7 +64,7 @@ class MainWindow:
         log_frame = ttk.Frame(self.main_frame)
         log_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
 
-        ttk.Label(log_frame, text="System log：").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(log_frame, text=get_text("system_log", "系統日誌：")).grid(row=0, column=0, sticky=tk.W)
 
         self.log_text = scrolledtext.ScrolledText(
             log_frame,
@@ -77,7 +79,7 @@ class MainWindow:
         info_frame = ttk.Frame(self.main_frame)
         info_frame.grid(row=2, column=1, padx=30, pady=10, sticky=(tk.E, tk.S))
 
-        ttk.Label(info_frame, text="Current time：").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(info_frame, text=get_text("current_time", "目前時間：")).grid(row=0, column=0, sticky=tk.W)
         self.time_label = ttk.Label(info_frame, text="")
         self.time_label.grid(row=1, column=0, sticky=tk.W)
 
@@ -86,6 +88,45 @@ class MainWindow:
         self.control_panel.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.W)
         self.video_panel.grid(row=1, column=0, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.settings_panel.grid(row=1, column=1, padx=10, sticky=tk.N)
+
+    def register_callbacks(self):
+        """註冊回調函數"""
+        # 註冊語言變更回調
+        self.settings_panel.set_callback('language_changed', self.on_language_changed)
+
+    def on_language_changed(self, language_code):
+        """
+        語言變更處理函數
+
+        Args:
+            language_code: 語言代碼
+        """
+        # 更新視窗標題
+        self.root.title(get_text("app_title", "物件監測系統"))
+
+        # 更新各組件的語言
+        self.update_components_language()
+
+        # 記錄日誌
+        self.log_message(f"語言已變更為：{language_code}")
+
+    def update_components_language(self):
+        """更新所有組件的語言"""
+        # 更新控制面板
+        self.control_panel.update_language()
+
+        # 更新設定面板
+        self.settings_panel.update_language()
+
+        # 更新日誌區域標籤
+        for widget in self.main_frame.winfo_children():
+            if isinstance(widget, ttk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Label):
+                        if "系統日誌" in child.cget('text') or "System Log" in child.cget('text'):
+                            child.configure(text=get_text("system_log", "系統日誌："))
+                        elif "目前時間" in child.cget('text') or "Current Time" in child.cget('text'):
+                            child.configure(text=get_text("current_time", "目前時間："))
 
     def start_time_update(self):
         """開始更新時間顯示"""

@@ -1,0 +1,15 @@
+{
+    "app_title": "物件監測系統",
+    "current_count": "目前數量：",
+    "target_count": "預計數量：",
+    "buffer_point": "緩衝點：",
+    "language": "語言：",
+    "apply_settings": "套用設定",
+    "system_log": "系統日誌：",
+    "current_time": "目前時間：",
+    "select_source": "選擇視訊來源：",
+    "test_button": "測試鏡頭",
+    "stop_test": "停止測試",
+    "start_button": "開始監測",
+    "stop_button": "停止監測"
+}

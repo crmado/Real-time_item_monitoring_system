@@ -1,0 +1,15 @@
+{
+    "app_title": "Object Detection System",
+    "current_count": "Current Count:",
+    "target_count": "Target Count:",
+    "buffer_point": "Buffer Point:",
+    "language": "Language:",
+    "apply_settings": "Apply Settings",
+    "system_log": "System Log:",
+    "current_time": "Current Time:",
+    "select_source": "Select Video Source:",
+    "test_button": "Test Camera",
+    "stop_test": "Stop Test",
+    "start_button": "Start Monitoring",
+    "stop_button": "Stop Monitoring"
+}

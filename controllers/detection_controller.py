@@ -11,6 +11,7 @@ from tkinter import messagebox
 import cv2
 from queue import Queue, Empty
 import concurrent.futures
+from utils.language import get_text
 
 
 class DetectionController:
@@ -427,15 +428,15 @@ class DetectionController:
     def _show_buffer_alert(self):
         """顯示緩衝點警告"""
         messagebox.showwarning(
-            "Buffer point warning",
-            f"Buffer point reached ({self.buffer_point}), estimated number almost reached!"
+            get_text("buffer_warning", "緩衝點警告"),
+            get_text("buffer_warning_msg", "緩衝點已達 ({})，即將達到預計數量！").format(self.buffer_point)
         )
 
     def _show_target_reached(self):
         """顯示達到目標數量通知"""
         messagebox.showinfo(
-            "Completion Notification",
-            f"The target number ({self.target_count}) has been reached!"
+            get_text("target_reached", "完成通知"),
+            get_text("target_reached_msg", "已達到預計數量 ({})！").format(self.target_count)
         )
 
     def set_callback(self, event_name, callback):
@@ -468,11 +469,11 @@ class DetectionController:
             buffer_point: 緩衝點
         """
         if buffer_point >= target_count:
-            logging.error("The buffer point must be less than the expected number")
+            logging.error(get_text("error_buffer_target", "緩衝點必須小於預計數量"))
             return False
 
         if buffer_point < 0 or target_count < 0:
-            logging.error("Numbers cannot be negative")
+            logging.error(get_text("error_negative", "數值不能為負數"))
             return False
 
         self.target_count = target_count
