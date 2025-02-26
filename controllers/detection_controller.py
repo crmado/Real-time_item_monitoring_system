@@ -439,15 +439,20 @@ class DetectionController:
             get_text("target_reached_msg", "已達到預計數量 ({})！").format(self.target_count)
         )
 
-    def set_callback(self, event_name, callback):
+    def set_callback(self, button_name, callback):
         """
-        註冊回調函數
+        設置按鈕回調函數
 
         Args:
-            event_name: 事件名稱
+            button_name: 按鈕名稱
             callback: 回調函數
         """
-        self.callbacks[event_name] = callback
+        # 保存回調函數供下拉選單事件使用
+        self.callbacks[button_name] = callback
+
+        # 只為存在的按鈕設置命令
+        if button_name == 'start':
+            self.start_button.configure(command=callback)
 
     def _notify(self, event_name, *args):
         """

@@ -34,13 +34,16 @@ class ControlPanel(ttk.Frame):
         self.camera_combo = ttk.Combobox(self, width=30)
         self.camera_combo.grid(row=0, column=1, padx=5)
 
-        # 測試按鈕
-        self.test_button = ttk.Button(
-            self,
-            text=get_text("test_button", "測試鏡頭"),
-            style='Accent.TButton'
-        )
-        self.test_button.grid(row=0, column=2, padx=5)
+        # 綁定選擇事件，當選擇變更時自動測試相機
+        self.camera_combo.bind("<<ComboboxSelected>>", self._on_camera_selected)
+
+        # # 測試按鈕
+        # self.test_button = ttk.Button(
+        #     self,
+        #     text=get_text("test_button", "測試鏡頭"),
+        #     style='Accent.TButton'
+        # )
+        # self.test_button.grid(row=0, column=2, padx=5)
 
         # 開始/停止按鈕
         self.start_button = ttk.Button(
@@ -48,7 +51,7 @@ class ControlPanel(ttk.Frame):
             text=get_text("start_button", "開始監測"),
             style='Accent.TButton'
         )
-        self.start_button.grid(row=0, column=3, padx=5)
+        self.start_button.grid(row=0, column=2, padx=5)
 
     def set_camera_sources(self, sources):
         """
@@ -76,10 +79,12 @@ class ControlPanel(ttk.Frame):
             button_name: 按鈕名稱
             callback: 回調函數
         """
-        if button_name == 'test':
-            self.test_button.configure(command=callback)
-        elif button_name == 'start':
+        if button_name == 'start':
             self.start_button.configure(command=callback)
+        # if button_name == 'test':
+        #     self.test_button.configure(command=callback)
+        # elif button_name == 'start':
+        #     self.start_button.configure(command=callback)
         self.callbacks[button_name] = callback
 
     def update_start_button_text(self, is_monitoring):
@@ -100,9 +105,8 @@ class ControlPanel(ttk.Frame):
         Args:
             is_testing: 是否正在測試
         """
-        self.test_button.configure(
-            text=get_text("stop_test", "停止測試") if is_testing else get_text("test_button", "測試鏡頭")
-        )
+        # 測試按鈕已移除，此方法保留為空
+        pass
 
     def update_language(self):
         """更新組件語言"""
@@ -113,12 +117,18 @@ class ControlPanel(ttk.Frame):
                     widget.configure(text=get_text("select_source", "選擇視訊來源："))
 
         # 更新按鈕文字
-        if "Stop" in self.test_button.cget('text') or "停止" in self.test_button.cget('text'):
-            self.test_button.configure(text=get_text("stop_test", "停止測試"))
-        else:
-            self.test_button.configure(text=get_text("test_button", "測試鏡頭"))
+        # if "Stop" in self.test_button.cget('text') or "停止" in self.test_button.cget('text'):
+        #     self.test_button.configure(text=get_text("stop_test", "停止測試"))
+        # else:
+        #     self.test_button.configure(text=get_text("test_button", "測試鏡頭"))
 
         if "Stop" in self.start_button.cget('text') or "停止" in self.start_button.cget('text'):
             self.start_button.configure(text=get_text("stop_button", "停止監測"))
         else:
             self.start_button.configure(text=get_text("start_button", "開始監測"))
+
+    def _on_camera_selected(self, event):
+        """當選擇攝影機時自動執行測試"""
+        selected_source = self.get_selected_source()
+        if selected_source and 'test' in self.callbacks:
+            self.callbacks['test']()  # 呼叫測試相機回調

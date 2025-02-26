@@ -43,7 +43,8 @@ class SystemController:
         """綁定UI事件處理函數"""
         # 控制面板事件
         control_panel = self.components['control_panel']
-        control_panel.set_callback('test', self.handle_test_camera)
+        # 在初始化部分
+        control_panel.set_callback('test', self.handle_camera_selected)
         control_panel.set_callback('start', self.handle_toggle_monitoring)
 
         # 設定面板事件
@@ -122,6 +123,13 @@ class SystemController:
             if not selected_source:
                 self.main_window.log_message(get_text("error_source", "錯誤：請選擇視訊來源"))
                 return
+
+            # 關鍵修改：先停止任何進行中的相機測試
+            if self.detection_controller.is_testing:
+                self.detection_controller.stop_camera_test()
+                # 短暫暫停，確保測試完全停止
+                import time
+                time.sleep(0.5)
 
             if self.detection_controller.start_monitoring(selected_source):
                 self.main_window.log_message(get_text("start_monitoring", "開始監測 - {}").format(selected_source))
@@ -238,3 +246,14 @@ class SystemController:
                 get_text("update_failed", "更新失敗"),
                 get_text("update_failed_msg", "更新過程中發生錯誤：{}").format(str(e))
             )
+
+    def handle_camera_selected(self):
+        """處理相機選擇變更 (自動測試)"""
+        selected_source = self.components['control_panel'].get_selected_source()
+        if not selected_source:
+            self.main_window.log_message(get_text("error_source", "錯誤：請選擇視訊來源"))
+            return
+
+        # 自動開始測試選擇的相機
+        self.detection_controller.test_camera(selected_source)
+        self.main_window.log_message(f"已選擇並測試相機 - {selected_source}")
