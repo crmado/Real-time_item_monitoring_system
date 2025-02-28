@@ -49,12 +49,12 @@ class SystemController:
 
         # 初始化主題管理器
         self.theme_manager = ThemeManager(main_window.root)
-        self.theme_manager.apply_theme("light")  # 預設使用亮色主題
 
         # 應用語言設定
         language = self.config_manager.get('system.language', 'zh_TW')
         change_language(language)
         self.main_window.on_language_changed(language)
+
 
     def bind_events(self):
         """綁定UI事件處理函數"""

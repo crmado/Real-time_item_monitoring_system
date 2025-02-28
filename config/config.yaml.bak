@@ -33,7 +33,7 @@ ui:
   object_box_color: '#FF0000'
   roi_line_color: '#00FF00'
   show_performance: true
-  theme: dark
+  theme: light
   video_quality: high
   window_state:
     height: 600

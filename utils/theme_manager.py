@@ -10,7 +10,7 @@ from tkinter import ttk
 class ThemeManager:
     """主題管理類別"""
 
-    def __init__(self, root):
+    def __init__(self, root, default_theme="light", config_manager=None):
         """
         初始化主題管理器
 
@@ -18,8 +18,17 @@ class ThemeManager:
             root: tkinter 根視窗
         """
         self.root = root
-        self.current_theme = "light"
+        self.current_theme = default_theme
         self._define_themes()
+        self.config_manager = config_manager
+
+        # 先嘗試從配置載入主題，如果失敗使用預設主題
+        if config_manager:
+            loaded_theme = config_manager.get('appearance', 'theme', fallback=default_theme)
+            self.current_theme = loaded_theme
+
+        # 初始化時立即套用主題
+        self.apply_theme(self.current_theme)
 
     def _define_themes(self):
         """定義亮色和暗色主題樣式"""
@@ -63,7 +72,7 @@ class ThemeManager:
             return False
 
         # 如果主題沒有變更，不重新應用
-        if self.current_theme == theme_name:
+        if self.current_theme == theme_name and hasattr(self, '_theme_applied'):
             return True
 
         self.current_theme = theme_name
@@ -78,11 +87,29 @@ class ThemeManager:
         style.configure('TLabel', background=theme['bg'], foreground=theme['fg'])
         style.configure('TButton', background=theme['button_bg'], foreground=theme['button_fg'])
         style.configure('TEntry', background=theme['entry_bg'], foreground=theme['entry_fg'])
-        style.configure('TCombobox', background=theme['entry_bg'], foreground=theme['entry_fg'])
+
+        # 完善下拉選單樣式設定
+        style.configure('TCombobox',
+                        background=theme['entry_bg'],
+                        foreground=theme['entry_fg'],
+                        fieldbackground=theme['entry_bg'])
+
+        # 設定下拉選單各狀態的樣式映射
+        style.map('TCombobox',
+                  fieldbackground=[('readonly', theme['entry_bg'])],
+                  foreground=[('readonly', theme['entry_fg'])],
+                  selectbackground=[('readonly', theme['accent'])],
+                  selectforeground=[('readonly', theme['accent_fg'])])
+
+        # 配置下拉清單顏色 (popup menu)
+        self.root.option_add('*TCombobox*Listbox.background', theme['entry_bg'])
+        self.root.option_add('*TCombobox*Listbox.foreground', theme['entry_fg'])
+        self.root.option_add('*TCombobox*Listbox.selectBackground', theme['accent'])
+        self.root.option_add('*TCombobox*Listbox.selectForeground', theme['accent_fg'])
+
         style.configure('TCheckbutton', background=theme['bg'], foreground=theme['fg'])
         style.configure('TRadiobutton', background=theme['bg'], foreground=theme['fg'])
         style.configure('TSpinbox', background=theme['entry_bg'], foreground=theme['entry_fg'])
-
 
         # 設定強調按鈕樣式
         style.configure('Accent.TButton', background=theme['accent'], foreground=theme['accent_fg'])
@@ -90,4 +117,38 @@ class ThemeManager:
         # 設定 tk 元件樣式
         self.root.configure(background=theme['bg'])
 
+        # 標記主題已被應用
+        self._theme_applied = True
+
+        # 自動保存主題設定
+        if hasattr(self, 'config_manager') and self.config_manager:
+            self.save_theme_preference(self.config_manager)
+
         return True
+
+    def save_theme_preference(self, config_manager=None):
+        """
+        儲存當前主題偏好設定
+
+        Args:
+            config_manager: 配置管理器實例
+        """
+        if config_manager:
+            config_manager.set('appearance', 'theme', self.current_theme)
+            config_manager.save()
+
+    def load_theme_preference(self, config_manager=None):
+        """
+        載入並應用儲存的主題偏好設定
+
+        Args:
+            config_manager: 配置管理器實例
+
+        Returns:
+            str: 載入的主題名稱
+        """
+        if config_manager:
+            theme = config_manager.get('appearance', 'theme', fallback='light')
+            self.apply_theme(theme)
+            return theme
+        return self.current_theme
