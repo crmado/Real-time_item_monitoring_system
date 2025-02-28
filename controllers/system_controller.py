@@ -9,6 +9,7 @@ import subprocess
 from tkinter import messagebox
 
 from utils.language import get_text
+from utils.theme_manager import ThemeManager
 
 
 class SystemController:
@@ -39,6 +40,10 @@ class SystemController:
         # 註冊偵測控制器的回調函數
         self.register_detection_callbacks()
 
+        # 初始化主題管理器
+        self.theme_manager = ThemeManager(main_window.root)
+        self.theme_manager.apply_theme("light")  # 預設使用亮色主題
+
     def bind_events(self):
         """綁定UI事件處理函數"""
         # 控制面板事件
@@ -57,6 +62,10 @@ class SystemController:
         video_panel.set_callback('roi_drag_start', self.handle_roi_drag_start)
         video_panel.set_callback('roi_drag', self.handle_roi_drag)
         video_panel.set_callback('roi_drag_end', self.handle_roi_drag_end)
+
+        # 主題變更事件
+        settings_panel = self.components['settings_panel']
+        settings_panel.set_callback('theme_changed', self.handle_theme_change)
 
     def register_detection_callbacks(self):
         """註冊偵測控制器的回調函數"""
@@ -257,3 +266,16 @@ class SystemController:
         # 自動開始測試選擇的相機
         self.detection_controller.test_camera(selected_source)
         self.main_window.log_message(f"已選擇並測試相機 - {selected_source}")
+
+    def handle_theme_change(self, theme):
+        """
+        處理主題變更
+
+        Args:
+            theme: 主題名稱 ('light' 或 'dark')
+        """
+        success = self.theme_manager.apply_theme(theme)
+        if success:
+            self.main_window.log_message(get_text("theme_changed", "已切換至{}模式").format(
+                get_text("light_theme", "亮色") if theme == "light" else get_text("dark_theme", "暗色")
+            ))

@@ -43,6 +43,9 @@ class SettingsPanel(ttk.Frame):
         # 語言選擇區段
         self.create_language_section()
 
+        # 主題選擇區段
+        self.create_theme_section()
+
         # 設定按鈕
         self.create_settings_button()
 
@@ -141,7 +144,7 @@ class SettingsPanel(ttk.Frame):
             text=get_text("apply_settings", "套用設定"),
             style='Accent.TButton'
         )
-        self.apply_settings_button.grid(row=4, column=0, pady=10)
+        self.apply_settings_button.grid(row=5, column=0, pady=10)
 
     def update_count(self, count):
         """
@@ -162,13 +165,16 @@ class SettingsPanel(ttk.Frame):
         try:
             target_count = int(self.target_entry.get())
             buffer_point = int(self.buffer_entry.get())
+            theme = self.theme_var.get()
 
             return {
                 'target_count': target_count,
-                'buffer_point': buffer_point
+                'buffer_point': buffer_point,
+                'theme': theme
             }
         except ValueError:
-            logging.error(get_text("error_invalid_number", "設定值必須為整數"))
+            logging.error(get_text("error_invalid_number", "設定值必須為整數"),
+                          get_text("settings_error", "設定錯誤"))
             return None
 
     def set_callback(self, event_name, callback):
@@ -201,3 +207,36 @@ class SettingsPanel(ttk.Frame):
 
         # 更新按鈕文字
         self.apply_settings_button.configure(text=get_text("apply_settings", "套用設定"))
+
+    def create_theme_section(self):
+        """創建主題選擇區段"""
+        theme_frame = ttk.Frame(self)
+        theme_frame.grid(row=4, column=0, pady=5, sticky=tk.EW)
+
+        ttk.Label(theme_frame, text=get_text("theme", "主題：")).grid(row=0, column=0)
+
+        # 主題選擇按鈕
+        self.theme_var = tk.StringVar(value="light")
+        self.light_radio = ttk.Radiobutton(
+            theme_frame,
+            text=get_text("light_theme", "亮色模式"),
+            variable=self.theme_var,
+            value="light"
+        )
+        self.dark_radio = ttk.Radiobutton(
+            theme_frame,
+            text=get_text("dark_theme", "暗色模式"),
+            variable=self.theme_var,
+            value="dark"
+        )
+
+        self.light_radio.grid(row=0, column=1, padx=5)
+        self.dark_radio.grid(row=0, column=2, padx=5)
+
+        # 綁定切換事件
+        self.theme_var.trace_add("write", self._on_theme_change)
+
+    def _on_theme_change(self, *args):
+        """主題變更時呼叫"""
+        if 'theme_changed' in self.callbacks:
+            self.callbacks['theme_changed'](self.theme_var.get())

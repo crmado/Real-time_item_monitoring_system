@@ -118,7 +118,11 @@ class LanguageManager:
             "update_failed_msg": "更新過程中發生錯誤：{}",
             "update_tips": "更新提示",
             "update_tips_msg": "發現新版本，是否更新？",
-            "roi_drag_hint": "拖曳綠線調整ROI位置"
+            "roi_drag_hint": "拖曳綠線調整ROI位置",
+            "theme": "主題：",
+            "light_theme": "亮色模式",
+            "dark_theme": "暗色模式",
+            "theme_changed": "已切換至{}模式"
         }
 
         # 英文
@@ -153,7 +157,11 @@ class LanguageManager:
             "update_failed_msg": "An error occurred during the update process: {}",
             "update_tips": "Update Tips",
             "update_tips_msg": "A new version has been found. Do you want to update?",
-            "roi_drag_hint": "Drag the green line to adjust the ROI position"
+            "roi_drag_hint": "Drag the green line to adjust the ROI position",
+            "theme": "Theme:",
+            "light_theme": "Light Mode",
+            "dark_theme": "Dark Mode",
+            "theme_changed": "Switched to {} mode"
         }
 
         # 簡體中文
@@ -188,7 +196,11 @@ class LanguageManager:
             "update_failed_msg": "更新过程中发生错误：{}",
             "update_tips": "更新提示",
             "update_tips_msg": "发现新版本，是否更新？",
-            "roi_drag_hint": "拖拽绿线调整ROI位置"
+            "roi_drag_hint": "拖拽绿线调整ROI位置",
+            "theme": "主题：",
+            "light_theme": "亮色模式",
+            "dark_theme": "暗色模式",
+            "theme_changed": "已切换至{}模式"
         }
 
         # 寫入語言檔案
