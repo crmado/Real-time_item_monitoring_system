@@ -1,3 +1,4 @@
+# utils/config.py (修改)
 """
 配置工具
 管理系統配置參數 - 改進版本
@@ -14,7 +15,19 @@ from utils.exceptions import ConfigError, InvalidSettingError
 
 
 class Config:
-    """配置管理類別 - 改進版本"""
+    """
+    /// 配置管理類別
+    /// 功能結構：
+    /// 第一部分：基本屬性和初始化
+    /// 第二部分：配置加載與保存
+    /// 第三部分：配置讀取與設置
+    /// 第四部分：配置驗證與修復
+    /// 第五部分：工具方法
+    """
+
+    #==========================================================================
+    # 第一部分：基本屬性和初始化
+    #==========================================================================
 
     DEFAULT_CONFIG = {
         'system': {
@@ -29,7 +42,8 @@ class Config:
             'default_fps': 30,              # 預設相機 FPS
             'auto_reconnect': True,         # 是否自動重連相機
             'reconnect_timeout': 5,         # 重連超時秒數
-            'preferred_source': None        # 預設選用的相機
+            'preferred_source': None,       # 預設選用的相機
+            'last_source': None             # 最後使用的相機源
         },
         'detection': {
             'target_count': 1000,           # 預設預計數量
@@ -53,13 +67,19 @@ class Config:
             'show_performance': True,       # 是否顯示效能資訊
             'video_quality': 'high',        # 視訊顯示品質 (low, medium, high)
             'roi_line_color': '#00FF00',    # ROI 線顏色
-            'object_box_color': '#FF0000'   # 物件邊框顏色
+            'object_box_color': '#FF0000',  # 物件邊框顏色
+            'window_state': {               # 視窗狀態
+                'width': 800,               # 視窗寬度
+                'height': 600,              # 視窗高度
+                'position_x': None,         # 視窗 X 位置
+                'position_y': None          # 視窗 Y 位置
+            }
         }
     }
 
     def __init__(self, config_file="config.yaml"):
         """
-        初始化配置管理器 - 改進版本
+        初始化配置管理器
 
         Args:
             config_file: 配置檔案名稱
@@ -75,7 +95,14 @@ class Config:
 
         self.config_file = os.path.join(self.config_dir, config_file)
         self.config = self.load_config()
+        
+        # 檢查配置有效性
+        self._check_and_repair_config()
 
+    #==========================================================================
+    # 第二部分：配置加載與保存
+    #==========================================================================
+        
     def load_config(self):
         """
         載入配置 - 支援多種檔案格式
@@ -143,10 +170,15 @@ class Config:
                     yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
             logging.info(f"已儲存配置到 {self.config_file}")
+            return True
 
         except Exception as e:
             logging.error(f"儲存配置文件時發生錯誤：{str(e)}")
-            raise ConfigError(f"儲存配置失敗：{str(e)}")
+            return False
+            
+    #==========================================================================
+    # 第三部分：配置讀取與設置
+    #==========================================================================
 
     def get(self, key_path, default=None):
         """
@@ -200,9 +232,7 @@ class Config:
             target[keys[-1]] = value
 
             # 儲存配置
-            self.save_config()
-            logging.info(f"已設置配置 {key_path} = {value}")
-            return True
+            return self.save_config()
 
         except Exception as e:
             logging.error(f"設置配置 {key_path} 時發生錯誤：{str(e)}")
@@ -222,12 +252,22 @@ class Config:
         success = True
 
         for key_path, value in updates.items():
-            if not self.set(key_path, value):
-                success = False
+            # 對於點分隔的路徑，使用set方法，否則進行直接更新
+            if '.' in key_path:
+                if not self.set(key_path, value):
+                    success = False
+            else:
+                if key_path in self.config:
+                    if isinstance(value, dict) and isinstance(self.config[key_path], dict):
+                        self._deep_update(self.config[key_path], value)
+                    else:
+                        self.config[key_path] = value
+                else:
+                    self.config[key_path] = value
 
-        # 如果已經在 set 中儲存了，這裡不需要再儲存
-        if save and success and not any('.' in k for k in updates.keys()):
-            self.save_config()
+        # 如果需要儲存且尚未在set中儲存
+        if save and success:
+            return self.save_config()
 
         return success
 
@@ -266,21 +306,40 @@ class Config:
                 logging.warning(f"找不到區段 {section}")
                 return False
 
-            self.save_config()
-            return True
+            return self.save_config()
 
         except Exception as e:
             logging.error(f"重設配置時發生錯誤：{str(e)}")
             return False
-
-    def _deep_update(self, target_dict, source_dict):
-        """遞迴更新字典"""
-        for key, value in source_dict.items():
-            if isinstance(value, dict) and key in target_dict and isinstance(target_dict[key], dict):
-                self._deep_update(target_dict[key], value)
-            else:
-                target_dict[key] = value
-
+            
+    #==========================================================================
+    # 第四部分：配置驗證與修復
+    #==========================================================================
+            
+    def _check_and_repair_config(self):
+        """檢查配置完整性並自動修復"""
+        repaired = False
+        
+        # 檢查並修復缺失的頂層節點
+        for section in self.DEFAULT_CONFIG:
+            if section not in self.config:
+                self.config[section] = self.DEFAULT_CONFIG[section].copy()
+                logging.warning(f"修復缺失的配置區段：{section}")
+                repaired = True
+                
+        # 檢查並修復各區段中缺失的配置項
+        for section, section_config in self.DEFAULT_CONFIG.items():
+            if section in self.config:
+                for key, value in section_config.items():
+                    if key not in self.config[section]:
+                        self.config[section][key] = value
+                        logging.warning(f"修復缺失的配置項：{section}.{key}")
+                        repaired = True
+        
+        # 如果有修復，保存配置
+        if repaired:
+            self.save_config()
+            
     def _validate_setting(self, key_path, value):
         """
         驗證配置值的有效性
@@ -328,3 +387,70 @@ class Config:
         except InvalidSettingError as e:
             logging.error(str(e))
             return False
+            
+    #==========================================================================
+    # 第五部分：工具方法
+    #==========================================================================
+
+    def _deep_update(self, target_dict, source_dict):
+        """遞迴更新字典"""
+        for key, value in source_dict.items():
+            if isinstance(value, dict) and key in target_dict and isinstance(target_dict[key], dict):
+                self._deep_update(target_dict[key], value)
+            else:
+                target_dict[key] = value
+                
+    def save_window_state(self, width, height, x=None, y=None):
+        """
+        保存視窗狀態
+
+        Args:
+            width: 視窗寬度
+            height: 視窗高度
+            x: 視窗X座標
+            y: 視窗Y座標
+        """
+        self.config['ui']['window_state'] = {
+            'width': width,
+            'height': height,
+            'position_x': x,
+            'position_y': y
+        }
+        self.save_config()
+        
+    def save_last_camera_source(self, source):
+        """
+        保存最後使用的相機源
+
+        Args:
+            source: 相機源名稱
+        """
+        self.set('camera.last_source', source)
+
+    @classmethod
+    def initialize_system(cls):
+        """
+        初始化系統配置
+        :return:
+        """
+        config_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config"
+        )
+        config_file = os.path.join(config_dir, "config.yaml")
+
+        # 確保配置目錄存在
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+
+        # 創建預設配置文件
+
+        if not os.path.exists(config_file):
+            with open(config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(cls.DEFAULT_CONFIG, f, default_flow_style=False, allow_unicode=True)
+            logging.info(f"已建立預設配置文件：{config_file}")
+        else:
+
+            logging.info(f"配置文件已存在：{config_file}")
+
+        return config_file

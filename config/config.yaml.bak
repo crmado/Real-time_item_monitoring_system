@@ -35,6 +35,6 @@ ui:
   video_quality: high
   window_state:
     height: 600
-    position_x: 1179
-    position_y: 583
-    width: 959
+    position_x: 260
+    position_y: 260
+    width: 800

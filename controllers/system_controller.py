@@ -15,7 +15,7 @@ from utils.theme_manager import ThemeManager
 class SystemController:
     """系統控制器類別"""
 
-    def __init__(self, main_window, detection_controller):
+    def __init__(self, main_window, detection_controller, config_manager):
         """
         初始化系統控制器
 

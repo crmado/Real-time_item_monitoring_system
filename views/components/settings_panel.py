@@ -1,3 +1,4 @@
+# views/components/settings_panel.py (修改)
 """
 設定面板組件
 包含計數顯示和參數設定
@@ -7,28 +8,53 @@ import tkinter as tk
 from tkinter import ttk
 import logging
 
-from utils.language import get_text, change_language, get_available_languages, get_language_name
+from utils.language import get_text
 
 
 class SettingsPanel(ttk.Frame):
-    """設定面板類別"""
+    """
+    /// 設定面板類別
+    /// 功能結構：
+    /// 第一部分：基本屬性和初始化
+    /// 第二部分：UI元件創建
+    /// 第三部分：事件處理
+    /// 第四部分：數據管理
+    /// 第五部分：工具方法
+    """
 
-    def __init__(self, parent, **kwargs):
+    #==========================================================================
+    # 第一部分：基本屬性和初始化
+    #==========================================================================
+    def __init__(self, parent, config_manager, **kwargs):
         """
         初始化設定面板
 
         Args:
             parent: 父級視窗
+            config_manager: 配置管理器實例
             **kwargs: 其他參數
         """
         super().__init__(parent, **kwargs)
         self.parent = parent
+        self.config_manager = config_manager
         self.callbacks = {
-            'settings_applied': None,
-            'language_changed': None
+            'settings_applied': None
         }
+
+        # 載入配置
+        self.load_config()
+
+        # 創建UI元件
         self.create_widgets()
 
+    def load_config(self):
+        """載入配置"""
+        self.target_count = self.config_manager.get('detection.target_count', 1000)
+        self.buffer_point = self.config_manager.get('detection.buffer_point', 950)
+
+    #==========================================================================
+    # 第二部分：UI元件創建
+    #==========================================================================
     def create_widgets(self):
         """創建設定面板組件"""
         # 當前計數顯示
@@ -39,12 +65,6 @@ class SettingsPanel(ttk.Frame):
 
         # 緩衝點設定
         self.create_buffer_section()
-
-        # 語言選擇區段
-        self.create_language_section()
-
-        # 主題選擇區段
-        self.create_theme_section()
 
         # 設定按鈕
         self.create_settings_button()
@@ -76,7 +96,7 @@ class SettingsPanel(ttk.Frame):
 
         self.target_entry = ttk.Entry(target_frame, width=10)
         self.target_entry.grid(row=0, column=1, padx=5)
-        self.target_entry.insert(0, "1000")  # 預設值
+        self.target_entry.insert(0, str(self.target_count))
 
     def create_buffer_section(self):
         """創建緩衝點設定區段"""
@@ -87,65 +107,29 @@ class SettingsPanel(ttk.Frame):
 
         self.buffer_entry = ttk.Entry(buffer_frame, width=10)
         self.buffer_entry.grid(row=0, column=1, padx=5)
-        self.buffer_entry.insert(0, "950")  # 預設值
-
-    def create_language_section(self):
-        """創建語言選擇區段"""
-        language_frame = ttk.Frame(self)
-        language_frame.grid(row=3, column=0, pady=5, sticky=tk.EW)
-
-        ttk.Label(language_frame, text=get_text("language", "語言：")).grid(row=0, column=0)
-
-        # 語言選擇下拉選單
-        self.language_var = tk.StringVar()
-        self.language_combo = ttk.Combobox(
-            language_frame,
-            width=15,
-            textvariable=self.language_var,
-            state="readonly"
-        )
-
-        # 獲取可用語言
-        languages = get_available_languages()
-        language_display = [f"{get_language_name(lang)}" for lang in languages]
-
-        self.language_combo['values'] = language_display
-        self.language_combo.grid(row=0, column=1, padx=5)
-
-        # 找出預設語言(zh_TW)的索引並設定
-        default_index = languages.index('zh_TW')
-        self.language_combo.current(default_index)
-
-        # 綁定選擇事件
-        self.language_combo.bind("<<ComboboxSelected>>", self._on_language_change)
-
-    def _on_language_change(self, event):
-        """
-        語言變更處理函數
-
-        Args:
-            event: 事件物件
-        """
-        selected_index = self.language_combo.current()
-        if selected_index >= 0:
-            languages = get_available_languages()
-            selected_language = languages[selected_index]
-
-            # 變更語言
-            if change_language(selected_language):
-                # 通知UI需要更新
-                if self.callbacks['language_changed']:
-                    self.callbacks['language_changed'](selected_language)
+        self.buffer_entry.insert(0, str(self.buffer_point))
 
     def create_settings_button(self):
         """創建設定按鈕"""
         self.apply_settings_button = ttk.Button(
             self,
             text=get_text("apply_settings", "套用設定"),
-            style='Accent.TButton'
+            style='Accent.TButton',
+            command=self._on_apply_settings
         )
-        self.apply_settings_button.grid(row=5, column=0, pady=10)
+        self.apply_settings_button.grid(row=4, column=0, pady=10)
 
+    #==========================================================================
+    # 第三部分：事件處理
+    #==========================================================================
+    def _on_apply_settings(self):
+        """當點擊套用設定按鈕時處理"""
+        if self.callbacks['settings_applied']:
+            self.callbacks['settings_applied']()
+
+    #==========================================================================
+    # 第四部分：數據管理
+    #==========================================================================
     def update_count(self, count):
         """
         更新計數顯示
@@ -165,18 +149,27 @@ class SettingsPanel(ttk.Frame):
         try:
             target_count = int(self.target_entry.get())
             buffer_point = int(self.buffer_entry.get())
-            theme = self.theme_var.get()
+
+            # 驗證設定
+            if buffer_point >= target_count:
+                logging.error(get_text("error_buffer_target", "緩衝點必須小於預計數量"))
+                return None
+
+            if buffer_point < 0 or target_count < 0:
+                logging.error(get_text("error_negative", "設定值必須為正數"))
+                return None
 
             return {
-                'target_count': target_count,
-                'buffer_point': buffer_point,
-                'theme': theme
+                'detection.target_count': target_count,
+                'detection.buffer_point': buffer_point
             }
         except ValueError:
-            logging.error(get_text("error_invalid_number", "設定值必須為整數"),
-                          get_text("settings_error", "設定錯誤"))
+            logging.error(get_text("error_invalid_number", "設定值必須為整數"))
             return None
 
+    #==========================================================================
+    # 第五部分：工具方法
+    #==========================================================================
     def set_callback(self, event_name, callback):
         """
         設置回調函數
@@ -185,8 +178,6 @@ class SettingsPanel(ttk.Frame):
             event_name: 事件名稱
             callback: 回調函數
         """
-        if event_name == 'settings_applied':
-            self.apply_settings_button.configure(command=callback)
         self.callbacks[event_name] = callback
 
     def update_language(self):
@@ -202,41 +193,6 @@ class SettingsPanel(ttk.Frame):
                             child.configure(text=get_text("buffer_point", "緩衝點："))
                         elif child.cget('text') == "目前數量：" or child.cget('text') == "Current Count:":
                             child.configure(text=get_text("current_count", "目前數量："))
-                        elif child.cget('text') == "語言：" or child.cget('text') == "Language:":
-                            child.configure(text=get_text("language", "語言："))
 
         # 更新按鈕文字
         self.apply_settings_button.configure(text=get_text("apply_settings", "套用設定"))
-
-    def create_theme_section(self):
-        """創建主題選擇區段"""
-        theme_frame = ttk.Frame(self)
-        theme_frame.grid(row=4, column=0, pady=5, sticky=tk.EW)
-
-        ttk.Label(theme_frame, text=get_text("theme", "主題：")).grid(row=0, column=0)
-
-        # 主題選擇按鈕
-        self.theme_var = tk.StringVar(value="light")
-        self.light_radio = ttk.Radiobutton(
-            theme_frame,
-            text=get_text("light_theme", "亮色模式"),
-            variable=self.theme_var,
-            value="light"
-        )
-        self.dark_radio = ttk.Radiobutton(
-            theme_frame,
-            text=get_text("dark_theme", "暗色模式"),
-            variable=self.theme_var,
-            value="dark"
-        )
-
-        self.light_radio.grid(row=0, column=1, padx=5)
-        self.dark_radio.grid(row=0, column=2, padx=5)
-
-        # 綁定切換事件
-        self.theme_var.trace_add("write", self._on_theme_change)
-
-    def _on_theme_change(self, *args):
-        """主題變更時呼叫"""
-        if 'theme_changed' in self.callbacks:
-            self.callbacks['theme_changed'](self.theme_var.get())
