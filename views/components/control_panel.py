@@ -132,3 +132,16 @@ class ControlPanel(ttk.Frame):
         selected_source = self.get_selected_source()
         if selected_source and 'test' in self.callbacks:
             self.callbacks['test']()  # 呼叫測試相機回調
+
+    def select_source(self, source):
+        """
+        選擇指定的視訊來源
+
+        Args:
+            source: 視訊來源名稱
+        """
+        if source in self.camera_combo['values']:
+            self.camera_combo.set(source)
+            # 如果已經設定了選擇變更回調，呼叫它
+            if 'source_changed' in self.callbacks and self.callbacks['source_changed']:
+                self.callbacks['source_changed'](source)

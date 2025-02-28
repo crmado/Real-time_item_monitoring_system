@@ -38,15 +38,15 @@ class ThemeManager:
 
         # 定義暗色主題
         self.dark_theme = {
-            'bg': '#2d2d2d',
-            'fg': '#e0e0e0',
-            'button_bg': '#3d3d3d',
-            'button_fg': '#e0e0e0',
-            'accent': '#0078d7',
-            'accent_fg': '#ffffff',
-            'entry_bg': '#3d3d3d',
-            'entry_fg': '#e0e0e0',
-            'panel_bg': '#252525'
+            'bg': '#1e1e1e',  # 更深的背景色
+            'fg': '#ffffff',  # 更亮的文字顏色
+            'button_bg': '#333333',  # 按鈕背景
+            'button_fg': '#ffffff',  # 按鈕文字
+            'accent': '#0096ff',  # 更亮的藍色調
+            'accent_fg': '#ffffff',  # 強調按鈕文字
+            'entry_bg': '#2a2a2a',  # 輸入框背景
+            'entry_fg': '#000000',  # 輸入框文字
+            'panel_bg': '#252525'  # 面板背景
         }
 
     def apply_theme(self, theme_name):
@@ -55,9 +55,16 @@ class ThemeManager:
 
         Args:
             theme_name: 主題名稱 ('light' 或 'dark')
+
+        Returns:
+            bool: 是否成功套用
         """
         if theme_name not in ["light", "dark"]:
             return False
+
+        # 如果主題沒有變更，不重新應用
+        if self.current_theme == theme_name:
+            return True
 
         self.current_theme = theme_name
         theme = self.light_theme if theme_name == "light" else self.dark_theme
@@ -75,6 +82,7 @@ class ThemeManager:
         style.configure('TCheckbutton', background=theme['bg'], foreground=theme['fg'])
         style.configure('TRadiobutton', background=theme['bg'], foreground=theme['fg'])
         style.configure('TSpinbox', background=theme['entry_bg'], foreground=theme['entry_fg'])
+
 
         # 設定強調按鈕樣式
         style.configure('Accent.TButton', background=theme['accent'], foreground=theme['accent_fg'])

@@ -1,4 +1,3 @@
-# views/main_window.py (修改)
 """
 主視窗
 整合所有UI組件
@@ -84,8 +83,8 @@ class MainWindow:
         self.main_frame = ttk.Frame(self.root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # 頂部面板 (新增)
-        self.create_top_panel()
+        # # 頂部面板 (新增)
+        # self.create_top_panel()
 
         # 控制面板
         self.control_panel = ControlPanel(self.main_frame)
@@ -93,7 +92,7 @@ class MainWindow:
         # 視訊面板
         self.video_panel = VideoPanel(self.main_frame)
 
-        # 設定面板 (修改為簡化版，不再顯示語言和主題設定)
+        # 設定面板
         self.settings_panel = SettingsPanel(self.main_frame, self.config_manager)
 
         # 日誌區域
@@ -172,18 +171,46 @@ class MainWindow:
     def create_info_area(self):
         """創建資訊顯示區域"""
         info_frame = ttk.Frame(self.main_frame)
-        info_frame.grid(row=3, column=1, padx=30, pady=10, sticky=(tk.E, tk.S))
+        info_frame.grid(row=3, column=1, padx=10, pady=10, sticky=(tk.E, tk.S))
 
-        ttk.Label(info_frame, text=get_text("current_time", "目前時間：")).grid(row=0, column=0, sticky=tk.W)
-        self.time_label = ttk.Label(info_frame, text="")
+        # 左側顯示時間
+        time_frame = ttk.Frame(info_frame)
+        time_frame.pack(side=tk.LEFT, padx=(0, 20))
+
+        ttk.Label(time_frame, text=get_text("current_time", "目前時間：")).grid(row=0, column=0, sticky=tk.W)
+        self.time_label = ttk.Label(time_frame, text="")
         self.time_label.grid(row=1, column=0, sticky=tk.W)
+
+        # 右側顯示設定圖標
+        self.load_icons()
+        settings_frame = ttk.Frame(info_frame)
+        settings_frame.pack(side=tk.RIGHT)
+
+        self.settings_button = ttk.Button(
+            settings_frame,
+            image=self.settings_icon if self.settings_icon else None,
+            text="" if self.settings_icon else "⚙",  # 如果沒有圖標，使用文字符號
+            width=3 if not self.settings_icon else None,
+            command=self.open_settings_dialog
+        )
+        self.settings_button.pack(padx=5, pady=5)
 
     def setup_layout(self):
         """設置組件布局"""
-        # 調整布局，將控制面板改為在頂部面板下方
-        self.control_panel.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.W)
-        self.video_panel.grid(row=2, column=0, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.settings_panel.grid(row=2, column=1, padx=10, sticky=tk.N)
+        # 調整布局，確保所有元素可見且美觀
+        self.control_panel.grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky=(tk.W, tk.E))
+
+        # 視訊面板占據主要空間
+        self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊面板佔較多空間
+
+        # 設定面板在視訊面板右側
+        self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=(tk.N, tk.E, tk.W))
+        self.main_frame.grid_columnconfigure(1, weight=1)  # 設定面板佔較少空間
+
+        # 日誌區域跨兩列
+        # 已在 create_log_area 中設置
 
     #==========================================================================
     # 第三部分：事件處理
@@ -210,10 +237,17 @@ class MainWindow:
 
         # 更新主題
         theme = self.config_manager.get('ui.theme', 'light')
-        # 假設有一個主題管理器可以應用主題
 
-        # 更新其他設定
-        # ...
+        if hasattr(self, 'system_controller') and self.system_controller is not None:
+            self.system_controller.handle_theme_change(theme)
+
+            # 更新其他設定
+        self.log_message(get_text("settings_updated", "設定已更新"))
+
+    def set_system_controller(self, controller):
+        """設定系統控制器引用"""
+        self.system_controller = controller
+
 
     def on_settings_applied(self):
         """設定應用回調"""

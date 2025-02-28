@@ -1,4 +1,3 @@
-# controllers/system_controller.py (修改)
 """
 系統控制器
 負責協調整個系統的運作，包括 UI 和偵測系統的互動

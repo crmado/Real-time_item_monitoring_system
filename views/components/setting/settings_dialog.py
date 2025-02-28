@@ -1,4 +1,3 @@
-# views/components/settings_dialog.py (新增檔案)
 """
 設定對話框
 負責顯示和管理應用程式設定
@@ -31,7 +30,9 @@ class SettingsDialog(tk.Toplevel):
 
         # 設定對話框屬性
         self.title(get_text("settings_title", "系統設定"))
-        self.geometry("500x400")
+        self.geometry("600x500")
+        # 或者設定最小大小以確保按鈕不會被截斷
+        self.minsize(500, 350)
         self.resizable(False, False)
         self.transient(parent)  # 設為父視窗的附屬視窗
         self.grab_set()  # 模態對話框

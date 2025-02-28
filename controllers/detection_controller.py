@@ -179,11 +179,27 @@ class DetectionController:
             return False
 
     def stop_monitoring(self):
-        """停止監測"""
+        """停止監測並恢復到測試狀態"""
         self.is_monitoring = False
+
+        # 保存目前的視訊來源
+        current_source = None
+        if self.camera_manager and self.camera_manager.current_source:
+            current_source = self.camera_manager.current_source
+
+        # 釋放相機資源
         self.camera_manager.release_camera()
         self.object_tracks = {}  # 重置物件追蹤資料
+
+        # 通知監測已停止
         self._notify('monitoring_stopped')
+
+        # 如果有來源，自動重新開始測試
+        if current_source:
+            # 短暫延遲確保資源完全釋放
+            import time
+            time.sleep(0.2)
+            self.test_camera(current_source)
 
     def _process_video(self):
         """改進的視訊處理主函數"""
@@ -494,24 +510,24 @@ class DetectionController:
             source: 視訊來源名稱
         """
         if not source:
-            logging.error("Error: Please select a video source")
+            logging.error("錯誤：請選擇視訊來源")
             return False
 
         # 如果已經在測試中，則停止測試
         if self.is_testing:
             self.stop_camera_test()
-            return True
+            # 短暫延遲確保資源完全釋放
+            import time
+            time.sleep(0.2)
 
         try:
-            # self._notify('test_started')  # 通知開始測試
-
             if source == "libcamera":
                 return self._test_libcamera()
             else:
                 return self._test_usb_camera(source)
 
         except Exception as e:
-            logging.error(f"Camera test error:{str(e)}")
+            logging.error(f"相機測試錯誤：{str(e)}")
             self.stop_camera_test()
             return False
 

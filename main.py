@@ -1,4 +1,3 @@
-# main.py (修改)
 """
 物件監測系統主程式入口
 """
@@ -23,26 +22,36 @@ def main():
     /// 主程式入口
     /// 功能結構：
     /// 第一部分：系統初始化
-    /// 第二部分：模型和控制器初始化
-    /// 第三部分：UI初始化
-    /// 第四部分：系統啟動
+    /// 第二部分：UI初始化
+    /// 第三部分：模型和控制器初始化
     """
     try:
-        #======================================================================
+        # ======================================================================
         # 第一部分：系統初始化
-        #======================================================================
-        # 初始化系統配置
-        SystemConfig.initialize_system()
-
+        # ======================================================================
         # 初始化日誌
         logger = Logger()
 
-        # 載入配置
+        # 初始化系統配置 (只在這裡初始化一次)
         config = Config()
 
-        #======================================================================
-        # 第二部分：模型和控制器初始化
-        #======================================================================
+        # ======================================================================
+        # 第二部分：UI初始化
+        # ======================================================================
+        # 建立主視窗
+        root = tk.Tk()
+        main_window = MainWindow(root, config)
+
+        # 載入視窗狀態
+        window_state = config.get('ui.window_state', {})
+        if window_state.get('width') and window_state.get('height'):
+            root.geometry(f"{window_state.get('width')}x{window_state.get('height')}")
+            if window_state.get('position_x') and window_state.get('position_y'):
+                root.geometry(f"+{window_state.get('position_x')}+{window_state.get('position_y')}")
+
+        # ======================================================================
+        # 第三部分：模型和控制器初始化
+        # ======================================================================
         # 初始化模型
         camera_manager = CameraManager()
         image_processor = ImageProcessor()
@@ -59,28 +68,6 @@ def main():
             'detect_shadows': config.get('detection.detect_shadows', True)
         })
 
-        #======================================================================
-        # 第三部分：UI初始化
-        #======================================================================
-        # 建立主視窗
-        root = tk.Tk()
-        ui_manager = UIManager()
-        main_window = MainWindow(root, config)
-
-        # 載入視窗狀態
-        window_state = config.get('ui.window_state', {})
-        if window_state.get('width') and window_state.get('height'):
-            root.geometry(f"{window_state.get('width')}x{window_state.get('height')}")
-            if window_state.get('position_x') and window_state.get('position_y'):
-                root.geometry(f"+{window_state.get('position_x')}+{window_state.get('position_y')}")
-
-        # 應用主題
-        theme = config.get('ui.theme', 'system')
-        main_window.apply_theme(theme)
-
-        #======================================================================
-        # 第四部分：系統啟動
-        #======================================================================
         # 初始化控制器
         detection_controller = DetectionController(
             camera_manager,
@@ -95,15 +82,14 @@ def main():
         detection_controller.roi_height = config.get('detection.roi_height', 16)
         detection_controller.saved_roi_percentage = config.get('detection.roi_default_position', 0.2)
 
+        # 初始化系統控制器 (將在這裡統一管理主題和語言)
         system_controller = SystemController(
             main_window,
             detection_controller,
             config
         )
 
-        # 檢查是否自動檢查更新
-        if config.get('system.check_updates', True):
-            system_controller.check_for_updates()
+        main_window.set_system_controller(system_controller)
 
         # 視窗關閉時保存狀態
         def on_closing():
@@ -119,11 +105,15 @@ def main():
 
         root.protocol("WM_DELETE_WINDOW", on_closing)
 
+        # 檢查是否自動檢查更新
+        if config.get('system.check_updates', True):
+            system_controller.check_for_updates()
+
         # 啟動主循環
         root.mainloop()
 
     except Exception as e:
-        logging.error(f"An error occurred while executing the program：{str(e)}")
+        logging.error(f"執行程式時發生錯誤：{str(e)}")
         sys.exit(1)
 
 

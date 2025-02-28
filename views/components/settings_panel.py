@@ -1,4 +1,3 @@
-# views/components/settings_panel.py (修改)
 """
 設定面板組件
 包含計數顯示和參數設定
@@ -159,9 +158,11 @@ class SettingsPanel(ttk.Frame):
                 logging.error(get_text("error_negative", "設定值必須為正數"))
                 return None
 
+            # 原本返回的是帶前綴的鍵名，改為直接返回鍵名
             return {
-                'detection.target_count': target_count,
-                'detection.buffer_point': buffer_point
+                'target_count': target_count,
+                'buffer_point': buffer_point
+                # 使用一致的格式，不使用 'detection.target_count' 格式
             }
         except ValueError:
             logging.error(get_text("error_invalid_number", "設定值必須為整數"))

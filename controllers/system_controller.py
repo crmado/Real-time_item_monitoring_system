@@ -8,7 +8,7 @@ import os
 import subprocess
 from tkinter import messagebox
 
-from utils.language import get_text
+from utils.language import get_text, change_language
 from utils.theme_manager import ThemeManager
 
 
@@ -22,10 +22,12 @@ class SystemController:
         Args:
             main_window: 主視窗實例
             detection_controller: 偵測控制器實例
+            config_manager: 配置管理器實例
         """
         self.main_window = main_window
         self.detection_controller = detection_controller
-        self.version = "1.0.1"
+        self.config_manager = config_manager
+        self.version = "1.0.0"
 
         # 獲取UI組件
         self.components = main_window.get_components()
@@ -33,6 +35,11 @@ class SystemController:
         # 設置可用的視訊來源
         available_sources = self.detection_controller.camera_manager.get_available_sources()
         self.components['control_panel'].set_camera_sources(available_sources)
+
+        # 自動選擇上次使用的相機源
+        last_source = self.config_manager.get('camera.last_source', None)
+        if last_source and last_source in available_sources:
+            self.components['control_panel'].select_source(last_source)
 
         # 綁定事件處理函數
         self.bind_events()
@@ -43,6 +50,11 @@ class SystemController:
         # 初始化主題管理器
         self.theme_manager = ThemeManager(main_window.root)
         self.theme_manager.apply_theme("light")  # 預設使用亮色主題
+
+        # 應用語言設定
+        language = self.config_manager.get('system.language', 'zh_TW')
+        change_language(language)
+        self.main_window.on_language_changed(language)
 
     def bind_events(self):
         """綁定UI事件處理函數"""
@@ -152,18 +164,30 @@ class SystemController:
         """處理應用設定"""
         settings = self.components['settings_panel'].get_settings()
         if settings:
-            if self.detection_controller.update_settings(
-                settings['target_count'],
-                settings['buffer_point']
-            ):
-                self.main_window.log_message(
-                    get_text("settings_updated", "更新設定 - 預計數量：{0}，緩衝點：{1}").format(
-                        settings['target_count'],
-                        settings['buffer_point']
+            # 檢查鍵名格式
+            target_count = settings.get('detection.target_count',
+                                        settings.get('target_count'))  # 嘗試兩種可能的鍵名
+            buffer_point = settings.get('detection.buffer_point',
+                                        settings.get('buffer_point'))  # 嘗試兩種可能的鍵名
+
+            if target_count is not None and buffer_point is not None:
+                if self.detection_controller.update_settings(
+                        target_count,
+                        buffer_point
+                ):
+                    # 更新配置
+                    self.config_manager.update(settings)
+
+                    self.main_window.log_message(
+                        get_text("settings_updated", "更新設定 - 預計數量：{0}，緩衝點：{1}").format(
+                            target_count,
+                            buffer_point
+                        )
                     )
-                )
+                else:
+                    self.main_window.log_message(get_text("settings_update_failed", "設定更新失敗"))
             else:
-                self.main_window.log_message(get_text("settings_update_failed", "設定更新失敗"))
+                self.main_window.log_message("錯誤：無法獲取預計數量或緩衝點設定")
 
     def handle_language_change(self, language_code):
         """

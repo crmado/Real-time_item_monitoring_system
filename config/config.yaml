@@ -1,3 +1,4 @@
+buffer_point: 950
 camera:
   auto_reconnect: true
   default_fps: 30
@@ -26,15 +27,16 @@ system:
   check_updates: true
   language: zh_TW
   log_level: INFO
+target_count: 1000
 ui:
-  font_size: medium
+  font_size: large
   object_box_color: '#FF0000'
   roi_line_color: '#00FF00'
   show_performance: true
-  theme: system
+  theme: dark
   video_quality: high
   window_state:
     height: 600
-    position_x: 1179
-    position_y: 583
+    position_x: 1994
+    position_y: 490
     width: 959
