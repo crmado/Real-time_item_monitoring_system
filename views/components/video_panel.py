@@ -12,7 +12,9 @@ import logging
 
 class VideoPanel(ttk.Frame):
     """視訊顯示面板類別"""
-
+    # ==========================================================================
+    # 第一部分：初始化
+    # ==========================================================================
     def __init__(self, parent, **kwargs):
         """
         初始化視訊面板
@@ -32,16 +34,22 @@ class VideoPanel(ttk.Frame):
         self.create_widgets()
         self.bind_events()
 
+    # ==========================================================================
+    # 第二部分：容器初始化和視覺樣式
+    # ==========================================================================
     def create_widgets(self):
         """創建視訊面板組件"""
         # 建立固定大小的容器
         self.image_container = ttk.Frame(
             self,
             width=self.display_width,
-            height=self.display_height
+            height=self.display_height,
+            style='Video.TFrame'
         )
         self.image_container.grid(row=0, column=0, padx=2, pady=2)
         self.image_container.grid_propagate(False)
+
+        self.image_container.configure(borderwidth=2, relief='solid')
 
         # 影像標籤
         self.image_label = ttk.Label(

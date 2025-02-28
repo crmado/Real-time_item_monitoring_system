@@ -8,12 +8,17 @@ from tkinter import ttk
 
 class UIManager:
     """UI 管理類別"""
-
+    # ==========================================================================
+    # 第一部分：初始化
+    # ==========================================================================
     def __init__(self):
         """初始化 UI 管理器"""
         self.style = ttk.Style()
         self.setup_styles()
 
+    # ==========================================================================
+    # 第二部分：樣式設定
+    # ==========================================================================
     def setup_styles(self):
         """設置界面樣式"""
         # 影像顯示區域樣式
@@ -21,8 +26,13 @@ class UIManager:
             'Video.TFrame',
             background='#f0f0f0',
             borderwidth=2,
-            relief='solid'
+            relief='solid',
+            padding=1
         )
+
+        self.style.map('Video.TFrame',
+                       borderwidth=[('active', 2)],
+                       relief=[('active', 'solid')])
 
         self.style.configure(
             'Video.TLabel',
