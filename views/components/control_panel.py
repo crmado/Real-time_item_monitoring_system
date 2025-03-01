@@ -13,6 +13,9 @@ from utils.language import get_text
 class ControlPanel(ttk.Frame):
     """控制面板類別"""
 
+    # ==========================================================================
+    # 第一部分：基本屬性和初始化
+    # ==========================================================================
     def __init__(self, parent, **kwargs):
         """
         初始化控制面板
@@ -26,6 +29,9 @@ class ControlPanel(ttk.Frame):
         self.callbacks = {}
         self.create_widgets()
 
+    # ==========================================================================
+    # 第二部分：UI元件創建
+    # ==========================================================================
     def create_widgets(self):
         """創建控制面板組件"""
         # 視訊來源選擇
@@ -154,6 +160,10 @@ class ControlPanel(ttk.Frame):
             if 'source_changed' in self.callbacks and self.callbacks['source_changed']:
                 self.callbacks['source_changed'](source)
 
+    # ==========================================================================
+    # 第三部分：事件處理
+    # ==========================================================================
+
     def _on_mode_switch(self):
         """當點擊模式切換按鈕時處理"""
         if 'mode_switch' in self.callbacks and self.callbacks['mode_switch']:
@@ -167,6 +177,6 @@ class ControlPanel(ttk.Frame):
             is_photo_mode: 是否為拍照模式
         """
         self.mode_button.configure(
-            text=get_text("switch_to_monitor", "切換到監測模式") if is_photo_mode else get_text("switch_to_photo",
-                                                                                                "切換到拍照模式")
+            text=get_text("switch_to_monitor", "切換到監測模式") if is_photo_mode
+            else get_text("switch_to_photo", "切換到拍照模式")
         )

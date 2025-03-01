@@ -78,6 +78,7 @@ class SystemController:
         photo_panel = self.components.get('photo_panel')
         if photo_panel:
             photo_panel.set_callback('capture_photo', self.handle_capture_photo)
+            photo_panel.set_callback('analyze_photo', self.handle_analyze_photo)
 
         # 主題變更事件
         settings_panel = self.components['settings_panel']
@@ -85,6 +86,7 @@ class SystemController:
 
     def register_detection_callbacks(self):
         """註冊偵測控制器的回調函數"""
+        # 保留原有回調註冊
         self.detection_controller.set_callback(
             'monitoring_started',
             lambda: self.components['control_panel'].update_start_button_text(True)
@@ -115,6 +117,29 @@ class SystemController:
             lambda: self.main_window.control_panel.update_test_button_text(False)
         )
 
+        # 新增拍照模式回調
+        self.detection_controller.set_callback(
+            'camera_preview_updated',
+            lambda frame: self.components.get('photo_panel') and self.components['photo_panel'].update_camera_preview(
+                frame)
+        )
+
+        self.detection_controller.set_callback(
+            'photo_captured',
+            lambda frame: self.components.get('photo_panel') and self.components['photo_panel'].update_photo_preview(
+                frame)
+        )
+
+        self.detection_controller.set_callback(
+            'photo_analyzed',
+            self.handle_analysis_results
+        )
+
+        self.detection_controller.set_callback(
+            'analysis_error',
+            self.handle_analysis_error
+        )
+
         # 設定視訊面板的滑鼠事件
         self.main_window.video_panel.set_callback(
             'roi_drag_start',
@@ -129,17 +154,6 @@ class SystemController:
         self.main_window.video_panel.set_callback(
             'roi_drag_end',
             lambda event: self.detection_controller.stop_roi_drag()
-        )
-
-        self.detection_controller.set_callback(
-            'photo_captured',
-            lambda photo: self.components.get('photo_panel') and self.components['photo_panel'].update_preview(photo)
-        )
-
-        self.detection_controller.set_callback(
-            'photo_analyzed',
-            lambda result: self.components.get('photo_panel') and self.components[
-                'photo_panel'].update_analysis_results(result)
         )
 
     def handle_test_camera(self):
@@ -324,32 +338,48 @@ class SystemController:
     # ==========================================================================
 
     def handle_mode_switch(self):
-        """處理監測/拍照模式切換"""
-        # 如果正在監測，先停止
-        if self.detection_controller.is_monitoring:
-            self.detection_controller.stop_monitoring()
-
+        """處理模式切換"""
         # 切換主視窗顯示模式
         self.main_window.toggle_mode()
 
-        # 如果切換到拍照模式，啟動相機
-        if self.main_window.current_mode == "photo":
-            selected_source = self.components['control_panel'].get_selected_source()
-            if selected_source:
-                # 如果在測試中，停止測試
-                if self.detection_controller.is_testing:
-                    self.detection_controller.stop_camera_test()
-                    # 短暫暫停，確保測試完全停止
-                    import time
-                    time.sleep(0.5)
+        # 暫停任何進行中的測試或監測
+        if self.detection_controller.is_monitoring:
+            self.detection_controller.stop_monitoring()
 
-                # 啟動相機
-                self.detection_controller.camera_manager.open_camera(selected_source)
+        if self.detection_controller.is_testing:
+            self.detection_controller.stop_camera_test()
 
-                # 啟動預覽
-                self.start_photo_preview()
+        # 設置控制器狀態
+        current_mode = self.main_window.current_mode
+        self.detection_controller.is_photo_mode = current_mode == "photo"
 
-        self.detection_controller.is_photo_mode = (self.main_window.current_mode == "photo")
+        # 如果切換到拍照模式，啟動相機預覽
+        if current_mode == "photo":
+            self.start_photo_mode()
+        elif current_mode == "monitoring":
+            self.detection_controller.cleanup_photo_resources()
+
+    def start_photo_mode(self):
+        """啟動拍照模式"""
+        try:
+            # 顯示載入狀態
+            photo_panel = self.components.get('photo_panel')
+            if photo_panel:
+                photo_panel.set_status(get_text("initializing_camera", "正在初始化相機..."))
+
+            # 啟動相機預覽
+            success = self.detection_controller.start_camera_preview()
+
+            if success:
+                if photo_panel:
+                    photo_panel.set_status(get_text("camera_ready", "相機就緒，可以拍攝"))
+            else:
+                if photo_panel:
+                    photo_panel.set_status(get_text("camera_error", "相機初始化失敗"))
+                self.main_window.log_message(get_text("camera_error", "相機初始化失敗"))
+
+        except Exception as e:
+            self.main_window.log_message(f"啟動拍照模式失敗：{str(e)}")
 
     def start_photo_preview(self):
         """啟動拍照模式的相機預覽"""
@@ -367,8 +397,79 @@ class SystemController:
 
     def handle_capture_photo(self):
         """處理拍照請求"""
-        success = self.detection_controller.capture_photo()
-        if success:
-            self.main_window.log_message("拍攝成功並完成分析")
-        else:
-            self.main_window.log_message("拍攝或分析失敗")
+        try:
+            # 顯示狀態
+            photo_panel = self.components.get('photo_panel')
+            if photo_panel:
+                photo_panel.set_status(get_text("capturing", "正在拍攝..."))
+
+            # 拍攝照片
+            success = self.detection_controller.capture_photo()
+
+            if success:
+                if photo_panel:
+                    photo_panel.set_status(get_text("capture_success", "拍攝成功"))
+                self.main_window.log_message(get_text("capture_success", "拍攝成功"))
+            else:
+                if photo_panel:
+                    photo_panel.set_status(get_text("capture_failed", "拍攝失敗"))
+                self.main_window.log_message(get_text("capture_failed", "拍攝失敗"))
+
+        except Exception as e:
+            self.main_window.log_message(f"拍照時發生錯誤：{str(e)}")
+
+    def handle_analyze_photo(self):
+        """處理分析照片請求"""
+        try:
+            # 顯示載入狀態
+            photo_panel = self.components.get('photo_panel')
+            if photo_panel:
+                photo_panel.show_loading()
+
+            # 分析照片
+            success = self.detection_controller.analyze_photo()
+
+            if not success:
+                if photo_panel:
+                    photo_panel.hide_loading()
+                    photo_panel.set_status(get_text("analysis_failed", "分析照片失敗"))
+                self.main_window.log_message(get_text("analysis_failed", "分析照片失敗"))
+
+        except Exception as e:
+            if photo_panel:
+                photo_panel.hide_loading()
+            self.main_window.log_message(f"分析照片時發生錯誤：{str(e)}")
+
+    def handle_analysis_results(self, result):
+        """處理分析結果"""
+        try:
+            # 隱藏載入狀態
+            photo_panel = self.components.get('photo_panel')
+            if photo_panel:
+                photo_panel.hide_loading()
+
+            # 顯示分析結果
+            self.main_window.show_analysis_results(result)
+
+            # 記錄日誌
+            is_defective = result.get('is_defective', False)
+            status = get_text("defective", "有缺陷") if is_defective else get_text("normal", "正常")
+            self.main_window.log_message(f"分析完成，檢測狀態：{status}")
+
+        except Exception as e:
+            self.main_window.log_message(f"處理分析結果時發生錯誤：{str(e)}")
+
+    def handle_analysis_error(self, error_msg):
+        """處理分析錯誤"""
+        try:
+            # 隱藏載入狀態
+            photo_panel = self.components.get('photo_panel')
+            if photo_panel:
+                photo_panel.hide_loading()
+                photo_panel.set_status(f"{get_text('analysis_error', '分析錯誤')}: {error_msg}")
+
+            # 記錄日誌
+            self.main_window.log_message(f"分析錯誤：{error_msg}")
+
+        except Exception as e:
+            self.main_window.log_message(f"處理分析錯誤時發生錯誤：{str(e)}")

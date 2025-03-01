@@ -15,6 +15,8 @@ from .components.video_panel import VideoPanel
 from .components.settings_panel import SettingsPanel
 from .components.setting.settings_dialog import SettingsDialog
 from utils.language import get_text
+from views.components.photo_panel import PhotoPanel
+from views.components.analysis_panel import AnalysisPanel
 from utils.config import Config
 
 
@@ -46,6 +48,9 @@ class MainWindow:
 
         # 載入設定
         self.load_config()
+
+        # 當前模式（監測模式或拍照模式）
+        self.current_mode = "monitoring"    # 可選值: "monitoring" 或 "photo"
 
         # 設定視窗基本屬性
         self.setup_window()
@@ -90,8 +95,10 @@ class MainWindow:
         self.control_panel = ControlPanel(self.main_frame)
 
         # 拍照面板（拍照模式）
-        from views.components.photo_panel import PhotoPanel
         self.photo_panel = PhotoPanel(self.main_frame)
+
+        # 分析面板（拍照模式）
+        self.analysis_panel = AnalysisPanel(self.main_frame)
 
         # 預設顯示視訊面板，隱藏拍照面板
         self.current_mode = "monitoring"  # 'monitoring' or 'photo'
@@ -214,6 +221,10 @@ class MainWindow:
         self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.photo_panel.grid_remove()  # 隱藏拍照面板
 
+        # 分析結果面板（初始隱藏）
+        self.analysis_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.analysis_panel.grid_remove()  # 隱藏分析結果面板
+
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊/拍照面板佔較多空間
 
@@ -296,16 +307,46 @@ class MainWindow:
             # 切換到拍照模式
             self.video_panel.grid_remove()
             self.photo_panel.grid()
+            self.analysis_panel.grid_remove()
             self.current_mode = "photo"
             self.control_panel.update_mode_button_text(True)
-            self.log_message("已切換到拍照模式")
-        else:
+            self.log_message(get_text("switched_to_photo", "已切換到拍照模式"))
+        elif self.current_mode == "photo":
             # 切換到監測模式
             self.photo_panel.grid_remove()
+            self.analysis_panel.grid_remove()
             self.video_panel.grid()
             self.current_mode = "monitoring"
             self.control_panel.update_mode_button_text(False)
-            self.log_message("已切換到監測模式")
+            self.log_message(get_text("switched_to_monitoring", "已切換到監測模式"))
+        elif self.current_mode == "analysis":
+            # 從分析結果返回到拍照模式
+            self.analysis_panel.grid_remove()
+            self.photo_panel.grid()
+            self.current_mode = "photo"
+            self.log_message(get_text("back_to_photo", "已返回到拍照模式"))
+
+    def show_analysis_results(self, result):
+        """
+        顯示分析結果
+
+        Args:
+            result: 分析結果數據
+        """
+        # 隱藏拍照面板
+        self.photo_panel.grid_remove()
+
+        # 顯示分析結果面板
+        self.analysis_panel.grid()
+
+        # 更新分析結果
+        self.analysis_panel.update_analysis_results(result)
+
+        # 設置當前模式
+        self.current_mode = "analysis"
+
+        # 記錄日誌
+        self.log_message(get_text("analysis_completed", "分析完成"))
 
     #==========================================================================
     # 第四部分：設定與語言管理

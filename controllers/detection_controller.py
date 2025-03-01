@@ -12,6 +12,7 @@ import cv2
 from queue import Queue, Empty
 import concurrent.futures
 from utils.language import get_text
+from models.api_client import APIClient
 
 
 class DetectionController:
@@ -75,6 +76,9 @@ class DetectionController:
         self.captured_photo = None
         self.photo_analysis_result = None
 
+        # API客戶端
+        self.api_client = APIClient()
+
         # 註冊回調函數的字典
         self.callbacks = {
             'test_started': None,
@@ -84,7 +88,8 @@ class DetectionController:
             'monitoring_stopped': None,
             'count_updated': None,
             'photo_captured': None,  # 新增：拍照回調
-            'photo_analyzed': None  # 新增：分析回調
+            'photo_analyzed': None,  # 新增：分析回調
+            'camera_preview_updated': None  # 新增：相機預覽更新回調
         }
 
     def start_roi_drag(self, mouse_y):
@@ -758,21 +763,20 @@ class DetectionController:
     def capture_photo(self):
         """拍攝照片"""
         try:
-            if not self.camera_manager.camera or not self.camera_manager.camera.isOpened():
-                logging.warning("無法拍攝：相機未開啟")
-                return False
-
-            # 拍攝照片
-            ret, self.captured_photo = self.camera_manager.capture_photo()
-            if not ret or self.captured_photo is None:
+            # 獲取圖像
+            success, frame = self.camera_manager.capture_photo()
+            if not success or frame is None:
                 logging.error("拍攝失敗")
                 return False
 
-            # 分析照片
-            self.analyze_photo()
+            # 保存圖像
+            self.captured_photo = frame
 
-            # 通知拍照完成
-            self._notify('photo_captured', self.captured_photo)
+            # 保存為臨時文件
+            self.current_image_path = self.api_client.save_temp_image(frame)
+
+            # 通知UI更新預覽
+            self._notify('photo_captured', frame)
 
             return True
 
@@ -783,21 +787,50 @@ class DetectionController:
     def analyze_photo(self):
         """分析照片"""
         try:
-            if self.captured_photo is None:
-                logging.warning("無法分析：沒有拍攝的照片")
+            if self.captured_photo is None or self.current_image_path is None:
+                logging.error("沒有可分析的照片")
                 return False
 
-            # 分析照片
-            self.photo_analysis_result = self.image_processor.analyze_photo(self.captured_photo)
+            # 定義成功和失敗回調
+            def on_success(result):
+                # 通知UI更新分析結果
+                self._notify('photo_analyzed', result)
 
-            # 通知分析完成
-            self._notify('photo_analyzed', self.photo_analysis_result)
+            def on_error(error_msg):
+                logging.error(f"分析失敗：{error_msg}")
+                # 通知UI顯示錯誤
+                self._notify('analysis_error', error_msg)
+
+            # 調用API進行分析
+            self.api_client.inspect_image(
+                self.current_image_path,
+                success_callback=on_success,
+                error_callback=on_error
+            )
 
             return True
 
         except Exception as e:
             logging.error(f"分析照片時發生錯誤：{str(e)}")
             return False
+
+    def cleanup_photo_resources(self):
+        """清理拍照相關資源"""
+        try:
+            # 停止預覽
+            self.stop_camera_preview()
+
+            # 清理臨時文件
+            if self.current_image_path:
+                self.api_client.cleanup_temp_file(self.current_image_path)
+                self.current_image_path = None
+
+            # 清理相機資源
+            if self.camera_manager:
+                self.camera_manager.release_pylon_camera()
+
+        except Exception as e:
+            logging.error(f"清理拍照資源時發生錯誤：{str(e)}")
 
     def preview_camera_for_photo(self):
         """為拍照模式提供相機預覽"""
@@ -817,3 +850,52 @@ class DetectionController:
         except Exception as e:
             logging.error(f"提供拍照預覽時發生錯誤：{str(e)}")
             return False
+
+    # ==========================================================================
+    # 添加新部分：拍照和分析功能
+    # ==========================================================================
+
+    def start_camera_preview(self):
+        """啟動相機預覽"""
+        if self.preview_timer:
+            self.stop_camera_preview()
+
+        # 確認相機已初始化
+        if not hasattr(self.camera_manager, 'pylon_camera') or not self.camera_manager.pylon_camera:
+            if not self.camera_manager.initialize_pylon_camera():
+                logging.error("無法初始化相機，無法啟動預覽")
+                return False
+
+        # 創建定時器
+        self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
+        self.preview_timer.daemon = True
+        self.preview_timer.start()
+
+        return True
+
+    def _update_camera_preview(self):
+        """更新相機預覽"""
+        try:
+            if not self.is_photo_mode:
+                return
+
+            # 獲取圖像
+            success, frame = self.camera_manager.capture_photo()
+            if success and frame is not None:
+                # 通知UI更新預覽
+                self._notify('camera_preview_updated', frame)
+
+            # 重新啟動定時器（每100毫秒更新一次）
+            if self.preview_timer:
+                self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
+                self.preview_timer.daemon = True
+                self.preview_timer.start()
+
+        except Exception as e:
+            logging.error(f"更新相機預覽時發生錯誤：{str(e)}")
+
+    def stop_camera_preview(self):
+        """停止相機預覽"""
+        if self.preview_timer:
+            self.preview_timer.cancel()
+            self.preview_timer = None
