@@ -53,6 +53,14 @@ class ControlPanel(ttk.Frame):
         )
         self.start_button.grid(row=0, column=2, padx=5)
 
+        # 添加模式切換按鈕
+        self.mode_button = ttk.Button(
+            self,
+            text=get_text("mode_switch", "切換到拍照模式"),
+            command=self._on_mode_switch
+        )
+        self.mode_button.grid(row=0, column=3, padx=5)
+
     def set_camera_sources(self, sources):
         """
         設置可用的視訊來源
@@ -145,3 +153,20 @@ class ControlPanel(ttk.Frame):
             # 如果已經設定了選擇變更回調，呼叫它
             if 'source_changed' in self.callbacks and self.callbacks['source_changed']:
                 self.callbacks['source_changed'](source)
+
+    def _on_mode_switch(self):
+        """當點擊模式切換按鈕時處理"""
+        if 'mode_switch' in self.callbacks and self.callbacks['mode_switch']:
+            self.callbacks['mode_switch']()
+
+    def update_mode_button_text(self, is_photo_mode):
+        """
+        更新模式按鈕文字
+
+        Args:
+            is_photo_mode: 是否為拍照模式
+        """
+        self.mode_button.configure(
+            text=get_text("switch_to_monitor", "切換到監測模式") if is_photo_mode else get_text("switch_to_photo",
+                                                                                                "切換到拍照模式")
+        )

@@ -36,7 +36,14 @@ ui:
   theme: light
   video_quality: high
   window_state:
-    height: 600
-    position_x: 1994
-    position_y: 490
-    width: 959
+    height: 742
+    position_x: 1254
+    position_y: 249
+    width: 1113
+photo_analysis:
+  save_captured: true
+  save_directory: "captured_images"
+  min_circle_radius: 50
+  max_circle_radius: 300
+  quality_threshold: 9.0
+  auto_analyze: true

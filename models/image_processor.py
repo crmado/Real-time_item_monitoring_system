@@ -2,6 +2,7 @@
 影像處理模型
 處理所有與影像處理相關的功能
 """
+import logging
 
 import cv2
 import numpy as np
@@ -11,6 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 class ImageProcessor:
     """影像處理類別"""
 
+    # ==================================================================
+    # 第一部分：初始化
+    # ==================================================================
     def __init__(self):
         """初始化影像處理器"""
         # 優化：可配置的背景減除器參數
@@ -37,6 +41,9 @@ class ImageProcessor:
         self.min_object_area = 10
         self.max_object_area = 150
 
+    # ==================================================================
+    # 第二部分：影像處理
+    # ==================================================================
     def process_frame(self, frame):
         """
         處理單幀影像 - 優化版本
@@ -225,3 +232,115 @@ class ImageProcessor:
             import logging
             logging.error(f"設置影像處理參數時發生錯誤：{str(e)}")
             return False
+
+    def analyze_photo(self, frame):
+        """
+        分析拍攝的照片，檢測圓形物體
+
+        Args:
+            frame: 輸入的圖像幀
+
+        Returns:
+            dict: 分析結果字典
+        """
+        try:
+            if frame is None or frame.size == 0:
+                return {"success": False, "message": "無效的圖像"}
+
+            # 轉換為灰度圖
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            # 使用高斯模糊減少噪聲
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            # 預留：這裡可以實現更複雜的分析邏輯
+            # 例如使用霍夫變換檢測圓形
+            circles = cv2.HoughCircles(
+                blurred,
+                cv2.HOUGH_GRADIENT,
+                dp=1,
+                minDist=50,
+                param1=50,
+                param2=30,
+                minRadius=50,
+                maxRadius=300
+            )
+
+            # 生成分析結果
+            result = {
+                "success": True,
+                "original_image": frame,
+                "processed_image": blurred,
+                "analysis_result": {
+                    "has_circles": circles is not None,
+                    "circles_data": circles if circles is not None else [],
+                    "quality_score": 9.81  # 假設的值，實際應該由分析計算得出
+                },
+                "waveform_data": self._generate_waveform_data(gray),  # 生成示例波形數據
+            }
+
+            return result
+
+        except Exception as e:
+            logging.error(f"分析照片時發生錯誤：{str(e)}")
+            return {"success": False, "message": str(e)}
+
+    def _generate_waveform_data(self, gray_image):
+        """
+        從灰度圖生成波形數據（示例方法）
+
+        Args:
+            gray_image: 灰度圖像
+
+        Returns:
+            list: 波形數據點
+        """
+        # 從圖像中間行獲取灰度值作為波形
+        height, width = gray_image.shape
+        middle_row = gray_image[height // 2, :]
+
+        # 對數據進行下採樣以減少點數
+        waveform = [int(middle_row[i]) for i in range(0, width, 5)]
+
+        return waveform
+
+    def draw_analysis_results(self, frame, analysis_result):
+        """
+        在圖像上繪製分析結果
+
+        Args:
+            frame: 原始圖像
+            analysis_result: 分析結果
+
+        Returns:
+            frame: 繪製結果後的圖像
+        """
+        if not analysis_result or not analysis_result.get("success", False):
+            return frame
+
+        result_frame = frame.copy()
+
+        # 如果檢測到圓形，繪製它們
+        if analysis_result.get("analysis_result", {}).get("has_circles", False):
+            circles = analysis_result["analysis_result"]["circles_data"]
+            if circles is not None:
+                circles = np.uint16(np.around(circles))
+                for i in circles[0, :]:
+                    # 繪製外圓
+                    cv2.circle(result_frame, (i[0], i[1]), i[2], (0, 255, 0), 2)
+                    # 繪製圓心
+                    cv2.circle(result_frame, (i[0], i[1]), 2, (0, 0, 255), 3)
+
+        # 添加質量評分
+        quality_score = analysis_result.get("analysis_result", {}).get("quality_score", 0)
+        cv2.putText(
+            result_frame,
+            f"Quality: {quality_score:.2f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2
+        )
+
+        return result_frame

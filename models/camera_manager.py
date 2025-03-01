@@ -2,7 +2,7 @@
 攝影機管理模型
 負責管理所有視訊輸入源相關的功能
 """
-
+import datetime
 import os
 import cv2
 import signal
@@ -15,6 +15,9 @@ from threading import Event
 class CameraManager:
     """攝影機管理類別"""
 
+    # ==========================================================================
+    # 第一部分：基本屬性和初始化
+    # ==========================================================================
     def __init__(self):
         """初始化攝影機管理器"""
         self.camera = None
@@ -25,12 +28,12 @@ class CameraManager:
         self.is_recording = False
         self.TEST_MODE = False  # 測試模式，移到這裡
 
+    # ==========================================================================
+    # 第二部分：攝影機操作
+    # ==========================================================================
     def get_available_sources(self):
         """
         獲取可用的視訊來源
-
-        Args:
-            test_mode: 是否包含測試視頻選項
 
         Returns:
             sources: 可用視訊來源列表
@@ -193,3 +196,58 @@ class CameraManager:
             return False, None
 
         return self.camera.read()
+
+    def capture_photo(self):
+        """
+        拍攝一張照片
+
+        Returns:
+            tuple: (成功與否, 圖像數據)
+        """
+        try:
+            if not self.camera or not self.camera.isOpened():
+                logging.error("無法拍攝：相機未開啟")
+                return False, None
+
+            # 拍攝照片（實際上是獲取一幀）
+            ret, frame = self.camera.read()
+            if not ret or frame is None:
+                logging.error("拍攝失敗：無法讀取圖像")
+                return False, None
+
+            # 這裡可以添加圖像處理，例如調整大小、提高清晰度等
+
+            return True, frame
+
+        except Exception as e:
+            logging.error(f"拍攝照片時發生錯誤：{str(e)}")
+            return False, None
+
+    def save_photo(self, frame, directory="captured_images"):
+        """
+        保存照片到指定目錄
+
+        Args:
+            frame: 圖像幀
+            directory: 保存目錄
+
+        Returns:
+            str: 保存的文件路徑，失敗時返回None
+        """
+        try:
+            # 確保目錄存在
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+            # 生成文件名：時間戳
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{directory}/captured_{timestamp}.jpg"
+
+            # 保存圖像
+            cv2.imwrite(filename, frame)
+            logging.info(f"照片已保存：{filename}")
+            return filename
+
+        except Exception as e:
+            logging.error(f"保存照片時發生錯誤：{str(e)}")
+            return None

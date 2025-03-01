@@ -22,6 +22,13 @@ detection:
   target_count: 1000
   track_tolerance_x: 64
   track_tolerance_y: 48
+photo_analysis:
+  auto_analyze: true
+  max_circle_radius: 300
+  min_circle_radius: 50
+  quality_threshold: 9.0
+  save_captured: true
+  save_directory: captured_images
 system:
   backup_config: true
   check_updates: true
@@ -36,7 +43,7 @@ ui:
   theme: light
   video_quality: high
   window_state:
-    height: 600
-    position_x: 2238
-    position_y: 356
-    width: 959
+    height: 839
+    position_x: 592
+    position_y: 209
+    width: 1722

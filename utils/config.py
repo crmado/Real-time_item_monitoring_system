@@ -73,6 +73,14 @@ class Config:
                 'position_x': None,         # 視窗 X 位置
                 'position_y': None          # 視窗 Y 位置
             }
+        },
+        'photo_analysis': {
+            'save_captured': True,  # 是否保存拍攝的照片
+            'save_directory': 'captured_images',  # 保存目錄
+            'min_circle_radius': 50,  # 最小圓形半徑
+            'max_circle_radius': 300,  # 最大圓形半徑
+            'quality_threshold': 9.0,  # 質量閾值
+            'auto_analyze': True  # 拍照後自動分析
         }
     }
 

@@ -55,14 +55,13 @@ class SystemController:
         change_language(language)
         self.main_window.on_language_changed(language)
 
-
     def bind_events(self):
         """綁定UI事件處理函數"""
         # 控制面板事件
         control_panel = self.components['control_panel']
-        # 在初始化部分
         control_panel.set_callback('test', self.handle_camera_selected)
         control_panel.set_callback('start', self.handle_toggle_monitoring)
+        control_panel.set_callback('mode_switch', self.handle_mode_switch)  # 新增：模式切換
 
         # 設定面板事件
         settings_panel = self.components['settings_panel']
@@ -74,6 +73,11 @@ class SystemController:
         video_panel.set_callback('roi_drag_start', self.handle_roi_drag_start)
         video_panel.set_callback('roi_drag', self.handle_roi_drag)
         video_panel.set_callback('roi_drag_end', self.handle_roi_drag_end)
+
+        # 拍照面板事件
+        photo_panel = self.components.get('photo_panel')
+        if photo_panel:
+            photo_panel.set_callback('capture_photo', self.handle_capture_photo)
 
         # 主題變更事件
         settings_panel = self.components['settings_panel']
@@ -125,6 +129,17 @@ class SystemController:
         self.main_window.video_panel.set_callback(
             'roi_drag_end',
             lambda event: self.detection_controller.stop_roi_drag()
+        )
+
+        self.detection_controller.set_callback(
+            'photo_captured',
+            lambda photo: self.components.get('photo_panel') and self.components['photo_panel'].update_preview(photo)
+        )
+
+        self.detection_controller.set_callback(
+            'photo_analyzed',
+            lambda result: self.components.get('photo_panel') and self.components[
+                'photo_panel'].update_analysis_results(result)
         )
 
     def handle_test_camera(self):
@@ -303,3 +318,57 @@ class SystemController:
             self.main_window.log_message(get_text("theme_changed", "已切換至{}模式").format(
                 get_text("light_theme", "亮色") if theme == "light" else get_text("dark_theme", "暗色")
             ))
+
+    # ==========================================================================
+    # 添加新部分：拍照模式處理
+    # ==========================================================================
+
+    def handle_mode_switch(self):
+        """處理監測/拍照模式切換"""
+        # 如果正在監測，先停止
+        if self.detection_controller.is_monitoring:
+            self.detection_controller.stop_monitoring()
+
+        # 切換主視窗顯示模式
+        self.main_window.toggle_mode()
+
+        # 如果切換到拍照模式，啟動相機
+        if self.main_window.current_mode == "photo":
+            selected_source = self.components['control_panel'].get_selected_source()
+            if selected_source:
+                # 如果在測試中，停止測試
+                if self.detection_controller.is_testing:
+                    self.detection_controller.stop_camera_test()
+                    # 短暫暫停，確保測試完全停止
+                    import time
+                    time.sleep(0.5)
+
+                # 啟動相機
+                self.detection_controller.camera_manager.open_camera(selected_source)
+
+                # 啟動預覽
+                self.start_photo_preview()
+
+        self.detection_controller.is_photo_mode = (self.main_window.current_mode == "photo")
+
+    def start_photo_preview(self):
+        """啟動拍照模式的相機預覽"""
+        if not self.detection_controller.is_photo_mode:
+            return
+
+        def update_preview():
+            if not self.detection_controller.is_photo_mode:
+                return
+
+            self.detection_controller.preview_camera_for_photo()
+            self.main_window.root.after(30, update_preview)  # 約30fps
+
+        update_preview()
+
+    def handle_capture_photo(self):
+        """處理拍照請求"""
+        success = self.detection_controller.capture_photo()
+        if success:
+            self.main_window.log_message("拍攝成功並完成分析")
+        else:
+            self.main_window.log_message("拍攝或分析失敗")

@@ -27,9 +27,9 @@ Real-time_item_monitoring_system/
 │   ├── main_window.py      # 主視窗
 │   └── components/         # UI 元件
 │       ├── __init__.py
-│       ├── control_panel.py
-│       ├── video_panel.py
-│       ├── settings_panel.py
+│       ├── control_panel.py        # 控制面板
+│       ├── video_panel.py          # 影像顯示面板
+│       ├── settings_panel.py       # 設定面板
 │       └── setting/
 │           └── settings_dialog.py  # 設定對話框
 │

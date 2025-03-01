@@ -70,6 +70,11 @@ class DetectionController:
         self.test_stop_event = None
         self.test_libcamera_thread = None
 
+        # 拍照相關變數
+        self.is_photo_mode = False
+        self.captured_photo = None
+        self.photo_analysis_result = None
+
         # 註冊回調函數的字典
         self.callbacks = {
             'test_started': None,
@@ -77,7 +82,9 @@ class DetectionController:
             'frame_processed': None,
             'monitoring_started': None,
             'monitoring_stopped': None,
-            'count_updated': None
+            'count_updated': None,
+            'photo_captured': None,  # 新增：拍照回調
+            'photo_analyzed': None  # 新增：分析回調
         }
 
     def start_roi_drag(self, mouse_y):
@@ -743,3 +750,70 @@ class DetectionController:
                 # 重置計數器
                 self.frame_stats = {k: 0 for k in self.frame_stats}
                 self.last_time = current_time
+
+    # ==========================================================================
+    # 添加新部分：拍照和分析功能
+    # ==========================================================================
+
+    def capture_photo(self):
+        """拍攝照片"""
+        try:
+            if not self.camera_manager.camera or not self.camera_manager.camera.isOpened():
+                logging.warning("無法拍攝：相機未開啟")
+                return False
+
+            # 拍攝照片
+            ret, self.captured_photo = self.camera_manager.capture_photo()
+            if not ret or self.captured_photo is None:
+                logging.error("拍攝失敗")
+                return False
+
+            # 分析照片
+            self.analyze_photo()
+
+            # 通知拍照完成
+            self._notify('photo_captured', self.captured_photo)
+
+            return True
+
+        except Exception as e:
+            logging.error(f"拍攝照片時發生錯誤：{str(e)}")
+            return False
+
+    def analyze_photo(self):
+        """分析照片"""
+        try:
+            if self.captured_photo is None:
+                logging.warning("無法分析：沒有拍攝的照片")
+                return False
+
+            # 分析照片
+            self.photo_analysis_result = self.image_processor.analyze_photo(self.captured_photo)
+
+            # 通知分析完成
+            self._notify('photo_analyzed', self.photo_analysis_result)
+
+            return True
+
+        except Exception as e:
+            logging.error(f"分析照片時發生錯誤：{str(e)}")
+            return False
+
+    def preview_camera_for_photo(self):
+        """為拍照模式提供相機預覽"""
+        try:
+            if not self.camera_manager.camera or not self.camera_manager.camera.isOpened():
+                return False
+
+            ret, frame = self.camera_manager.read_frame()
+            if not ret or frame is None:
+                return False
+
+            # 通知預覽幀
+            self._notify('frame_processed', frame)
+
+            return True
+
+        except Exception as e:
+            logging.error(f"提供拍照預覽時發生錯誤：{str(e)}")
+            return False

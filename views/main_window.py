@@ -89,6 +89,13 @@ class MainWindow:
         # 控制面板
         self.control_panel = ControlPanel(self.main_frame)
 
+        # 拍照面板（拍照模式）
+        from views.components.photo_panel import PhotoPanel
+        self.photo_panel = PhotoPanel(self.main_frame)
+
+        # 預設顯示視訊面板，隱藏拍照面板
+        self.current_mode = "monitoring"  # 'monitoring' or 'photo'
+
         # 視訊面板
         self.video_panel = VideoPanel(self.main_frame)
 
@@ -200,10 +207,15 @@ class MainWindow:
         # 調整布局，確保所有元素可見且美觀
         self.control_panel.grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky=(tk.W, tk.E))
 
-        # 視訊面板占據主要空間
+        # 視訊面板占據主要空間（初始顯示）
         self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+        # 拍照面板（初始隱藏）
+        self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.photo_panel.grid_remove()  # 隱藏拍照面板
+
         self.main_frame.grid_rowconfigure(1, weight=1)
-        self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊面板佔較多空間
+        self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊/拍照面板佔較多空間
 
         # 設定面板在視訊面板右側
         self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=(tk.N, tk.E, tk.W))
@@ -277,6 +289,23 @@ class MainWindow:
 
         # 記錄日誌
         self.log_message(f"語言已變更為：{language_code}")
+
+    def toggle_mode(self):
+        """切換監測/拍照模式"""
+        if self.current_mode == "monitoring":
+            # 切換到拍照模式
+            self.video_panel.grid_remove()
+            self.photo_panel.grid()
+            self.current_mode = "photo"
+            self.control_panel.update_mode_button_text(True)
+            self.log_message("已切換到拍照模式")
+        else:
+            # 切換到監測模式
+            self.photo_panel.grid_remove()
+            self.video_panel.grid()
+            self.current_mode = "monitoring"
+            self.control_panel.update_mode_button_text(False)
+            self.log_message("已切換到監測模式")
 
     #==========================================================================
     # 第四部分：設定與語言管理
