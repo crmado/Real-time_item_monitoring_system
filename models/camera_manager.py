@@ -49,24 +49,36 @@ class CameraManager:
             result = subprocess.run(
                 ['libcamera-vid', '--help'],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                timeout=2  # 添加超時限制
             )
             if result.returncode == 0:
                 sources.append("libcamera")
-        except FileNotFoundError:
-            logging.warning("libcamera Not Installed")
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            logging.warning("libcamera Not Installed or not responding")
 
-        # 尋找可用的 USB 攝像頭
+        # 修改：更穩健的USB攝像頭檢測
         for i in range(5):
             try:
+                # 使用更安全的方式開啟攝像頭
                 cap = cv2.VideoCapture(i)
                 if cap.isOpened():
-                    ret, _ = cap.read()
+                    # 使用超時機制讀取幀
+                    start_time = time.time()
+                    ret = False
+                    while time.time() - start_time < 0.5:  # 最多等待0.5秒
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            break
+                        time.sleep(0.05)
+
                     if ret:
+                        # 只有成功讀取到有效幀時才添加來源
                         sources.append(f"USB Camera {i}")
+                        logging.info(f"發現可用攝像頭: USB Camera {i}")
                 cap.release()
             except Exception as e:
-                logging.warning(f"Check the camera {i} An error occurred：{str(e)}")
+                logging.warning(f"檢查攝像頭 {i} 時發生錯誤：{str(e)}")
                 continue
 
         return sources
@@ -82,27 +94,71 @@ class CameraManager:
             bool: 是否成功開啟
         """
         try:
+            # 如果已有開啟的相機，先釋放它
+            if self.camera is not None and self.camera.isOpened():
+                self.camera.release()
+                self.camera = None
+                time.sleep(0.2)  # 等待資源釋放
+
             if source == "Test video":
+                # 檢查測試影片路徑
                 video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
                 if not os.path.exists(video_path):
-                    logging.error(f"No test video found：{video_path}")
-                    return False
+                    # 嘗試使用備用的測試影片
+                    backup_paths = [
+                        "testDate/test_video.mp4",
+                        "video/sample.mp4"
+                    ]
+                    for path in backup_paths:
+                        if os.path.exists(path):
+                            video_path = path
+                            break
+                    else:
+                        logging.error(f"未找到測試影片：{video_path}")
+                        return False
                 self.camera = cv2.VideoCapture(video_path)
             elif source == "libcamera":
                 self.setup_libcamera()
             else:
+                # USB攝影機連接改進
                 camera_index = int(source.split()[-1])
-                self.camera = cv2.VideoCapture(camera_index)
 
-            if not self.camera.isOpened():  # 檢查攝影機是否成功開啟
-                logging.error("Unable to open video source")
+                # 設定攝影機參數
+                self.camera = cv2.VideoCapture(camera_index)
+                if self.camera.isOpened():
+                    # 設定攝影機屬性以提高穩定性
+                    self.camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+                    self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # 增加緩衝
+
+            # 驗證攝影機是否成功開啟並可以讀取影像
+            if not self.camera.isOpened():
+                logging.error("無法開啟視訊來源")
+                return False
+
+            # 測試讀取幾幀確認攝影機穩定性
+            success_reads = 0
+            for _ in range(5):
+                ret, frame = self.camera.read()
+                if ret and frame is not None:
+                    success_reads += 1
+                time.sleep(0.05)
+
+            if success_reads < 3:
+                logging.error(f"攝影機連接不穩定，只能成功讀取 {success_reads}/5 幀")
+                if self.camera:
+                    self.camera.release()
+                    self.camera = None
                 return False
 
             self.current_source = source
+            logging.info(f"成功開啟攝影機: {source}")
             return True
 
         except Exception as e:
-            logging.error(f"An error occurred while opening the video source：{str(e)}")
+            logging.error(f"開啟視訊來源時發生錯誤：{str(e)}")
+            if self.camera:
+                self.camera.release()
+                self.camera = None
             return False
 
     def setup_libcamera(self):
@@ -195,15 +251,34 @@ class CameraManager:
 
     def read_frame(self):
         """
-        讀取一幀影像
+        讀取一幀影像，包含錯誤處理
 
         Returns:
             tuple: (是否成功, 影像幀)
         """
+        global ret
         if not self.camera or not self.camera.isOpened():
             return False, None
 
-        return self.camera.read()
+        try:
+            # 添加嘗試次數機制
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                ret, frame = self.camera.read()
+                if ret and frame is not None:
+                    return ret, frame
+                elif attempt < max_attempts - 1:
+                    # 不是最後一次嘗試，等待一小段時間後重試
+                    time.sleep(0.05)
+
+            # 如果所有嘗試都失敗了
+            if ret is False:
+                logging.warning(f"讀取攝影機幀失敗，嘗試 {max_attempts} 次後放棄")
+            return False, None
+
+        except Exception as e:
+            logging.error(f"讀取攝影機幀時發生異常: {str(e)}")
+            return False, None
 
     def initialize_pylon_camera(self):
         """初始化Basler相機"""
@@ -401,3 +476,64 @@ class CameraManager:
                 self.pylon_camera = None
         except Exception as e:
             logging.error(f"釋放Basler相機資源時發生錯誤: {str(e)}")
+
+    # ==========================================================================
+    # 第六部分：錯誤處理與自動恢復機制
+    # ==========================================================================
+    def monitor_camera_health(self):
+        """監控攝影機健康狀態並在必要時重啟"""
+        if not hasattr(self, 'health_monitor_running') or not self.health_monitor_running:
+            self.health_monitor_running = True
+            self.health_check_thread = threading.Thread(
+                target=self._run_health_monitor,
+                daemon=True
+            )
+            self.health_check_thread.start()
+            logging.info("攝影機健康監控已啟動")
+
+    def _run_health_monitor(self):
+        """執行攝影機健康監控線程"""
+        consecutive_failures = 0
+        max_failures = 5
+        check_interval = 2.0  # 每2秒檢查一次
+
+        while self.health_monitor_running:
+            if self.camera and self.camera.isOpened():
+                try:
+                    # 嘗試讀取幀來檢查攝影機健康狀況
+                    ret, frame = self.camera.read()
+                    if ret and frame is not None:
+                        # 攝影機運作正常
+                        consecutive_failures = 0
+                    else:
+                        consecutive_failures += 1
+                        logging.warning(f"攝影機讀取失敗 ({consecutive_failures}/{max_failures})")
+                except Exception as e:
+                    consecutive_failures += 1
+                    logging.warning(f"攝影機檢查錯誤: {str(e)} ({consecutive_failures}/{max_failures})")
+
+                # 如果連續失敗次數超過閾值，嘗試重新連接
+                if consecutive_failures >= max_failures:
+                    logging.warning("攝影機連續讀取失敗，嘗試重新連接...")
+
+                    # 保存當前來源然後重新連接
+                    current_source = self.current_source
+                    self.release_camera()
+                    time.sleep(1.0)  # 等待資源完全釋放
+
+                    # 嘗試重新連接
+                    if current_source and self.open_camera(current_source):
+                        logging.info(f"攝影機已成功重新連接: {current_source}")
+                        consecutive_failures = 0
+                    else:
+                        logging.error("攝影機重新連接失敗")
+
+            # 等待一段時間再進行下一次檢查
+            time.sleep(check_interval)
+
+    def stop_health_monitor(self):
+        """停止攝影機健康監控"""
+        self.health_monitor_running = False
+        if hasattr(self, 'health_check_thread') and self.health_check_thread:
+            self.health_check_thread.join(timeout=1.0)
+            logging.info("攝影機健康監控已停止")

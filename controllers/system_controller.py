@@ -501,3 +501,49 @@ class SystemController:
 
         except Exception as e:
             self.main_window.log_message(f"處理分析錯誤時發生錯誤：{str(e)}")
+
+    # ==========================================================================
+    # 第七部分：錯誤處理與系統恢復
+    # ==========================================================================
+    def handle_camera_error(self, error_message):
+        """
+        處理攝影機相關錯誤
+
+        Args:
+            error_message: 錯誤訊息
+        """
+        # 分析錯誤訊息
+        if "camera index out of range" in error_message.lower():
+            self.main_window.log_message("錯誤：攝影機索引超出範圍，請確認攝影機是否正確連接")
+            messagebox.showerror(
+                "攝影機錯誤",
+                "無法訪問攝影機，請確認攝影機是否正確連接，然後重試。"
+            )
+        elif "msmf" in error_message.lower() and "can't grab frame" in error_message.lower():
+            self.main_window.log_message("錯誤：Microsoft Media Foundation 框架無法擷取影像")
+            # 嘗試自動恢復
+            self._handle_msmf_grabbing_error()
+        else:
+            self.main_window.log_message(f"攝影機錯誤：{error_message}")
+
+    def _handle_msmf_grabbing_error(self):
+        """處理 MSMF 擷取錯誤的特殊邏輯"""
+        # 停止當前活動
+        if self.detection_controller.is_monitoring:
+            self.detection_controller.stop_monitoring()
+
+        if self.detection_controller.is_testing:
+            self.detection_controller.stop_camera_test()
+
+        # 嘗試釋放所有攝影機資源
+        self.detection_controller.camera_manager.release_camera()
+
+        # 等待資源完全釋放
+        time.sleep(1.0)
+
+        # 重新掃描攝影機
+        available_sources = self.detection_controller.camera_manager.get_available_sources()
+        self.components['control_panel'].set_camera_sources(available_sources)
+
+        # 通知使用者
+        self.main_window.log_message("系統已嘗試恢復攝影機連接，請重新選擇攝影機來源")

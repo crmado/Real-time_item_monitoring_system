@@ -23,9 +23,14 @@ detection:
   track_tolerance_x: 64
   track_tolerance_y: 48
 photo_analysis:
-  api_url: "http://skaiqwenapi.skaispace.com:5002/api/inspect"
-  save_directory: "captured_images"
+  api_url: http://skaiqwenapi.skaispace.com:5002/api/inspect
+  auto_analyze: true
   auto_save: true
+  max_circle_radius: 300
+  min_circle_radius: 50
+  quality_threshold: 9.0
+  save_captured: true
+  save_directory: captured_images
   timeout: 300
 system:
   backup_config: true
@@ -44,4 +49,4 @@ ui:
     height: 839
     position_x: 592
     position_y: 209
-    width: 1722
+    width: 2261

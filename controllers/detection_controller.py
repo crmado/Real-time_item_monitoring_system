@@ -216,7 +216,7 @@ class DetectionController:
             self.test_camera(current_source)
 
     def _process_video(self):
-        """改進的視訊處理主函數"""
+        """改進的視訊處理主函數，增強錯誤處理"""
         # 啟動影像擷取線程
         capture_thread = threading.Thread(
             target=self._capture_frames,
@@ -232,17 +232,36 @@ class DetectionController:
         display_thread.start()
 
         # 主處理循環
+        error_count = 0
+        max_errors = 10
+
         while self.is_monitoring:
             try:
                 frame = self.frame_queue.get(timeout=0.1)
                 if frame is None:
-                    break
+                    error_count += 1
+                    if error_count > max_errors:
+                        logging.error(f"連續 {max_errors} 次未能獲取有效影像，停止監測")
+                        self.stop_monitoring()
+                        break
+                    continue
+
+                # 成功獲取影像，重置錯誤計數
+                error_count = 0
 
                 # 提交處理任務到線程池
                 self.thread_pool.submit(self._process_single_frame, frame)
 
             except Empty:
+                # 佇列超時是正常情況，繼續嘗試
                 continue
+            except Exception as e:
+                error_count += 1
+                logging.error(f"處理視訊時發生錯誤: {str(e)}")
+                if error_count > max_errors:
+                    logging.error(f"連續 {max_errors} 次處理錯誤，停止監測")
+                    self.stop_monitoring()
+                    break
 
     def _capture_frames(self):
         """專門的影像擷取線程"""
