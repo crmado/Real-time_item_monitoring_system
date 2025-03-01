@@ -303,28 +303,31 @@ class MainWindow:
 
     def toggle_mode(self):
         """切換監測/拍照模式"""
-        if self.current_mode == "monitoring":
-            # 切換到拍照模式
-            self.video_panel.grid_remove()
-            self.photo_panel.grid()
-            self.analysis_panel.grid_remove()
-            self.current_mode = "photo"
-            self.control_panel.update_mode_button_text(True)
-            self.log_message(get_text("switched_to_photo", "已切換到拍照模式"))
-        elif self.current_mode == "photo":
-            # 切換到監測模式
-            self.photo_panel.grid_remove()
-            self.analysis_panel.grid_remove()
-            self.video_panel.grid()
-            self.current_mode = "monitoring"
-            self.control_panel.update_mode_button_text(False)
-            self.log_message(get_text("switched_to_monitoring", "已切換到監測模式"))
-        elif self.current_mode == "analysis":
-            # 從分析結果返回到拍照模式
-            self.analysis_panel.grid_remove()
-            self.photo_panel.grid()
-            self.current_mode = "photo"
-            self.log_message(get_text("back_to_photo", "已返回到拍照模式"))
+        try:
+            if self.current_mode == "monitoring":
+                # 切換到拍照模式
+                self.video_panel.grid_remove()
+                self.photo_panel.grid()
+                self.analysis_panel.grid_remove()
+                self.current_mode = "photo"
+                self.control_panel.update_mode_button_text(True)
+                self.log_message(get_text("switched_to_photo", "已切換到拍照模式"))
+            elif self.current_mode == "photo":
+                # 切換到監測模式
+                self.photo_panel.grid_remove()
+                self.analysis_panel.grid_remove()
+                self.video_panel.grid()
+                self.current_mode = "monitoring"
+                self.control_panel.update_mode_button_text(False)
+                self.log_message(get_text("switched_to_monitoring", "已切換到監測模式"))
+            elif self.current_mode == "analysis":
+                # 從分析結果返回到拍照模式
+                self.analysis_panel.grid_remove()
+                self.photo_panel.grid()
+                self.current_mode = "photo"
+                self.log_message(get_text("back_to_photo", "已返回到拍照模式"))
+        except Exception as e:
+            self.log_message(f"切換模式時發生錯誤: {str(e)}")
 
     def show_analysis_results(self, result):
         """

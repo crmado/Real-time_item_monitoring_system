@@ -6,6 +6,7 @@
 import logging
 import os
 import subprocess
+import time
 from tkinter import messagebox
 
 from utils.language import get_text, change_language
@@ -367,19 +368,46 @@ class SystemController:
             if photo_panel:
                 photo_panel.set_status(get_text("initializing_camera", "正在初始化相機..."))
 
+            # 如果已經在測試或監測模式，先停止
+            if self.detection_controller.is_testing:
+                self.detection_controller.stop_camera_test()
+
+            if self.detection_controller.is_monitoring:
+                self.detection_controller.stop_monitoring()
+
+            # 確保有相機可用 - 優先使用已選擇的相機
+            selected_source = self.components['control_panel'].get_selected_source()
+            if selected_source:
+                # 嘗試打開選擇的相機
+                success = self.detection_controller.camera_manager.open_camera(selected_source)
+                if not success:
+                    if photo_panel:
+                        photo_panel.set_status(get_text("camera_open_failed", "無法開啟選擇的相機"))
+                    self.main_window.log_message(get_text("camera_open_failed", "無法開啟選擇的相機"))
+
             # 啟動相機預覽
+            time.sleep(0.5)  # 短暫延遲確保資源釋放
+
+            # 設置 is_photo_mode 狀態
+            self.detection_controller.is_photo_mode = True
+
             success = self.detection_controller.start_camera_preview()
 
             if success:
                 if photo_panel:
                     photo_panel.set_status(get_text("camera_ready", "相機就緒，可以拍攝"))
+                self.main_window.log_message(get_text("camera_ready", "相機就緒，可以拍攝"))
             else:
                 if photo_panel:
-                    photo_panel.set_status(get_text("camera_error", "相機初始化失敗"))
-                self.main_window.log_message(get_text("camera_error", "相機初始化失敗"))
+                    photo_panel.set_status(get_text("camera_error", "相機初始化失敗，請選擇相機後重試"))
+                self.main_window.log_message(get_text("camera_error", "相機初始化失敗，請選擇相機後重試"))
 
         except Exception as e:
             self.main_window.log_message(f"啟動拍照模式失敗：{str(e)}")
+
+            # 失敗時嘗試再次初始化相機
+            if hasattr(self.detection_controller, 'is_photo_mode'):
+                self.detection_controller.is_photo_mode = False
 
     def start_photo_preview(self):
         """啟動拍照模式的相機預覽"""

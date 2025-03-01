@@ -208,49 +208,90 @@ class CameraManager:
     def initialize_pylon_camera(self):
         """初始化Basler相機"""
         try:
-            # 確保已安裝pypylon
-            from pypylon import pylon
+            # 如果已經有初始化的相機，先使用它
+            if self.camera and self.camera.isOpened():
+                logging.info("使用已初始化的相機，跳過 Pylon 相機初始化")
+                return True
 
+            # 確保已安裝pypylon
+            try:
+                from pypylon import pylon
+            except ImportError:
+                logging.warning("未安裝pypylon庫，將使用普通相機")
+                # 如果沒有 pypylon，嘗試使用 OpenCV 相機
+                for i in range(5):
+                    try:
+                        cap = cv2.VideoCapture(i)
+                        if cap.isOpened():
+                            self.camera = cap
+                            return True
+                    except Exception:
+                        continue
+                return False
+
+            # 嘗試獲取 Basler 相機設備
             tlf = pylon.TlFactory.GetInstance()
             devices = tlf.EnumerateDevices()
 
             if not devices:
-                logging.warning("未檢測到Basler相機")
+                logging.warning("未檢測到Basler相機，嘗試使用普通相機")
+                # 嘗試使用 OpenCV 相機
+                for i in range(5):
+                    try:
+                        cap = cv2.VideoCapture(i)
+                        if cap.isOpened():
+                            self.camera = cap
+                            return True
+                    except Exception:
+                        continue
                 return False
 
-            self.pylon_camera = pylon.InstantCamera(tlf.CreateFirstDevice())
-            self.pylon_camera.Open()
+            # 初始化 Pylon 相機
+            try:
+                self.pylon_camera = pylon.InstantCamera(tlf.CreateFirstDevice())
+                self.pylon_camera.Open()
 
-            # 配置相機參數
-            device_info = self.pylon_camera.GetDeviceInfo()
-            logging.info(f"相機類型: {device_info.GetDeviceClass()}")
-            logging.info(f"型號: {device_info.GetModelName()}")
+                # 配置相機參數
+                device_info = self.pylon_camera.GetDeviceInfo()
+                logging.info(f"相機類型: {device_info.GetDeviceClass()}")
+                logging.info(f"型號: {device_info.GetModelName()}")
 
-            # 根據相機類型設置參數
-            if device_info.GetDeviceClass() == "BaslerGigE":
-                if hasattr(self.pylon_camera, 'GainRaw') and self.pylon_camera.GainRaw.IsWritable():
-                    self.pylon_camera.GainRaw.SetValue(0)
-                if hasattr(self.pylon_camera, 'ExposureTimeRaw') and self.pylon_camera.ExposureTimeRaw.IsWritable():
-                    self.pylon_camera.ExposureTimeRaw.SetValue(10000)
-            else:
-                if hasattr(self.pylon_camera, 'Gain') and self.pylon_camera.Gain.IsWritable():
-                    self.pylon_camera.Gain.SetValue(0)
-                if hasattr(self.pylon_camera, 'ExposureTime') and self.pylon_camera.ExposureTime.IsWritable():
-                    self.pylon_camera.ExposureTime.SetValue(10000)
+                # 根據相機類型設置參數
+                if device_info.GetDeviceClass() == "BaslerGigE":
+                    if hasattr(self.pylon_camera, 'GainRaw') and self.pylon_camera.GainRaw.IsWritable():
+                        self.pylon_camera.GainRaw.SetValue(0)
+                    if hasattr(self.pylon_camera, 'ExposureTimeRaw') and self.pylon_camera.ExposureTimeRaw.IsWritable():
+                        self.pylon_camera.ExposureTimeRaw.SetValue(10000)
+                else:
+                    if hasattr(self.pylon_camera, 'Gain') and self.pylon_camera.Gain.IsWritable():
+                        self.pylon_camera.Gain.SetValue(0)
+                    if hasattr(self.pylon_camera, 'ExposureTime') and self.pylon_camera.ExposureTime.IsWritable():
+                        self.pylon_camera.ExposureTime.SetValue(10000)
 
-            if hasattr(self.pylon_camera, 'PixelFormat') and self.pylon_camera.PixelFormat.IsWritable():
-                self.pylon_camera.PixelFormat.SetValue('Mono8')
+                if hasattr(self.pylon_camera, 'PixelFormat') and self.pylon_camera.PixelFormat.IsWritable():
+                    self.pylon_camera.PixelFormat.SetValue('Mono8')
 
-            # 開始抓取圖像
-            self.pylon_camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+                # 開始抓取圖像
+                self.pylon_camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
-            return True
+                return True
+            except Exception as e:
+                logging.error(f"初始化Basler相機失敗: {str(e)}")
+                self.pylon_camera = None
 
-        except ImportError:
-            logging.error("未安裝pypylon庫，無法使用Basler相機")
-            return False
+                # 失敗後嘗試使用普通相機
+                for i in range(5):
+                    try:
+                        cap = cv2.VideoCapture(i)
+                        if cap.isOpened():
+                            self.camera = cap
+                            return True
+                    except Exception:
+                        continue
+                return False
+
         except Exception as e:
-            logging.error(f"初始化Basler相機失敗: {str(e)}")
+            logging.error(f"初始化相機失敗: {str(e)}")
             return False
 
     def capture_pylon_image(self):
@@ -273,27 +314,42 @@ class CameraManager:
 
     def capture_photo(self):
         """
-        拍攝一張照片 - 支援多種相機類型
+        拍攝一張照片 - 支援多種相機類型，優先使用已開啟的相機
 
         Returns:
             tuple: (成功與否, 圖像數據)
         """
         try:
-            # 嘗試使用Basler相機
-            if hasattr(self, 'pylon_camera') and self.pylon_camera:
-                return self.capture_pylon_image()
-
-            # 嘗試使用OpenCV相機
+            # 優先使用已開啟的 OpenCV 相機
             if self.camera and self.camera.isOpened():
                 ret, frame = self.camera.read()
                 if ret and frame is not None:
                     return True, frame
+
+            # 嘗試使用 Basler 相機
+            if hasattr(self, 'pylon_camera') and self.pylon_camera:
+                try:
+                    return self.capture_pylon_image()
+                except Exception as e:
+                    logging.warning(f"使用 Pylon 相機拍攝失敗: {str(e)}")
 
             # 嘗試使用測試相機
             if self.test_camera_obj and self.test_camera_obj.isOpened():
                 ret, frame = self.test_camera_obj.read()
                 if ret and frame is not None:
                     return True, frame
+
+            # 如果所有方法都失敗，嘗試臨時打開一個相機
+            for i in range(5):
+                try:
+                    temp_camera = cv2.VideoCapture(i)
+                    if temp_camera.isOpened():
+                        ret, frame = temp_camera.read()
+                        temp_camera.release()
+                        if ret and frame is not None:
+                            return True, frame
+                except Exception:
+                    continue
 
             logging.error("無法拍攝：沒有可用的相機")
             return False, None

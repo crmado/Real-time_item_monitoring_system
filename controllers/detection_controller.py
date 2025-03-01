@@ -36,6 +36,12 @@ class DetectionController:
         self.current_count = 0
         self.total_counter = 0
 
+        # 拍照相關變數
+        self.is_photo_mode = False
+        self.captured_photo = None
+        self.current_image_path = None
+        self.preview_timer = None  # 添加這一行以初始化 preview_timer
+
         # 設定值
         self.target_count = 1000
         self.buffer_point = 950
@@ -71,11 +77,6 @@ class DetectionController:
         self.test_stop_event = None
         self.test_libcamera_thread = None
 
-        # 拍照相關變數
-        self.is_photo_mode = False
-        self.captured_photo = None
-        self.photo_analysis_result = None
-
         # API客戶端
         self.api_client = APIClient()
 
@@ -89,7 +90,8 @@ class DetectionController:
             'count_updated': None,
             'photo_captured': None,  # 新增：拍照回調
             'photo_analyzed': None,  # 新增：分析回調
-            'camera_preview_updated': None  # 新增：相機預覽更新回調
+            'camera_preview_updated': None,  # 新增：相機預覽更新回調
+            'analysis_error': None  # 新增：分析錯誤回調
         }
 
     def start_roi_drag(self, mouse_y):
@@ -857,21 +859,30 @@ class DetectionController:
 
     def start_camera_preview(self):
         """啟動相機預覽"""
-        if self.preview_timer:
-            self.stop_camera_preview()
+        try:
+            if self.preview_timer:
+                self.stop_camera_preview()
 
-        # 確認相機已初始化
-        if not hasattr(self.camera_manager, 'pylon_camera') or not self.camera_manager.pylon_camera:
-            if not self.camera_manager.initialize_pylon_camera():
+            # 確認相機已初始化，優先使用普通相機
+            if self.camera_manager.camera and self.camera_manager.camera.isOpened():
+                # 使用已有的相機
+                logging.info("使用已初始化的相機進行預覽")
+            # 如果沒有已初始化的相機，嘗試初始化 Pylon 相機
+            elif not self.camera_manager.initialize_pylon_camera():
                 logging.error("無法初始化相機，無法啟動預覽")
                 return False
 
-        # 創建定時器
-        self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
-        self.preview_timer.daemon = True
-        self.preview_timer.start()
+            # 創建定時器進行定期更新
+            self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
+            self.preview_timer.daemon = True
+            self.preview_timer.start()
 
-        return True
+            logging.info("相機預覽已啟動")
+            return True
+
+        except Exception as e:
+            logging.error(f"啟動相機預覽時發生錯誤：{str(e)}")
+            return False
 
     def _update_camera_preview(self):
         """更新相機預覽"""
@@ -879,14 +890,19 @@ class DetectionController:
             if not self.is_photo_mode:
                 return
 
-            # 獲取圖像
-            success, frame = self.camera_manager.capture_photo()
-            if success and frame is not None:
+            # 獲取圖像，優先使用已有的相機
+            if self.camera_manager.camera and self.camera_manager.camera.isOpened():
+                ret, frame = self.camera_manager.camera.read()
+            else:
+                # 嘗試使用 Pylon 相機
+                ret, frame = self.camera_manager.capture_photo()
+
+            if ret and frame is not None:
                 # 通知UI更新預覽
                 self._notify('camera_preview_updated', frame)
 
-            # 重新啟動定時器（每100毫秒更新一次）
-            if self.preview_timer:
+            # 如果預覽模式仍然活躍，重新啟動定時器
+            if self.is_photo_mode and hasattr(self, 'preview_timer'):
                 self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
                 self.preview_timer.daemon = True
                 self.preview_timer.start()
