@@ -61,6 +61,10 @@ class AnalysisPanel(ttk.Frame):
         super().__init__(parent, **kwargs)
 
         # 建立灰色框架樣式
+        self.analysis_panel = None
+        self.photo_panel = None
+        self.settings_panel = None
+        self.control_panel = None
         style = ttk.Style()
         style.configure('Gray.TFrame', background='#f0f0f0')
 
@@ -90,6 +94,10 @@ class AnalysisPanel(ttk.Frame):
         # 設定邊框和樣式
         self.configure_frame_borders(bg_color="#f0f0f0")
 
+        # 註冊語言更新處理函數（如果使用觀察者模式或事件系統）
+        if hasattr(parent, 'register_language_observer'):
+            parent.register_language_observer(self.update_language)
+
     # ==========================================================================
     # 第二部分：UI元件創建
     # ==========================================================================
@@ -103,16 +111,19 @@ class AnalysisPanel(ttk.Frame):
         grid_frame.pack(fill=tk.BOTH, expand=True)
 
         # 輔助函數：創建標題標籤
-        def create_title_label(text):
+        def create_title_label(text_key, default_text):
             label = ttk.Label(
                 grid_frame,
-                text=text,
+                text=get_text(text_key, default_text),
                 anchor=tk.CENTER,
                 font=("Arial", 10, "bold"),
                 borderwidth=1,  # 添加外框線寬
                 relief="solid",  # 添加外框樣式
                 background="#e6e6e6"  # 設定淺灰色背景
             )
+            # 保存原始鍵值以便後續更新語言
+            label.original_key = text_key
+            label.original_default = default_text
             return label
 
         # 輔助函數：創建圖像顯示區域
@@ -124,28 +135,28 @@ class AnalysisPanel(ttk.Frame):
             return frame, display
 
         # 輸入圖像
-        create_title_label(get_text("input_image", "輸入圖像")).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        create_title_label("input_image", "輸入圖像").grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         self.input_frame, self.input_display = create_image_display()
         self.input_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
         # 分析圖像
-        create_title_label(get_text("analysis_image", "分析圖像")).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        create_title_label("analysis_image", "分析圖像").grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         self.analysis_frame, self.analysis_display = create_image_display()
         self.analysis_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
         # 展開輸入圖像
-        create_title_label(get_text("unwrapped_input", "展開輸入圖像")).grid(row=2, column=0, padx=5, pady=5,
+        create_title_label("unwrapped_input", "展開輸入圖像").grid(row=2, column=0, padx=5, pady=5,
                                                                              sticky="ew")
         self.unwrapped_input_frame, self.unwrapped_input_display = create_image_display()
         self.unwrapped_input_frame.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
 
         # 重建圖像
-        create_title_label(get_text("unwrapped_pred", "重建圖像")).grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        create_title_label("unwrapped_pred", "重建圖像").grid(row=2, column=1, padx=5, pady=5, sticky="ew")
         self.unwrapped_pred_frame, self.unwrapped_pred_display = create_image_display()
         self.unwrapped_pred_frame.grid(row=3, column=1, padx=5, pady=5, sticky="nsew")
 
         # 誤差圖
-        create_title_label(get_text("error_map", "誤差圖")).grid(row=4, column=0, columnspan=2, padx=5, pady=5,
+        create_title_label("error_map", "誤差圖").grid(row=4, column=0, columnspan=2, padx=5, pady=5,
                                                                  sticky="ew")
         self.error_map_frame, self.error_map_display = create_image_display()
         self.error_map_frame.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
@@ -354,3 +365,50 @@ class AnalysisPanel(ttk.Frame):
                 for child in frame.winfo_children():
                     if isinstance(child, ttk.Label):
                         child.configure(background=bg_color)
+
+    def update_language(self):
+        """更新所有元件的語言設定"""
+        try:
+            # 更新標題標籤
+            for widget in self.winfo_children():
+                if isinstance(widget, ttk.Frame):  # main_frame
+                    for child in widget.winfo_children():
+                        if isinstance(child, ttk.Frame):  # grid_frame
+                            for i, title_label in enumerate(child.winfo_children()):
+                                if isinstance(title_label, ttk.Label) and hasattr(title_label, 'original_key'):
+                                    title_label.configure(
+                                        text=get_text(title_label.original_key, title_label.original_default))
+            # 更新檢測結果框架標題
+            self.result_frame.configure(text=get_text("inspection_result", "檢測結果"))
+
+            # 如果已有檢測結果，更新結果文字
+            if self.result_text.get(1.0, tk.END).strip():
+                # 獲取當前的檢測狀態（從現有文字）
+                current_text = self.result_text.get(1.0, tk.END)
+                is_defective = "有缺陷" in current_text or "defective" in current_text.lower()
+
+                # 重新格式化並更新結果文字
+                status_text = get_text("defective", "有缺陷") if is_defective else get_text("normal", "正常")
+
+                # 從現有文字中提取數值
+                # 這裡需要根據文字格式進行調整
+                try:
+                    score = float(current_text.split(":")[-2].split("\n")[0].strip())
+                    mean_error = float(current_text.split(":")[-1].strip())
+                except:
+                    score = 0.0
+                    mean_error = 0.0
+
+                result_text = f"""
+                    {get_text("inspection_status", "檢測狀態")}: {status_text}
+                    {get_text("inspection_score", "檢測分數")}: {score:.2E}
+                    {get_text("mean_error", "平均誤差")}: {mean_error:.2E}
+                """
+
+                self.result_text.configure(state=tk.NORMAL)
+                self.result_text.delete(1.0, tk.END)
+                self.result_text.insert(tk.END, result_text)
+                self.result_text.configure(state=tk.DISABLED)
+
+        except Exception as e:
+            logging.error(f"更新語言設定時發生錯誤：{str(e)}")

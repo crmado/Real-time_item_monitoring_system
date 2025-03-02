@@ -35,7 +35,7 @@ photo_analysis:
 system:
   backup_config: true
   check_updates: true
-  language: en_US
+  language: zh_TW
   log_level: INFO
 target_count: 1000
 ui:
