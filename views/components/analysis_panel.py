@@ -59,6 +59,11 @@ class AnalysisPanel(ttk.Frame):
             **kwargs: 其他參數
         """
         super().__init__(parent, **kwargs)
+
+        # 建立灰色框架樣式
+        style = ttk.Style()
+        style.configure('Gray.TFrame', background='#f0f0f0')
+
         self.input_display = None
         self.unwrapped_input_display = None
         self.error_map_display = None
@@ -82,6 +87,9 @@ class AnalysisPanel(ttk.Frame):
         # UI元件
         self.create_widgets()
 
+        # 設定邊框和樣式
+        self.configure_frame_borders(bg_color="#f0f0f0")
+
     # ==========================================================================
     # 第二部分：UI元件創建
     # ==========================================================================
@@ -100,7 +108,10 @@ class AnalysisPanel(ttk.Frame):
                 grid_frame,
                 text=text,
                 anchor=tk.CENTER,
-                font=("Arial", 10, "bold")
+                font=("Arial", 10, "bold"),
+                borderwidth=1,  # 添加外框線寬
+                relief="solid",  # 添加外框樣式
+                background="#e6e6e6"  # 設定淺灰色背景
             )
             return label
 
@@ -319,3 +330,27 @@ class AnalysisPanel(ttk.Frame):
         except Exception as e:
             logging.error(f"調整圖像大小時發生錯誤：{str(e)}")
             return None
+
+    # ==========================================================================
+    # 第四部分：邊框與樣式設定
+    # ==========================================================================
+    def configure_frame_borders(self, border_width=1, relief_style="solid", bg_color="#f0f0f0"):
+        """為所有顯示框架設定邊框樣式和背景顏色"""
+        frames = [
+            self.input_frame,
+            self.analysis_frame,
+            self.unwrapped_input_frame,
+            self.unwrapped_pred_frame,
+            self.error_map_frame
+        ]
+
+        for frame in frames:
+            if frame:
+                frame.configure(borderwidth=border_width, relief=relief_style)
+                # 設定框架背景顏色
+                frame.configure(style='Gray.TFrame')
+
+                # 同時設定框架內所有標籤的背景顏色
+                for child in frame.winfo_children():
+                    if isinstance(child, ttk.Label):
+                        child.configure(background=bg_color)

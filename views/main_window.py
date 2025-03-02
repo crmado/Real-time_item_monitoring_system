@@ -224,20 +224,28 @@ class MainWindow:
         # 視訊面板占據主要空間（初始顯示）
         self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
 
+        # 設定面板在視訊面板右側（初始顯示）
+        self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+
         # 拍照面板（初始隱藏）
         self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
         self.photo_panel.grid_remove()  # 隱藏拍照面板
 
-        # 分析結果面板（初始隱藏）
-        self.analysis_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-        self.analysis_panel.grid_remove()  # 隱藏分析結果面板
+        # 分析面板初始化定位（初始隱藏）
+        self.analysis_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+        self.analysis_panel.configure(borderwidth=1, relief="solid")
 
+        # 也可以為其他面板添加邊框線
+        self.video_panel.configure(borderwidth=1, relief="solid")
+        self.settings_panel.configure(borderwidth=1, relief="solid")
+        self.photo_panel.configure(borderwidth=1, relief="solid")
+
+        self.analysis_panel.grid_remove()  # 隱藏分析面板
+
+        # 設定行列的權重
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊/拍照面板佔較多空間
-
-        # 設定面板在視訊面板右側
-        self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-        self.main_frame.grid_columnconfigure(1, weight=1)  # 設定面板佔較少空間
+        self.main_frame.grid_columnconfigure(1, weight=1)  # 設定/分析面板佔較少空間
 
         # 日誌區域跨兩列
         # 已在 create_log_area 中設置
@@ -313,26 +321,59 @@ class MainWindow:
         try:
             if self.current_mode == "monitoring":
                 # 切換到拍照模式
-                self.video_panel.grid_remove()
-                self.photo_panel.grid()
-                self.analysis_panel.grid_remove()
+                # 1. 移除監測模式的元件
+                self.video_panel.grid_remove()  # 隱藏視訊面板
+                self.settings_panel.grid_remove()  # 隱藏設定面板
+
+                # 2. 顯示拍照模式的元件
+                self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+
+                # 3. 配置拍照模式的分析面板
+                self.analysis_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+
                 self.current_mode = "photo"
                 self.control_panel.update_mode_button_text(True)
                 self.log_message(get_text("switched_to_photo", "已切換到拍照模式"))
+
             elif self.current_mode == "photo":
                 # 切換到監測模式
-                self.photo_panel.grid_remove()
-                self.analysis_panel.grid_remove()
-                self.video_panel.grid()
+                # 1. 移除拍照模式的元件
+                self.photo_panel.grid_remove()  # 隱藏拍照面板
+                self.analysis_panel.grid_remove()  # 隱藏分析面板
+
+                # 2. 顯示監測模式的元件
+                self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+                self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+
                 self.current_mode = "monitoring"
                 self.control_panel.update_mode_button_text(False)
                 self.log_message(get_text("switched_to_monitoring", "已切換到監測模式"))
+
             elif self.current_mode == "analysis":
                 # 從分析結果返回到拍照模式
-                self.analysis_panel.grid_remove()
-                self.photo_panel.grid()
+                # 1. 移除分析結果模式的元件
+                self.analysis_panel.grid_remove()  # 隱藏分析結果面板
+
+                # 2. 顯示拍照模式的元件
+                self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+                self.analysis_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
+
                 self.current_mode = "photo"
                 self.log_message(get_text("back_to_photo", "已返回到拍照模式"))
+
+            # 調整主視窗布局權重
+            if self.current_mode == "photo":
+                # 拍照模式：左右區域平均分配空間
+                self.main_frame.grid_columnconfigure(0, weight=1)  # 拍照面板
+                self.main_frame.grid_columnconfigure(1, weight=1)  # 分析面板
+            else:
+                # 監測模式：視訊面板佔較大空間
+                self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊面板
+                self.main_frame.grid_columnconfigure(1, weight=1)  # 設定面板
+
+            # 強制更新界面以立即顯示變更
+            self.main_frame.update_idletasks()
+
         except Exception as e:
             self.log_message(f"切換模式時發生錯誤: {str(e)}")
 

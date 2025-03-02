@@ -35,7 +35,7 @@ photo_analysis:
 system:
   backup_config: true
   check_updates: true
-  language: zh_TW
+  language: en_US
   log_level: INFO
 target_count: 1000
 ui:
@@ -46,7 +46,7 @@ ui:
   theme: light
   video_quality: high
   window_state:
-    height: 939
-    position_x: 744
-    position_y: 111
-    width: 1635
+    height: 948
+    position_x: 998
+    position_y: 115
+    width: 1429
