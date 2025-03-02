@@ -238,6 +238,7 @@ class LanguageManager:
         Returns:
             str: 對應的文字
         """
+        # 確保當前語言在語言字典中存在
         if self.current_language in self.languages and key in self.languages[self.current_language]:
             return self.languages[self.current_language][key]
 
@@ -245,7 +246,11 @@ class LanguageManager:
         if 'zh_TW' in self.languages and key in self.languages['zh_TW']:
             return self.languages['zh_TW'][key]
 
-        # 如果還是找不到，返回默認值或鍵名
+        # 嘗試使用備用資源
+        if key in FALLBACK_RESOURCES:
+            return FALLBACK_RESOURCES[key]
+
+        # 最後才返回預設值或鍵名
         return default if default is not None else key
 
     def change_language(self, language_code):

@@ -336,24 +336,23 @@ class CameraManager:
         Returns:
             tuple: (是否成功, 影像幀)
         """
-        global ret
         if not self.camera or not self.camera.isOpened():
+            logging.warning("嘗試讀取未開啟的相機")
             return False, None
 
         try:
-            # 添加嘗試次數機制
+            # 添加嘗試次數機制，增加成功機率
             max_attempts = 3
             for attempt in range(max_attempts):
                 ret, frame = self.camera.read()
-                if ret and frame is not None:
+                if ret and frame is not None and frame.size > 0:  # 確保幀有效且非空
                     return ret, frame
                 elif attempt < max_attempts - 1:
                     # 不是最後一次嘗試，等待一小段時間後重試
-                    time.sleep(0.05)
+                    time.sleep(0.1)  # 增加等待時間，給相機更多緩衝
 
-            # 如果所有嘗試都失敗了
-            if ret is False:
-                logging.warning(f"讀取攝影機幀失敗，嘗試 {max_attempts} 次後放棄")
+            # 所有嘗試都失敗了
+            logging.warning(f"讀取攝影機幀失敗，嘗試 {max_attempts} 次後放棄")
             return False, None
 
         except Exception as e:

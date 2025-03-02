@@ -130,15 +130,19 @@ class ControlPanel(ttk.Frame):
                     widget.configure(text=get_text("select_source", "選擇視訊來源："))
 
         # 更新按鈕文字
-        # if "Stop" in self.test_button.cget('text') or "停止" in self.test_button.cget('text'):
-        #     self.test_button.configure(text=get_text("stop_test", "停止測試"))
-        # else:
-        #     self.test_button.configure(text=get_text("test_button", "測試鏡頭"))
+        if self.start_button:
+            if "Stop" in self.start_button.cget('text') or "停止" in self.start_button.cget('text'):
+                self.start_button.configure(text=get_text("stop_button", "停止監測"))
+            else:
+                self.start_button.configure(text=get_text("start_button", "開始監測"))
 
-        if "Stop" in self.start_button.cget('text') or "停止" in self.start_button.cget('text'):
-            self.start_button.configure(text=get_text("stop_button", "停止監測"))
-        else:
-            self.start_button.configure(text=get_text("start_button", "開始監測"))
+        # 更新模式切換按鈕
+        if self.mode_button:
+            current_mode = "photo" if "監測" in self.mode_button.cget('text') else "monitoring"
+            if current_mode == "photo":
+                self.mode_button.configure(text=get_text("switch_to_monitor", "切換到監測模式"))
+            else:
+                self.mode_button.configure(text=get_text("switch_to_photo", "切換到拍照模式"))
 
     def _on_camera_selected(self, event):
         """當選擇攝影機時自動執行測試或更新拍照預覽"""

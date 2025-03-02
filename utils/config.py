@@ -249,7 +249,7 @@ class Config:
         更新多個配置值
 
         Args:
-            updates: 格式為 {'section.key': value} 的更新字典
+            updates: 格式為 {'section.key': value} 或 {'section': {key: value}} 的更新字典
             save: 是否立即儲存更新
 
         Returns:
@@ -263,11 +263,9 @@ class Config:
                 if not self.set(key_path, value):
                     success = False
             else:
-                if key_path in self.config:
-                    if isinstance(value, dict) and isinstance(self.config[key_path], dict):
-                        self._deep_update(self.config[key_path], value)
-                    else:
-                        self.config[key_path] = value
+                # 處理字典形式的更新
+                if isinstance(value, dict) and key_path in self.config and isinstance(self.config[key_path], dict):
+                    self._deep_update(self.config[key_path], value)
                 else:
                     self.config[key_path] = value
 

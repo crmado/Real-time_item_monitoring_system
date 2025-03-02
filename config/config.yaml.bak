@@ -46,7 +46,7 @@ ui:
   theme: light
   video_quality: high
   window_state:
-    height: 948
-    position_x: 998
-    position_y: 115
-    width: 1429
+    height: 600
+    position_x: 286
+    position_y: 286
+    width: 888
