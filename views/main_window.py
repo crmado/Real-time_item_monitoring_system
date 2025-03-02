@@ -44,6 +44,12 @@ class MainWindow:
             root: Tkinter root 物件
             config_manager: 配置管理器實例
         """
+        self.settings_panel = None
+        self.video_panel = None
+        self.photo_panel = None
+        self.control_panel = None
+        self.main_frame = None
+        self.analysis_panel = None
         self.root = root
         self.config_manager = config_manager
         self.root.title(get_text("app_title", "物件監測系統"))

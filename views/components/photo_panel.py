@@ -39,27 +39,36 @@ class PhotoPanel(ttk.Frame):
         # UI元件
         self.create_widgets()
 
-    #==========================================================================
+    # ==========================================================================
     # 第二部分：UI元件創建
-    #==========================================================================
+    # ==========================================================================
     def create_widgets(self):
         """創建拍照面板組件"""
         main_frame = ttk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
+        # 使用網格布局代替包裝布局
+        main_frame.columnconfigure(0, weight=1)  # 設定列的權重
+        main_frame.rowconfigure(0, weight=3)  # 相機預覽區域佔比較大
+        main_frame.rowconfigure(1, weight=0)  # 按鈕區域不需要擴展
+        main_frame.rowconfigure(2, weight=2)  # 已拍攝照片區域佔比適中
+        main_frame.rowconfigure(3, weight=0)  # 進度條區域不需要擴展
+        main_frame.rowconfigure(4, weight=0)  # 狀態文字區域不需要擴展
+
         # 相機預覽區域
         self.camera_frame = ttk.LabelFrame(main_frame, text=get_text("camera_preview", "相機即時預覽"))
-        self.camera_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.camera_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
         self.camera_display = ttk.Label(self.camera_frame, anchor=tk.CENTER)
         self.camera_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # 設定背景樣式
         self.camera_display.configure(background='#f0f0f0')
+
+        # 添加高度限制，防止過度擴展
+        self.camera_frame.configure(height=self.display_height)
 
         # 拍照按鈕
         self.button_frame = ttk.Frame(main_frame)
-        self.button_frame.pack(fill=tk.X, padx=5, pady=10)
+        self.button_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 
         self.capture_btn = ttk.Button(
             self.button_frame,
@@ -80,17 +89,18 @@ class PhotoPanel(ttk.Frame):
 
         # 預覽區域
         self.preview_frame = ttk.LabelFrame(main_frame, text=get_text("captured_photo", "已拍攝照片"))
-        self.preview_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.preview_frame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
 
         self.preview_display = ttk.Label(self.preview_frame, anchor=tk.CENTER)
         self.preview_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # 設定背景樣式
         self.preview_display.configure(background='#f0f0f0')
+
+        # 同樣添加高度限制
+        self.preview_frame.configure(height=300)
 
         # 添加進度條
         self.progress_frame = ttk.Frame(main_frame)
-        self.progress_frame.pack(fill=tk.X, padx=5, pady=5)
+        self.progress_frame.grid(row=3, column=0, padx=5, pady=5, sticky="ew")
 
         self.progress_bar = ttk.Progressbar(self.progress_frame, mode='indeterminate')
         self.progress_bar.pack(fill=tk.X, expand=True)
@@ -98,7 +108,7 @@ class PhotoPanel(ttk.Frame):
 
         # 狀態文字
         self.status_label = ttk.Label(main_frame, text="")
-        self.status_label.pack(fill=tk.X, padx=5, pady=5)
+        self.status_label.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
 
     #==========================================================================
     # 第三部分：事件處理
@@ -113,9 +123,9 @@ class PhotoPanel(ttk.Frame):
         if 'analyze_photo' in self.callbacks and self.callbacks['analyze_photo']:
             self.callbacks['analyze_photo']()
 
-    #==========================================================================
+    # ==========================================================================
     # 第四部分：UI更新方法
-    #==========================================================================
+    # ==========================================================================
     def update_camera_preview(self, frame):
         """
         更新相機預覽圖像
@@ -136,19 +146,18 @@ class PhotoPanel(ttk.Frame):
             # 轉換為 Tkinter 可用的格式
             img = Image.fromarray(rgb_frame)
 
-            # 計算合適的顯示大小
-            width, height = self.camera_display.winfo_width(), self.camera_display.winfo_height()
-            if width <= 1 or height <= 1:  # 如果控件尚未完全初始化
-                width, height = 640, 480
+            # 使用固定的顯示大小，避免過度擴展
+            max_width = self.display_width
+            max_height = int(self.display_height * 0.7)  # 相機預覽使用70%的高度
 
             # 保持原始比例縮放
             aspect_ratio = img.width / img.height
-            if width / height > aspect_ratio:
-                new_width = int(height * aspect_ratio)
-                new_height = height
+            if max_width / max_height > aspect_ratio:
+                new_width = int(max_height * aspect_ratio)
+                new_height = max_height
             else:
-                new_width = width
-                new_height = int(width / aspect_ratio)
+                new_width = max_width
+                new_height = int(max_width / aspect_ratio)
 
             # 調整圖像大小
             img = img.resize((new_width, new_height), Resampling.LANCZOS)
@@ -158,6 +167,9 @@ class PhotoPanel(ttk.Frame):
 
             # 更新顯示
             self.camera_display.configure(image=self.camera_img)
+
+            # 強制更新布局
+            self.update_idletasks()
 
         except Exception as e:
             logging.error(f"更新相機預覽時發生錯誤：{str(e)}")

@@ -21,6 +21,9 @@ class ControlPanel(ttk.Frame):
             **kwargs: 其他參數
         """
         super().__init__(parent, **kwargs)
+        self.mode_button = None
+        self.start_button = None
+        self.camera_combo = None
         self.parent = parent
         self.callbacks = {}
         self.create_widgets()
