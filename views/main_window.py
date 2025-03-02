@@ -8,6 +8,9 @@ from tkinter import ttk, scrolledtext
 import logging
 import datetime
 import os
+
+import cv2
+import numpy as np
 from PIL import Image, ImageTk
 
 from .components.control_panel import ControlPanel
@@ -17,7 +20,6 @@ from .components.setting.settings_dialog import SettingsDialog
 from utils.language import get_text
 from views.components.photo_panel import PhotoPanel
 from views.components.analysis_panel import AnalysisPanel
-from utils.config import Config
 
 
 class MainWindow:
@@ -86,7 +88,7 @@ class MainWindow:
         """創建所有UI組件"""
         # 主框架
         self.main_frame = ttk.Frame(self.root, padding="10")
-        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_frame.grid(row=0, column=0, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
 
         # # 頂部面板 (新增)
         # self.create_top_panel()
@@ -118,7 +120,7 @@ class MainWindow:
     def create_top_panel(self):
         """創建頂部面板，包含設定按鈕"""
         top_frame = ttk.Frame(self.main_frame)
-        top_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
+        top_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=f"{tk.W}{tk.E}")
 
         # 應用標題
         app_title = ttk.Label(
@@ -170,8 +172,7 @@ class MainWindow:
     def create_log_area(self):
         """創建日誌顯示區域"""
         log_frame = ttk.Frame(self.main_frame)
-        log_frame.grid(row=3, column=0, columnspan=2, pady=5, sticky=(tk.W, tk.E))
-
+        log_frame.grid(row=3, column=0, columnspan=2, pady=5, sticky=f"{tk.W}{tk.E}")
         ttk.Label(log_frame, text=get_text("system_log", "系統日誌：")).grid(row=0, column=0, sticky=tk.W)
 
         self.log_text = scrolledtext.ScrolledText(
@@ -180,12 +181,12 @@ class MainWindow:
             height=8,
             wrap=tk.WORD
         )
-        self.log_text.grid(row=1, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.log_text.grid(row=1, column=0, pady=5, sticky=f"{tk.W}{tk.E}")
 
     def create_info_area(self):
         """創建資訊顯示區域"""
         info_frame = ttk.Frame(self.main_frame)
-        info_frame.grid(row=3, column=1, padx=10, pady=10, sticky=(tk.E, tk.S))
+        info_frame.grid(row=3, column=1, padx=10, pady=10, sticky=f"{tk.N}{tk.E}{tk.S}")
 
         # 左側顯示時間
         time_frame = ttk.Frame(info_frame)
@@ -212,24 +213,24 @@ class MainWindow:
     def setup_layout(self):
         """設置組件布局"""
         # 調整布局，確保所有元素可見且美觀
-        self.control_panel.grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky=(tk.W, tk.E))
+        self.control_panel.grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky=f"{tk.W}{tk.E}")
 
         # 視訊面板占據主要空間（初始顯示）
-        self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
 
         # 拍照面板（初始隱藏）
-        self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
         self.photo_panel.grid_remove()  # 隱藏拍照面板
 
         # 分析結果面板（初始隱藏）
-        self.analysis_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.analysis_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
         self.analysis_panel.grid_remove()  # 隱藏分析結果面板
 
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊/拍照面板佔較多空間
 
         # 設定面板在視訊面板右側
-        self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=(tk.N, tk.E, tk.W))
+        self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
         self.main_frame.grid_columnconfigure(1, weight=1)  # 設定面板佔較少空間
 
         # 日誌區域跨兩列
@@ -418,6 +419,24 @@ class MainWindow:
             'settings_panel': self.settings_panel
         }
 
+    def get_component(self, component_name):
+        """
+        獲取指定名稱的UI組件
+
+        Args:
+            component_name: 組件名稱
+
+        Returns:
+            組件實例，如果不存在則返回None
+        """
+        if component_name == 'photo_panel' and hasattr(self, 'photo_panel'):
+            return self.photo_panel
+
+        if component_name in self.get_components():
+            return self.get_components()[component_name]
+
+        return None
+
     def apply_theme(self, theme):
         """
         應用主題
@@ -427,3 +446,91 @@ class MainWindow:
         """
 
         pass
+
+    # ==========================================================================
+    # 第六部分：使用者介面增強
+    # ==========================================================================
+
+    def show_camera_error(self, message):
+        """顯示相機錯誤訊息"""
+        # 在相機預覽區域顯示錯誤訊息
+        if self.current_mode == "photo":
+            photo_panel = self.get_component('photo_panel')
+            if photo_panel:
+                # 設置狀態文字
+                photo_panel.set_status(message)
+
+                # 在預覽區域顯示錯誤圖像
+                error_image = self._create_error_image(message)
+                if error_image is not None:
+                    photo_panel.update_camera_preview(error_image)
+
+        # 記錄錯誤
+        self.log_message(message)
+
+    def _create_error_image(self, message):
+        """創建錯誤提示圖像"""
+        try:
+            # 創建一個黑色背景的圖像
+            img = np.zeros((480, 640, 3), dtype=np.uint8)
+
+            # 添加錯誤文字
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.7
+            thickness = 2
+            color = (255, 0, 0)  # 紅色
+
+            # 分割錯誤訊息以適應畫面
+            lines = []
+            words = message.split()
+            current_line = ""
+
+            for word in words:
+                if len(current_line + word) < 40:  # 一行約 40 個字符
+                    current_line += " " + word if current_line else word
+                else:
+                    lines.append(current_line)
+                    current_line = word
+
+            if current_line:
+                lines.append(current_line)
+
+            # 繪製文字
+            y_pos = 240 - (len(lines) * 30) // 2  # 文字置中
+            for line in lines:
+                text_size = cv2.getTextSize(line, font, font_scale, thickness)[0]
+                x_pos = (img.shape[1] - text_size[0]) // 2  # 文字置中
+
+                cv2.putText(img, line, (x_pos, y_pos), font, font_scale, color, thickness)
+                y_pos += 30
+
+            # 添加一個相機圖標或其他提示圖形
+            icon_size = 50
+            cv2.rectangle(
+                img,
+                (320 - icon_size, 120 - icon_size),
+                (320 + icon_size, 120 + icon_size),
+                (0, 0, 255),
+                2
+            )
+
+            # 繪製相機形狀
+            cv2.rectangle(
+                img,
+                (320 - 30, 120 - 20),
+                (320 + 30, 120 + 20),
+                (0, 0, 255),
+                2
+            )
+
+            # 繪製相機鏡頭
+            cv2.circle(img, (320, 120), 15, (0, 0, 255), 2)
+
+            # 添加一個斜線表示錯誤
+            cv2.line(img, (270, 70), (370, 170), (0, 0, 255), 3)
+
+            return img
+
+        except Exception as e:
+            logging.error(f"創建錯誤圖像時發生錯誤: {str(e)}")
+            return None

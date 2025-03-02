@@ -2,11 +2,7 @@
 控制面板組件
 包含視訊來源選擇和控制按鈕
 """
-
-import tkinter as tk
 from tkinter import ttk
-import logging
-
 from utils.language import get_text
 
 
@@ -142,10 +138,17 @@ class ControlPanel(ttk.Frame):
             self.start_button.configure(text=get_text("start_button", "開始監測"))
 
     def _on_camera_selected(self, event):
-        """當選擇攝影機時自動執行測試"""
+        """當選擇攝影機時自動執行測試或更新拍照預覽"""
         selected_source = self.get_selected_source()
-        if selected_source and 'test' in self.callbacks:
-            self.callbacks['test']()  # 呼叫測試相機回調
+        if not selected_source:
+            return
+
+        # 通知選擇變更
+        if 'source_changed' in self.callbacks and self.callbacks['source_changed']:
+            self.callbacks['source_changed'](selected_source)
+        # 向後兼容 - 如果沒有 'source_changed' 回調但有 'test' 回調
+        elif 'test' in self.callbacks and self.callbacks['test']:
+            self.callbacks['test']()
 
     def select_source(self, source):
         """

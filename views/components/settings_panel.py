@@ -124,7 +124,7 @@ class SettingsPanel(ttk.Frame):
     def _on_apply_settings(self):
         """當點擊套用設定按鈕時處理"""
         if self.callbacks['settings_applied']:
-            self.callbacks['settings_applied']()
+            var = self.callbacks['settings_applied']
 
     #==========================================================================
     # 第四部分：數據管理

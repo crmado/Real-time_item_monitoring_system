@@ -12,8 +12,8 @@ import traceback
 import logging
 import datetime
 import platform
-import subprocess
-import tempfile
+from main import main as program_main
+import cv2
 
 
 def check_requirements():
@@ -36,7 +36,6 @@ def check_requirements():
             return False
 
         try:
-            import cv2
             print(f"OpenCV: 已安裝 (版本 {cv2.__version__})")
         except ImportError:
             print("錯誤：缺少 OpenCV 庫，這是必需的")
@@ -154,12 +153,10 @@ def main():
 
         # 導入主程序
         try:
-            from object_detection_system import main as program_main
             program_main()
         except ImportError:
             try:
                 # 嘗試其他可能的主模塊
-                from main import main as program_main
                 program_main()
             except ImportError:
                 raise ImportError("無法匯入主程序模塊，請確認程式檔案是否完整")

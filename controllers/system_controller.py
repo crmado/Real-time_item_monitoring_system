@@ -56,6 +56,9 @@ class SystemController:
         change_language(language)
         self.main_window.on_language_changed(language)
 
+        # 檢查更新
+        self.check_for_updates()
+
     def bind_events(self):
         """綁定UI事件處理函數"""
         # 控制面板事件
@@ -335,62 +338,142 @@ class SystemController:
             ))
 
     # ==========================================================================
-    # 添加新部分：拍照模式處理
+    # 第七部分：模式切換處理
     # ==========================================================================
 
     def handle_mode_switch(self):
         """處理模式切換"""
-        # 切換主視窗顯示模式
-        self.main_window.toggle_mode()
+        try:
+            # 記錄當前模式
+            previous_mode = self.main_window.current_mode
+            logging.info(f"模式切換: 從 {previous_mode} 模式切換中...")
 
-        # 暫停任何進行中的測試或監測
-        if self.detection_controller.is_monitoring:
-            self.detection_controller.stop_monitoring()
+            # 全面釋放相機資源
+            self._completely_release_camera_resources()
 
-        if self.detection_controller.is_testing:
-            self.detection_controller.stop_camera_test()
+            # 切換視窗顯示
+            self.main_window.toggle_mode()
+            current_mode = self.main_window.current_mode
+            logging.info(f"已切換到 {current_mode} 模式")
 
-        # 設置控制器狀態
-        current_mode = self.main_window.current_mode
-        self.detection_controller.is_photo_mode = current_mode == "photo"
+            # 更新控制面板的按鈕文字
+            self.components['control_panel'].update_mode_button_text(current_mode == "photo")
 
-        # 如果切換到拍照模式，啟動相機預覽
-        if current_mode == "photo":
+            # 根據新模式執行相應初始化
+            if current_mode == "photo":
+                # 添加拍照模式的回調函數
+                self._configure_photo_mode()
+                self.start_photo_mode()
+            else:
+                # 恢復監測模式
+                self._restore_monitoring_mode()
+
+        except Exception as e:
+            logging.error(f"模式切換時發生錯誤: {str(e)}")
+            self.main_window.log_message(f"模式切換失敗: {str(e)}")
+
+            # 嘗試恢復到安全狀態
+            self._completely_release_camera_resources()
+            self.detection_controller.is_photo_mode = False
+
+            # 如果當前在拍照模式，強制切換回監測模式
+            if self.main_window.current_mode == "photo":
+                self.main_window.toggle_mode()
+                self.components['control_panel'].update_mode_button_text(False)
+
+    def _configure_photo_mode(self):
+        """配置拍照模式"""
+        # 確保照片面板在 UI 元件字典中
+        if 'photo_panel' not in self.components and hasattr(self.main_window, 'photo_panel'):
+            self.components['photo_panel'] = self.main_window.photo_panel
+
+        # 設置重要的回調函數
+        self.detection_controller.set_callback('get_root', lambda: self.main_window.root)
+        self.detection_controller.set_callback('get_selected_source',
+                                               self.components['control_panel'].get_selected_source)
+
+        # 設置系統控制器作為相機選擇事件的處理者
+        self.components['control_panel'].set_callback('source_changed', self._handle_camera_source_changed)
+
+        # 標記相機模式
+        self.detection_controller.is_photo_mode = True
+
+    def _handle_camera_source_changed(self, source=None):
+        """當相機源改變時處理"""
+        if self.main_window.current_mode == "photo":
+            logging.info(f"相機源已更改: {source}，重新初始化相機預覽")
+            # 先完全釋放資源
+            self._completely_release_camera_resources()
+            # 然後重新啟動預覽
             self.start_photo_mode()
-        elif current_mode == "monitoring":
-            self.detection_controller.cleanup_photo_resources()
+        elif self.main_window.current_mode == "monitoring":
+            # 如果在監測模式，則啟動測試
+            if source:
+                self.detection_controller.test_camera(source)
+
+    def _restore_monitoring_mode(self):
+        """恢復到監測模式"""
+        logging.info("恢復監測模式")
+
+        # 清理拍照模式資源
+        self.detection_controller.cleanup_photo_resources()
+
+        # 如果有已選擇的相機源，嘗試自動測試
+        selected_source = self.components['control_panel'].get_selected_source()
+        if selected_source:
+            logging.info(f"嘗試使用選擇的相機源測試: {selected_source}")
+            # 短暫延遲確保資源釋放
+            import time
+            time.sleep(0.5)
+            self.detection_controller.test_camera(selected_source)
+        else:
+            logging.info("沒有選定的相機源，請用戶選擇")
+
+    def _completely_release_camera_resources(self):
+        """徹底釋放所有相機資源"""
+        try:
+            logging.info("正在釋放所有相機資源...")
+
+            # 停止監測模式
+            if self.detection_controller.is_monitoring:
+                self.detection_controller.stop_monitoring()
+
+            # 停止測試模式
+            if self.detection_controller.is_testing:
+                self.detection_controller.stop_camera_test()
+
+            # 停止拍照模式的預覽
+            if hasattr(self.detection_controller, 'preview_active') and self.detection_controller.preview_active:
+                self.detection_controller.stop_camera_preview()
+
+            # 確保釋放所有相機資源
+            self.detection_controller.camera_manager.release_camera()
+            self.detection_controller.camera_manager.release_pylon_camera()
+
+            # 確保重置所有狀態
+            self.detection_controller.is_monitoring = False
+            self.detection_controller.is_testing = False
+            self.detection_controller.is_photo_mode = False
+            if hasattr(self.detection_controller, 'preview_active'):
+                self.detection_controller.preview_active = False
+
+            # 等待資源完全釋放
+            import time
+            time.sleep(0.3)
+
+            logging.info("相機資源已全部釋放")
+        except Exception as e:
+            logging.error(f"釋放相機資源時發生錯誤: {str(e)}")
 
     def start_photo_mode(self):
         """啟動拍照模式"""
         try:
-            # 顯示載入狀態
+            # 更新狀態顯示
             photo_panel = self.components.get('photo_panel')
             if photo_panel:
                 photo_panel.set_status(get_text("initializing_camera", "正在初始化相機..."))
 
-            # 如果已經在測試或監測模式，先停止
-            if self.detection_controller.is_testing:
-                self.detection_controller.stop_camera_test()
-
-            if self.detection_controller.is_monitoring:
-                self.detection_controller.stop_monitoring()
-
-            # 確保有相機可用 - 優先使用已選擇的相機
-            selected_source = self.components['control_panel'].get_selected_source()
-            if selected_source:
-                # 嘗試打開選擇的相機
-                success = self.detection_controller.camera_manager.open_camera(selected_source)
-                if not success:
-                    if photo_panel:
-                        photo_panel.set_status(get_text("camera_open_failed", "無法開啟選擇的相機"))
-                    self.main_window.log_message(get_text("camera_open_failed", "無法開啟選擇的相機"))
-
-            # 啟動相機預覽
-            time.sleep(0.5)  # 短暫延遲確保資源釋放
-
-            # 設置 is_photo_mode 狀態
-            self.detection_controller.is_photo_mode = True
-
+            # 嘗試啟動相機預覽
             success = self.detection_controller.start_camera_preview()
 
             if success:
@@ -398,16 +481,80 @@ class SystemController:
                     photo_panel.set_status(get_text("camera_ready", "相機就緒，可以拍攝"))
                 self.main_window.log_message(get_text("camera_ready", "相機就緒，可以拍攝"))
             else:
+                # 相機初始化失敗，顯示明確的錯誤信息
                 if photo_panel:
-                    photo_panel.set_status(get_text("camera_error", "相機初始化失敗，請選擇相機後重試"))
-                self.main_window.log_message(get_text("camera_error", "相機初始化失敗，請選擇相機後重試"))
+                    photo_panel.set_status(get_text("camera_init_failed", "相機初始化失敗，請選擇其他相機"))
+                self.main_window.log_message(get_text("camera_init_failed", "相機初始化失敗，請選擇其他相機"))
+
+                # 創建錯誤圖像並顯示
+                if photo_panel:
+                    error_img = self.main_window._create_error_image(get_text("camera_init_failed",
+                                                                              "相機初始化失敗，請選擇其他相機"))
+                    if error_img is not None:
+                        photo_panel.update_camera_preview(error_img)
+
+                # 更新可用相機列表
+                self._update_available_cameras()
 
         except Exception as e:
-            self.main_window.log_message(f"啟動拍照模式失敗：{str(e)}")
+            self.main_window.log_message(f"啟動拍照模式失敗: {str(e)}")
+            # 顯示詳細錯誤
+            photo_panel = self.components.get('photo_panel')
+            if photo_panel:
+                photo_panel.set_status(f"錯誤: {str(e)}")
 
-            # 失敗時嘗試再次初始化相機
-            if hasattr(self.detection_controller, 'is_photo_mode'):
-                self.detection_controller.is_photo_mode = False
+    def _update_available_cameras(self):
+        """更新可用相機列表"""
+        try:
+            # 獲取最新的可用相機列表
+            available_sources = self.detection_controller.camera_manager.get_available_sources()
+
+            # 更新控制面板
+            self.components['control_panel'].set_camera_sources(available_sources)
+
+            # 如果列表為空，顯示提示
+            if not available_sources:
+                self.main_window.log_message("未檢測到可用的相機，請連接相機後重試")
+            else:
+                self.main_window.log_message(f"找到 {len(available_sources)} 個可用相機")
+                # 如果只有一個相機源，自動選擇它
+                if len(available_sources) == 1:
+                    self.components['control_panel'].select_source(available_sources[0])
+                    self.main_window.log_message(f"已自動選擇相機: {available_sources[0]}")
+        except Exception as e:
+            logging.error(f"更新可用相機列表時發生錯誤: {str(e)}")
+
+    def _show_camera_selection_hint(self):
+        """顯示選擇相機提示"""
+        try:
+            # 檢查可用相機
+            available_sources = self.detection_controller.camera_manager.get_available_sources()
+
+            if available_sources:
+                # 更新相機下拉選單
+                self.components['control_panel'].set_camera_sources(available_sources)
+
+                # 設定提示消息
+                hint = get_text(
+                    "select_camera_hint",
+                    "請從下拉選單選擇一個相機，然後點擊「拍攝照片」按鈕"
+                )
+
+                # 顯示提示
+                photo_panel = self.components.get('photo_panel')
+                if photo_panel:
+                    photo_panel.set_status(hint)
+
+                # 如果只有一個相機，自動選擇它
+                if len(available_sources) == 1:
+                    self.components['control_panel'].select_source(available_sources[0])
+                    # 嘗試再次啟動預覽
+                    import time
+                    time.sleep(0.5)
+                    self.detection_controller.start_camera_preview()
+
+        except Exception as e:
+            self.main_window.log_message(f"顯示相機選擇提示時發生錯誤: {str(e)}")
 
     def start_photo_preview(self):
         """啟動拍照模式的相機預覽"""
@@ -448,6 +595,7 @@ class SystemController:
 
     def handle_analyze_photo(self):
         """處理分析照片請求"""
+        global photo_panel
         try:
             # 顯示載入狀態
             photo_panel = self.components.get('photo_panel')
@@ -502,8 +650,30 @@ class SystemController:
         except Exception as e:
             self.main_window.log_message(f"處理分析錯誤時發生錯誤：{str(e)}")
 
+    def _ensure_camera_resources_released(self):
+        """確保所有相機資源完全釋放"""
+        # 停止所有相機相關的操作
+        if self.detection_controller.is_monitoring:
+            self.detection_controller.stop_monitoring()
+
+        if self.detection_controller.is_testing:
+            self.detection_controller.stop_camera_test()
+
+        if self.detection_controller.is_photo_mode:
+            self.detection_controller.stop_camera_preview()
+
+        # 確保相機管理器釋放所有相機資源
+        self.detection_controller.camera_manager.release_camera()
+
+        # 再次檢查確保 Pylon 相機也被釋放
+        self.detection_controller.camera_manager.release_pylon_camera()
+
+        # 短暫延遲確保資源完全釋放
+        import time
+        time.sleep(0.3)
+
     # ==========================================================================
-    # 第七部分：錯誤處理與系統恢復
+    # 第八部分：錯誤處理與系統恢復
     # ==========================================================================
     def handle_camera_error(self, error_message):
         """

@@ -6,6 +6,7 @@
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
+from PIL.Image import Resampling
 import cv2
 import logging
 import numpy as np
@@ -195,7 +196,7 @@ class AnalysisPanel(ttk.Frame):
 
             # 更新顯示
             display_widget.configure(image=img_tk)
-            display_widget.image = img_tk  # 保持引用防止垃圾回收
+            setattr(display_widget, "_image_reference", img_tk)
 
         except Exception as e:
             logging.error(f"更新圖像顯示時發生錯誤：{str(e)}")
@@ -253,7 +254,7 @@ class AnalysisPanel(ttk.Frame):
                 new_height = int(width / aspect_ratio)
 
             # 調整圖像大小
-            img_resized = img.resize((new_width, new_height), Image.LANCZOS)
+            img_resized = img.resize((new_width, new_height), Resampling.LANCZOS)
 
             # 轉換為Tkinter格式
             img_tk = ImageTk.PhotoImage(img_resized)

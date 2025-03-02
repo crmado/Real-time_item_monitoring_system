@@ -8,7 +8,6 @@ import os
 import logging
 import yaml
 import shutil
-from pathlib import Path
 
 from utils.exceptions import ConfigError, InvalidSettingError
 
@@ -171,7 +170,7 @@ class Config:
                 if ext == '.yaml' or ext == '.yml':
                     yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
                 elif ext == '.json':
-                    json.dump(config, f, indent=4, ensure_ascii=False)
+                    f.write(json.dumps(config, indent=4, ensure_ascii=False))
                 else:
                     # 預設使用 YAML 格式
                     yaml.dump(config, f, default_flow_style=False, allow_unicode=True)

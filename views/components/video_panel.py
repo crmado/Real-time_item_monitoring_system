@@ -57,7 +57,7 @@ class VideoPanel(ttk.Frame):
             style='Video.TLabel',
             text="Please select a camera"
         )
-        self.image_label.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.image_label.grid(row=0, column=0, sticky=f"{tk.N} {tk.S} {tk.E} {tk.W}")
 
     def bind_events(self):
         """綁定滑鼠事件"""

@@ -26,6 +26,10 @@ class DetectionController:
             camera_manager: 攝影機管理器實例
             image_processor: 影像處理器實例
         """
+        self.processing_times = None
+        self.fps_history = None
+        self.total_frames = None
+        self.frame_count = None
         self._run_libcamera_test = None
         self.camera_manager = camera_manager
         self.image_processor = image_processor
@@ -488,20 +492,26 @@ class DetectionController:
             get_text("target_reached_msg", "已達到預計數量 ({})！").format(self.target_count)
         )
 
-    def set_callback(self, button_name, callback):
+    # ==========================================================================
+    # 第七部分：回調管理增強
+    # ==========================================================================
+
+    def set_callback(self, callback_name, callback_function):
         """
-        設置按鈕回調函數
+        設置回調函數
 
         Args:
-            button_name: 按鈕名稱
-            callback: 回調函數
+            callback_name: 回調名稱
+            callback_function: 回調函數
         """
-        # 保存回調函數供下拉選單事件使用
-        self.callbacks[button_name] = callback
+        if not hasattr(self, 'callbacks'):
+            self.callbacks = {}
 
-        # 只為存在的按鈕設置命令
-        if button_name == 'start':
-            self.start_button.configure(command=callback)
+        self.callbacks[callback_name] = callback_function
+
+        # 保留向下兼容性
+        if callback_name == 'start' and hasattr(self, 'start_button'):
+            self.start_button.configure(command=callback_function)
 
     def _notify(self, event_name, *args):
         """
@@ -511,8 +521,12 @@ class DetectionController:
             event_name: 事件名稱
             *args: 傳遞給回調函數的參數
         """
-        if event_name in self.callbacks and self.callbacks[event_name]:
-            self.callbacks[event_name](*args)
+        if hasattr(self, 'callbacks') and event_name in self.callbacks and self.callbacks[event_name]:
+            try:
+                return self.callbacks[event_name](*args)
+            except Exception as e:
+                logging.error(f"執行回調 {event_name} 時發生錯誤: {str(e)}")
+        return None
 
     def update_settings(self, target_count, buffer_point):
         """
@@ -873,35 +887,138 @@ class DetectionController:
             return False
 
     # ==========================================================================
-    # 添加新部分：拍照和分析功能
+    # 第三部分：拍照模式相關方法
     # ==========================================================================
 
     def start_camera_preview(self):
         """啟動相機預覽"""
         try:
-            if self.preview_timer:
-                self.stop_camera_preview()
+            # 停止任何可能在運行的預覽
+            self.stop_camera_preview()
 
-            # 確認相機已初始化，優先使用普通相機
-            if self.camera_manager.camera and self.camera_manager.camera.isOpened():
-                # 使用已有的相機
-                logging.info("使用已初始化的相機進行預覽")
-            # 如果沒有已初始化的相機，嘗試初始化 Pylon 相機
-            elif not self.camera_manager.initialize_pylon_camera():
-                logging.error("無法初始化相機，無法啟動預覽")
+            # 釋放任何已存在的相機資源，確保乾淨的開始
+            self.cleanup_photo_resources()
+
+            # 重新設置狀態
+            self.is_photo_mode = True
+            self.preview_active = True
+
+            # 嘗試獲取選定的相機源
+            selected_source = None
+            if hasattr(self, 'callbacks') and 'get_selected_source' in self.callbacks:
+                selected_source = self.callbacks['get_selected_source']()
+
+            # 嘗試打開選擇的相機
+            if selected_source:
+                success = self.camera_manager.open_camera(selected_source)
+                if success:
+                    logging.info(f"成功開啟相機: {selected_source}")
+                else:
+                    logging.warning(f"無法開啟選擇的相機: {selected_source}，嘗試自動尋找可用相機")
+                    # 嘗試尋找任何可用的相機
+                    for i in range(5):
+                        try:
+                            self.camera_manager.camera = cv2.VideoCapture(i)
+                            if self.camera_manager.camera.isOpened():
+                                ret, _ = self.camera_manager.camera.read()
+                                if ret:
+                                    logging.info(f"自動找到可用相機: {i}")
+                                    break
+                        except Exception:
+                            pass
+
+            # 如果常規相機初始化失敗，嘗試使用 Pylon 相機
+            if not self.camera_manager.camera or not self.camera_manager.camera.isOpened():
+                logging.info("嘗試初始化 Pylon 相機")
+                if not self.camera_manager.initialize_pylon_camera():
+                    logging.error("無法初始化任何相機，預覽無法啟動")
+                    return False
+
+            # 確認 root 對象可用
+            if not hasattr(self, 'root') and hasattr(self, 'callbacks') and 'get_root' in self.callbacks:
+                self.root = self.callbacks['get_root']()
+
+            # 如果沒有有效的 root 對象，返回失敗
+            if not hasattr(self, 'root'):
+                logging.error("無法獲取有效的 root 對象，預覽無法啟動")
                 return False
 
-            # 創建定時器進行定期更新
-            self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
-            self.preview_timer.daemon = True
-            self.preview_timer.start()
+            # 初始化預覽更新 ID
+            self.preview_update_id = None
 
-            logging.info("相機預覽已啟動")
+            # 啟動第一次預覽更新
+            self._update_photo_preview()
+
+            logging.info("相機預覽系統已啟動")
             return True
-
         except Exception as e:
-            logging.error(f"啟動相機預覽時發生錯誤：{str(e)}")
+            logging.error(f"啟動相機預覽時發生錯誤: {str(e)}")
+            # 重置狀態
+            self.is_photo_mode = False
+            self.preview_active = False
             return False
+
+    def _update_photo_preview(self):
+        """更新相機預覽的新方法"""
+        try:
+            # 檢查是否仍處於預覽狀態
+            if not hasattr(self, 'preview_active') or not self.preview_active:
+                return
+
+            # 嘗試獲取一幀圖像
+            success = False
+            frame = None
+
+            # 首先嘗試從標準相機獲取圖像
+            if self.camera_manager.camera and self.camera_manager.camera.isOpened():
+                ret, frame = self.camera_manager.camera.read()
+                if ret and frame is not None:
+                    success = True
+
+            # 如果標準相機失敗，嘗試 Pylon 相機
+            if not success and hasattr(self.camera_manager, 'pylon_camera') and self.camera_manager.pylon_camera:
+                ret, frame = self.camera_manager.capture_pylon_image()
+                if ret and frame is not None:
+                    success = True
+
+            # 如果獲取到圖像，通知 UI 更新
+            if success and frame is not None:
+                self._notify('camera_preview_updated', frame)
+            else:
+                # 如果無法獲取圖像，記錄錯誤但繼續嘗試
+                logging.warning("無法從相機讀取圖像，但將繼續嘗試")
+
+            # 如果預覽仍然活躍，排程下一次更新
+            if hasattr(self, 'preview_active') and self.preview_active and hasattr(self, 'root'):
+                try:
+                    # 取消任何先前的排程
+                    if hasattr(self, 'preview_update_id') and self.preview_update_id:
+                        self.root.after_cancel(self.preview_update_id)
+
+                    # 排程下一次更新
+                    self.preview_update_id = self.root.after(50, self._update_photo_preview)
+                except Exception as e:
+                    logging.error(f"排程相機預覽更新時發生錯誤: {str(e)}")
+        except Exception as e:
+            logging.error(f"更新相機預覽時發生錯誤: {str(e)}")
+            # 報告錯誤但不中斷預覽循環
+            if hasattr(self, 'preview_active') and self.preview_active and hasattr(self, 'root'):
+                self.preview_update_id = self.root.after(1000, self._update_photo_preview)  # 遇到錯誤後延長間隔
+
+    def _schedule_preview_update(self):
+        """排程預覽更新"""
+        if not hasattr(self, 'root'):
+            # 從回調函數中獲取 root 對象
+            if hasattr(self, 'callbacks') and 'get_root' in self.callbacks:
+                self.root = self.callbacks['get_root']()
+            else:
+                logging.error("無法獲取 root 對象，無法排程預覽更新")
+                return
+
+        # 使用 Tkinter 的 after 方法定期更新
+        if self.is_photo_mode:
+            self._update_camera_preview()
+            self.preview_update_id = self.root.after(50, self._schedule_preview_update)  # 約 20 FPS
 
     def _update_camera_preview(self):
         """更新相機預覽"""
@@ -910,27 +1027,44 @@ class DetectionController:
                 return
 
             # 獲取圖像，優先使用已有的相機
+            ret, frame = False, None
             if self.camera_manager.camera and self.camera_manager.camera.isOpened():
                 ret, frame = self.camera_manager.camera.read()
-            else:
-                # 嘗試使用 Pylon 相機
+
+            # 如果普通相機失敗，嘗試使用 Pylon 相機
+            if not ret or frame is None:
                 ret, frame = self.camera_manager.capture_photo()
 
             if ret and frame is not None:
                 # 通知UI更新預覽
                 self._notify('camera_preview_updated', frame)
 
-            # 如果預覽模式仍然活躍，重新啟動定時器
-            if self.is_photo_mode and hasattr(self, 'preview_timer'):
-                self.preview_timer = threading.Timer(0.1, self._update_camera_preview)
-                self.preview_timer.daemon = True
-                self.preview_timer.start()
-
         except Exception as e:
             logging.error(f"更新相機預覽時發生錯誤：{str(e)}")
 
     def stop_camera_preview(self):
         """停止相機預覽"""
-        if self.preview_timer:
-            self.preview_timer.cancel()
-            self.preview_timer = None
+        try:
+            # 標記預覽為非活躍
+            self.preview_active = False
+            self.is_photo_mode = False
+
+            # 取消任何排程的更新
+            if hasattr(self, 'root') and hasattr(self, 'preview_update_id') and self.preview_update_id:
+                try:
+                    self.root.after_cancel(self.preview_update_id)
+                    self.preview_update_id = None
+                except Exception as e:
+                    logging.warning(f"取消預覽排程時發生錯誤: {str(e)}")
+
+            # 為了向下兼容 - 清理舊計時器
+            if hasattr(self, 'preview_timer') and self.preview_timer:
+                try:
+                    self.preview_timer.cancel()
+                    self.preview_timer = None
+                except Exception:
+                    pass
+
+            logging.info("相機預覽已停止")
+        except Exception as e:
+            logging.error(f"停止相機預覽時發生錯誤: {str(e)}")

@@ -2,8 +2,6 @@
 主題管理模組
 管理應用程式主題切換
 """
-
-import tkinter as tk
 from tkinter import ttk
 
 

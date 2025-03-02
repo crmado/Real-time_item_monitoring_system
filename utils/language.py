@@ -6,6 +6,7 @@
 import os
 import json
 import logging
+from pathlib import Path
 
 
 # 語言資源字典
@@ -204,14 +205,14 @@ class LanguageManager:
         }
 
         # 寫入語言檔案
-        with open(os.path.join(lang_dir, 'zh_TW.json'), 'w', encoding='utf-8') as f:
-            json.dump(zh_tw, f, ensure_ascii=False, indent=4)
+        Path(lang_dir).joinpath('zh_TW.json').write_text(
+            json.dumps(zh_tw, ensure_ascii=False, indent=4), encoding='utf-8')
 
-        with open(os.path.join(lang_dir, 'en_US.json'), 'w', encoding='utf-8') as f:
-            json.dump(en_us, f, ensure_ascii=False, indent=4)
+        Path(lang_dir).joinpath('en_US.json').write_text(
+            json.dumps(en_us, ensure_ascii=False, indent=4), encoding='utf-8')
 
-        with open(os.path.join(lang_dir, 'zh_CN.json'), 'w', encoding='utf-8') as f:
-            json.dump(zh_cn, f, ensure_ascii=False, indent=4)
+        Path(lang_dir).joinpath('zh_CN.json').write_text(
+            json.dumps(zh_cn, ensure_ascii=False, indent=4), encoding='utf-8')
 
     def _create_fallback_language(self):
         """建立備用語言資源（當無法載入語言檔時）"""

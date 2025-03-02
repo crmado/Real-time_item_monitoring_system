@@ -8,12 +8,11 @@ import logging
 import traceback
 
 import cv2
+import numpy
 
-from utils.config import Config as SystemConfig
 from models.image_processor import ImageProcessor
 from models.camera_manager import CameraManager
 from views.main_window import MainWindow
-from views.ui_manager import UIManager
 from controllers.detection_controller import DetectionController
 from controllers.system_controller import SystemController
 from utils.logger import Logger
@@ -44,7 +43,6 @@ def main(messagebox=None):
 
         # 檢查環境依賴
         try:
-            import numpy
             logging.info(f"NumPy 版本: {numpy.__version__}")
         except ImportError:
             logging.warning("未找到 NumPy 庫")

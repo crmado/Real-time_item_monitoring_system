@@ -61,11 +61,11 @@ class SystemController:
         self.register_detection_callbacks()
 
         # 初始化主題管理器
-        self.theme_manager = ThemeManager()
+        self.theme_manager = ThemeManager(main_window.root)
 
         # 應用主題設定
         theme = self.config_manager.get('ui.theme', 'light')
-        self.theme_manager.apply_theme(main_window.root, theme)
+        self.theme_manager.apply_theme(main_window.root)
 
         # 應用語言設定
         language = self.config_manager.get('system.language', 'zh_TW')
@@ -269,7 +269,7 @@ class SystemController:
 
             # 更新主題
             theme = self.config_manager.get('ui.theme', 'light')
-            self.theme_manager.apply_theme(self.main_window.root, theme)
+            self.theme_manager.apply_theme(self.main_window.root)
 
             # 更新檢測設定
             target_count = self.config_manager.get('detection.target_count', 1000)
@@ -385,7 +385,7 @@ class SystemController:
         Args:
             theme: 主題名稱 ('light' 或 'dark')
         """
-        success = self.theme_manager.apply_theme(self.main_window.root, theme)
+        success = self.theme_manager.apply_theme(self.main_window.root)
         if success:
             self.main_window.log_message(get_text("theme_changed", "已切換至{}模式").format(
                 get_text("light_theme", "亮色") if theme == "light" else get_text("dark_theme", "暗色")

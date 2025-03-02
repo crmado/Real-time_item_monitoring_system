@@ -6,11 +6,9 @@
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
+from PIL.Image import Resampling 
 import cv2
 import logging
-import numpy as np
-import os
-import datetime
 
 from utils.language import get_text
 
@@ -30,6 +28,7 @@ class PhotoPanel(ttk.Frame):
             **kwargs: 其他參數
         """
         super().__init__(parent, **kwargs)
+        self.preview_img = None
         self.parent = parent
         self.callbacks = {}
 
@@ -152,7 +151,7 @@ class PhotoPanel(ttk.Frame):
                 new_height = int(width / aspect_ratio)
 
             # 調整圖像大小
-            img = img.resize((new_width, new_height), Image.LANCZOS)
+            img = img.resize((new_width, new_height), Resampling.LANCZOS)
 
             # 轉換為 Tkinter 可用的格式
             self.camera_img = ImageTk.PhotoImage(image=img)
@@ -198,7 +197,7 @@ class PhotoPanel(ttk.Frame):
                 new_height = int(width / aspect_ratio)
 
             # 調整圖像大小
-            img = img.resize((new_width, new_height), Image.LANCZOS)
+            img = img.resize((new_width, new_height), Resampling.LANCZOS)
 
             # 轉換為 Tkinter 可用的格式
             self.preview_img = ImageTk.PhotoImage(image=img)

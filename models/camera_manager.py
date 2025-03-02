@@ -2,8 +2,9 @@
 攝影機管理模型
 負責管理所有視訊輸入源相關的功能
 """
-import datetime
 import os
+import threading
+
 import cv2
 import signal
 import subprocess
@@ -94,70 +95,149 @@ class CameraManager:
             bool: 是否成功開啟
         """
         try:
-            # 如果已有開啟的相機，先釋放它
-            if self.camera is not None and self.camera.isOpened():
-                self.camera.release()
-                self.camera = None
-                time.sleep(0.2)  # 等待資源釋放
+            # 記錄要開啟的相機
+            logging.info(f"嘗試開啟相機: {source}")
 
+            # 如果已有開啟的相機，先釋放它
+            if self.camera is not None:
+                try:
+                    if self.camera.isOpened():
+                        self.camera.release()
+                except Exception as e:
+                    logging.warning(f"釋放相機時發生錯誤: {str(e)}")
+                finally:
+                    self.camera = None
+                    time.sleep(0.3)  # 確保資源釋放
+
+            # 如果有活躍的 Pylon 相機，釋放它
+            if hasattr(self, 'pylon_camera') and self.pylon_camera:
+                self.release_pylon_camera()
+                time.sleep(0.3)
+
+            # 根據來源類型開啟相機
             if source == "Test video":
-                # 檢查測試影片路徑
+                # 測試視頻處理邏輯
                 video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
                 if not os.path.exists(video_path):
-                    # 嘗試使用備用的測試影片
-                    backup_paths = [
-                        "testDate/test_video.mp4",
-                        "video/sample.mp4"
-                    ]
+                    backup_paths = ["testDate/test_video.mp4", "video/sample.mp4"]
                     for path in backup_paths:
                         if os.path.exists(path):
                             video_path = path
                             break
                     else:
-                        logging.error(f"未找到測試影片：{video_path}")
+                        logging.error(f"未找到測試影片: {video_path}")
                         return False
+
+                logging.info(f"使用測試視頻: {video_path}")
                 self.camera = cv2.VideoCapture(video_path)
+
             elif source == "libcamera":
-                self.setup_libcamera()
+                logging.info("初始化 libcamera")
+                return self.setup_libcamera()
+
             else:
-                # USB攝影機連接改進
-                camera_index = int(source.split()[-1])
+                # 處理 USB 相機或其他相機索引
+                camera_index = -1
 
-                # 設定攝影機參數
-                self.camera = cv2.VideoCapture(camera_index)
-                if self.camera.isOpened():
-                    # 設定攝影機屬性以提高穩定性
-                    self.camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
-                    self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # 增加緩衝
+                # 嘗試從來源名稱中獲取索引
+                if "USB Camera" in source:
+                    try:
+                        camera_index = int(source.split()[-1])
+                        logging.info(f"從來源名稱解析相機索引: {camera_index}")
+                    except ValueError:
+                        logging.warning(f"無法從 '{source}' 解析相機索引")
+                        camera_index = 0
+                else:
+                    # 嘗試將整個字符串解析為索引
+                    try:
+                        camera_index = int(source)
+                        logging.info(f"將來源直接解析為索引: {camera_index}")
+                    except ValueError:
+                        logging.warning(f"無法將 '{source}' 解析為相機索引，使用預設索引 0")
+                        camera_index = 0
 
-            # 驗證攝影機是否成功開啟並可以讀取影像
-            if not self.camera.isOpened():
+                # 嘗試開啟相機，增加重試機制
+                max_tries = 3
+                success = False
+
+                for attempt in range(max_tries):
+                    try:
+                        logging.info(f"嘗試開啟相機 {camera_index} (嘗試 {attempt + 1}/{max_tries})")
+
+                        # 使用 OpenCV 開啟相機
+                        self.camera = cv2.VideoCapture(camera_index)
+
+                        if self.camera.isOpened():
+                            # 設定相機屬性
+                            self.camera.set(cv2.CAP_PROP_FOURCC, 0x4D4A5047)  # MJPEG 的四字節編碼
+                            self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+
+                            # 測試讀取，確保相機可用
+                            read_success, test_frame = self.camera.read()
+                            if read_success and test_frame is not None:
+                                logging.info(f"成功讀取相機 {camera_index} 的測試幀")
+                                success = True
+                                break
+                            else:
+                                logging.warning(f"相機 {camera_index} 已開啟但無法讀取幀")
+                                self.camera.release()
+                                self.camera = None
+                        else:
+                            logging.warning(f"無法開啟相機 {camera_index}")
+
+                    except Exception as e:
+                        logging.warning(f"開啟相機 {camera_index} 時發生錯誤: {str(e)}")
+                        if self.camera:
+                            try:
+                                self.camera.release()
+                            except:
+                                pass
+                            self.camera = None
+
+                    # 如果失敗但還有更多嘗試，等待一下再試
+                    if not success and attempt < max_tries - 1:
+                        time.sleep(0.5)
+
+                # 如果所有嘗試都失敗
+                if not success:
+                    logging.error(f"所有嘗試開啟相機 {camera_index} 的嘗試都失敗了")
+                    return False
+
+            # 驗證相機是否開啟並能讀取幀
+            if not self.camera or not self.camera.isOpened():
                 logging.error("無法開啟視訊來源")
                 return False
 
-            # 測試讀取幾幀確認攝影機穩定性
+            # 讀取多個幀以確認相機穩定性
             success_reads = 0
-            for _ in range(5):
-                ret, frame = self.camera.read()
-                if ret and frame is not None:
-                    success_reads += 1
-                time.sleep(0.05)
+            for _ in range(3):
+                try:
+                    ret, frame = self.camera.read()
+                    if ret and frame is not None:
+                        success_reads += 1
+                except Exception as e:
+                    logging.warning(f"讀取相機測試幀時出錯: {str(e)}")
+                time.sleep(0.1)
 
-            if success_reads < 3:
-                logging.error(f"攝影機連接不穩定，只能成功讀取 {success_reads}/5 幀")
+            if success_reads < 2:  # 至少要有 2/3 的成功讀取
+                logging.error(f"相機連接不穩定，僅成功讀取 {success_reads}/3 幀")
                 if self.camera:
                     self.camera.release()
                     self.camera = None
                 return False
 
+            # 更新當前來源並返回成功
             self.current_source = source
-            logging.info(f"成功開啟攝影機: {source}")
+            logging.info(f"成功開啟相機: {source}")
             return True
 
         except Exception as e:
-            logging.error(f"開啟視訊來源時發生錯誤：{str(e)}")
+            logging.error(f"開啟視訊來源時發生錯誤: {str(e)}")
             if self.camera:
-                self.camera.release()
+                try:
+                    self.camera.release()
+                except:
+                    pass
                 self.camera = None
             return False
 
