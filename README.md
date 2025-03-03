@@ -1,6 +1,6 @@
 # 即時物件監測系統（Real-time Item Monitoring System）
 
-這是一個使用 Python 開發的即時物件監測系統，專門用於工業生產線上的物件即時檢測和計數。系統提供圖形使用者介面，支援攝像頭即時監測和預先錄製的視頻分析。
+這是一個使用 Python 開發的即時物件監測系統，專門用於工業生產線上的物件即時檢測和計數。系統提供圖形使用者介面，支援攝像頭即時監測和預先錄製的視頻分析，並新增了產品拍照檢測分析功能。
 
 ## 系統環境
 
@@ -19,7 +19,8 @@ Real-time_item_monitoring_system/
 │   ├── __init__.py
 │   ├── system_config.py    # 系統配置
 │   ├── image_processor.py  # 影像處理
-│   └── camera_manager.py   # 攝影機管理
+│   ├── camera_manager.py   # 攝影機管理
+│   └── api_client.py       # API客戶端 - 與後端通信
 │
 ├── views/                  # View 層 - 使用者介面
 │   ├── __init__.py
@@ -30,6 +31,8 @@ Real-time_item_monitoring_system/
 │       ├── control_panel.py        # 控制面板
 │       ├── video_panel.py          # 影像顯示面板
 │       ├── settings_panel.py       # 設定面板
+│       ├── photo_panel.py          # 拍照面板
+│       ├── analysis_panel.py       # 分析結果面板
 │       └── setting/
 │           └── settings_dialog.py  # 設定對話框
 │
@@ -60,9 +63,10 @@ Real-time_item_monitoring_system/
 ├── logs/                   # 日誌目錄
 │   └── detection_*.log     # 系統日誌文件
 │
+├── captured_images/        # 拍攝照片保存目錄
+│
 ├── README.md               # 項目說明文件
 └── requirements.txt        # 依賴套件清單
-
 ```
 
 ## 主要功能
@@ -75,6 +79,9 @@ Real-time_item_monitoring_system/
 - 多語言支援（繁體中文、英文、簡體中文）
 - 設定的持久化存儲
 - 完整的日誌記錄
+- **拍照模式**：支援產品拍照和檢測分析
+- **產品分析**：通過API與後端連接，實現產品品質檢測
+- **多相機支援**：支援USB相機、Basler工業相機和樹莓派libcamera
 
 ## 技術特點
 
@@ -87,6 +94,10 @@ Real-time_item_monitoring_system/
 - 多執行緒：使用線程池確保 UI 響應性和處理效能
 - 設定管理：YAML格式配置持久化存儲
 - 國際化：完整的多語言支援系統
+- **相機管理**：自動檢測和管理多種類型的相機
+- **模式切換**：支援監測模式和拍照模式的無縫切換
+- **API整合**：與後端API系統整合，實現產品分析功能
+- **錯誤恢復**：增強的錯誤處理和自動恢復機制
 
 ## 安裝步驟
 
@@ -99,6 +110,11 @@ Real-time_item_monitoring_system/
 2. 安裝依賴套件：
 ```bash
     pip install -r requirements.txt
+```
+
+3. 安裝Basler相機支援（可選）：
+```bash
+    pip install pypylon
 ```
 
 ## 使用說明
@@ -119,7 +135,7 @@ Real-time_item_monitoring_system/
     pyinstaller --onefile main.py
 ```
 
-3. 操作流程：
+3. 物件監測模式操作流程：
    - 從下拉選單選擇視訊來源
    - 設定預期數量和緩衝點
    - 點擊「開始監測」按鈕開始處理
@@ -127,6 +143,15 @@ Real-time_item_monitoring_system/
    - 系統會自動記住您的設定和偏好
    - 達到緩衝點時會發出警告
    - 達到預期數量時會自動停止並通知
+   - 可拖動ROI線調整檢測位置
+
+4. 拍照分析模式操作流程：
+   - 點擊「切換到拍照模式」按鈕切換到拍照模式
+   - 選擇相機源後，系統會自動顯示相機預覽
+   - 點擊「拍攝照片」按鈕拍攝一張照片
+   - 點擊「分析照片」按鈕將照片發送至後端API進行分析
+   - 系統會顯示分析結果，包括輸入圖像、分析圖像、誤差圖等
+   - 分析結果會顯示檢測狀態（正常/有缺陷）、檢測分數和平均誤差
 
 ## 系統設定
 
@@ -147,6 +172,12 @@ Real-time_item_monitoring_system/
    - ROI 預設位置（百分比）
    - 物件面積範圍（最小/最大）
 
+4. **拍照分析設定**
+   - API端點設定
+   - 分析品質閾值
+   - 照片自動保存設定
+   - 圓形物體檢測參數
+
 所有設定都會自動保存到配置文件，下次啟動時自動套用。
 
 ## 系統參數
@@ -161,6 +192,8 @@ Real-time_item_monitoring_system/
   - X 軸：64 像素
   - Y 軸：48 像素
 - 視訊處理速率：最高支援 206 FPS
+- 相機自動重連：支援自動重連斷線的相機
+- 相機健康監控：自動監控相機狀態並嘗試恢復
 
 ## 日誌系統
 
@@ -171,6 +204,8 @@ Real-time_item_monitoring_system/
   - 物件檢測結果
   - 錯誤訊息
   - 設定變更
+  - 相機連接狀態
+  - API通信記錄
 
 ## 開發說明
 
@@ -179,6 +214,8 @@ Real-time_item_monitoring_system/
 - 代碼風格：遵循 PEP 8 規範
 - 測試環境：Windows 系統，預計部署於樹莓派 4B
 - 代碼組織：功能模組化，結構清晰
+- 錯誤處理：完善的異常處理機制
+- 擴展性：易於添加新功能和支援新設備
 
 ## 授權說明
 
