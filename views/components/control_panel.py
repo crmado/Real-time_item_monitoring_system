@@ -20,7 +20,7 @@ class ControlPanel(ttk.Frame):
             parent: 父級視窗
             **kwargs: 其他參數
         """
-        super().__init__(parent, **kwargs)
+        super().__init__(parent, style='Control.TFrame', **kwargs)
         self.mode_button = None
         self.start_button = None
         self.camera_combo = None
@@ -33,11 +33,15 @@ class ControlPanel(ttk.Frame):
     # ==========================================================================
     def create_widgets(self):
         """創建控制面板組件"""
+        # 使用水平佈局
         # 視訊來源選擇
-        ttk.Label(self, text=get_text("select_source", "選擇視訊來源：")).grid(row=0, column=0, padx=5)
+        source_frame = ttk.Frame(self, style='Control.TFrame')
+        source_frame.pack(side='left', padx=5)
+        
+        ttk.Label(source_frame, text=get_text("select_source", "選擇視訊來源：")).pack(side='left')
 
-        self.camera_combo = ttk.Combobox(self, width=30)
-        self.camera_combo.grid(row=0, column=1, padx=5)
+        self.camera_combo = ttk.Combobox(source_frame, width=30)
+        self.camera_combo.pack(side='left', padx=5)
 
         # 綁定選擇事件，當選擇變更時自動測試相機
         self.camera_combo.bind("<<ComboboxSelected>>", self._on_camera_selected)
@@ -56,7 +60,7 @@ class ControlPanel(ttk.Frame):
             text=get_text("start_button", "開始監測"),
             style='Accent.TButton'
         )
-        self.start_button.grid(row=0, column=2, padx=5)
+        self.start_button.pack(side='left', padx=10)
 
         # 添加模式切換按鈕
         self.mode_button = ttk.Button(
@@ -64,7 +68,7 @@ class ControlPanel(ttk.Frame):
             text=get_text("mode_switch", "切換到拍照模式"),
             command=self._on_mode_switch
         )
-        self.mode_button.grid(row=0, column=3, padx=5)
+        self.mode_button.pack(side='left', padx=5)
 
     def set_camera_sources(self, sources):
         """
@@ -94,22 +98,26 @@ class ControlPanel(ttk.Frame):
         """
         if button_name == 'start':
             self.start_button.configure(command=callback)
+        elif button_name == 'mode':
+            self.mode_button.configure(command=callback)
+        elif button_name == 'camera_selected':
+            self.callbacks['camera_selected'] = callback
         # if button_name == 'test':
         #     self.test_button.configure(command=callback)
         # elif button_name == 'start':
         #     self.start_button.configure(command=callback)
-        self.callbacks[button_name] = callback
 
-    def update_start_button_text(self, is_monitoring):
+    def update_start_button_text(self, is_running):
         """
-        更新開始按鈕文字
+        更新開始/停止按鈕文字
 
         Args:
-            is_monitoring: 是否正在監測
+            is_running: 是否正在運行
         """
-        self.start_button.configure(
-            text=get_text("stop_button", "停止監測") if is_monitoring else get_text("start_button", "開始監測")
-        )
+        if is_running:
+            self.start_button.configure(text=get_text("stop_button", "停止監測"))
+        else:
+            self.start_button.configure(text=get_text("start_button", "開始監測"))
 
     def update_test_button_text(self, is_testing):
         """
@@ -122,40 +130,34 @@ class ControlPanel(ttk.Frame):
         pass
 
     def update_language(self):
-        """更新組件語言"""
+        """更新語言"""
         # 更新標籤文字
-        for widget in self.winfo_children():
-            if isinstance(widget, ttk.Label):
-                if "選擇視訊來源" in widget.cget('text') or "Select Video Source" in widget.cget('text'):
-                    widget.configure(text=get_text("select_source", "選擇視訊來源："))
+        for child in self.winfo_children():
+            if isinstance(child, ttk.Label):
+                if "選擇視訊來源" in child.cget('text') or "Select Video Source" in child.cget('text'):
+                    child.configure(text=get_text("select_source", "選擇視訊來源："))
 
         # 更新按鈕文字
-        if self.start_button:
-            if "Stop" in self.start_button.cget('text') or "停止" in self.start_button.cget('text'):
-                self.start_button.configure(text=get_text("stop_button", "停止監測"))
-            else:
-                self.start_button.configure(text=get_text("start_button", "開始監測"))
+        if "開始監測" in self.start_button.cget('text') or "Start Monitoring" in self.start_button.cget('text'):
+            self.start_button.configure(text=get_text("start_button", "開始監測"))
+        elif "停止監測" in self.start_button.cget('text') or "Stop Monitoring" in self.start_button.cget('text'):
+            self.start_button.configure(text=get_text("stop_button", "停止監測"))
 
-        # 更新模式切換按鈕
-        if self.mode_button:
-            current_mode = "photo" if "監測" in self.mode_button.cget('text') else "monitoring"
-            if current_mode == "photo":
-                self.mode_button.configure(text=get_text("switch_to_monitor", "切換到監測模式"))
-            else:
-                self.mode_button.configure(text=get_text("switch_to_photo", "切換到拍照模式"))
+        # 更新模式切換按鈕文字
+        if "切換到拍照模式" in self.mode_button.cget('text') or "Switch to Photo Mode" in self.mode_button.cget('text'):
+            self.mode_button.configure(text=get_text("mode_switch", "切換到拍照模式"))
+        elif "切換到監測模式" in self.mode_button.cget('text') or "Switch to Monitoring Mode" in self.mode_button.cget('text'):
+            self.mode_button.configure(text=get_text("mode_switch_back", "切換到監測模式"))
 
     def _on_camera_selected(self, event):
-        """當選擇攝影機時自動執行測試或更新拍照預覽"""
-        selected_source = self.get_selected_source()
-        if not selected_source:
-            return
+        """
+        相機選擇事件處理
 
-        # 通知選擇變更
-        if 'source_changed' in self.callbacks and self.callbacks['source_changed']:
-            self.callbacks['source_changed'](selected_source)
-        # 向後兼容 - 如果沒有 'source_changed' 回調但有 'test' 回調
-        elif 'test' in self.callbacks and self.callbacks['test']:
-            self.callbacks['test']()
+        Args:
+            event: 事件物件
+        """
+        if 'camera_selected' in self.callbacks:
+            self.callbacks['camera_selected'](self.get_selected_source())
 
     def select_source(self, source):
         """
@@ -175,18 +177,18 @@ class ControlPanel(ttk.Frame):
     # ==========================================================================
 
     def _on_mode_switch(self):
-        """當點擊模式切換按鈕時處理"""
-        if 'mode_switch' in self.callbacks and self.callbacks['mode_switch']:
+        """模式切換按鈕點擊事件"""
+        if 'mode_switch' in self.callbacks:
             self.callbacks['mode_switch']()
 
     def update_mode_button_text(self, is_photo_mode):
         """
-        更新模式按鈕文字
+        更新模式切換按鈕文字
 
         Args:
             is_photo_mode: 是否為拍照模式
         """
-        self.mode_button.configure(
-            text=get_text("switch_to_monitor", "切換到監測模式") if is_photo_mode
-            else get_text("switch_to_photo", "切換到拍照模式")
-        )
+        if is_photo_mode:
+            self.mode_button.configure(text=get_text("mode_switch_back", "切換到監測模式"))
+        else:
+            self.mode_button.configure(text=get_text("mode_switch", "切換到拍照模式"))

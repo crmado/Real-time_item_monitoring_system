@@ -20,6 +20,7 @@ from .components.setting.settings_dialog import SettingsDialog
 from utils.language import get_text
 from views.components.photo_panel import PhotoPanel
 from views.components.analysis_panel import AnalysisPanel
+from utils.ui_style_manager import UIStyleManager
 
 
 class MainWindow:
@@ -54,6 +55,10 @@ class MainWindow:
         self.config_manager = config_manager
         self.root.title(get_text("app_title", "物件監測系統"))
 
+        # 初始化UI樣式管理器
+        theme_name = self.config_manager.get('ui.theme', 'light')
+        self.ui_style_manager = UIStyleManager(root, theme_name)
+
         # 載入設定
         self.load_config()
 
@@ -77,7 +82,8 @@ class MainWindow:
 
     def setup_window(self):
         """設定視窗基本屬性"""
-        self.root.minsize(800, 600)
+        self.root.minsize(1024, 768)  # 增加最小視窗大小，確保所有元素可見
+        self.root.geometry("1200x800")  # 設定預設視窗大小
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
@@ -93,58 +99,130 @@ class MainWindow:
     def create_components(self):
         """創建所有UI組件"""
         # 主框架
-        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame = ttk.Frame(self.root)
         self.main_frame.grid(row=0, column=0, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
+        
+        # 頂部區域（標題和控制面板）
+        self.create_header_area()
+        
+        # 內容區域（視訊/拍照面板和設定/分析面板）
+        self.create_content_area()
+        
+        # 底部區域（日誌和狀態欄）
+        self.create_footer_area()
 
-        # # 頂部面板 (新增)
-        # self.create_top_panel()
-
-        # 控制面板
-        self.control_panel = ControlPanel(self.main_frame)
-
-        # 拍照面板（拍照模式）
-        self.photo_panel = PhotoPanel(self.main_frame)
-
-        # 分析面板（拍照模式）
-        self.analysis_panel = AnalysisPanel(self.main_frame)
-
-        # 預設顯示視訊面板，隱藏拍照面板
-        self.current_mode = "monitoring"  # 'monitoring' or 'photo'
-
-        # 視訊面板
-        self.video_panel = VideoPanel(self.main_frame)
-
-        # 設定面板
-        self.settings_panel = SettingsPanel(self.main_frame, self.config_manager)
-
-        # 日誌區域
-        self.create_log_area()
-
-        # 資訊區域
-        self.create_info_area()
-
-    def create_top_panel(self):
-        """創建頂部面板，包含設定按鈕"""
-        top_frame = ttk.Frame(self.main_frame)
-        top_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=f"{tk.W}{tk.E}")
-
+    def create_header_area(self):
+        """創建頂部區域，包含標題和控制面板"""
+        # 頂部框架
+        self.header_frame = ttk.Frame(self.main_frame, style='Header.TFrame')
+        self.header_frame.grid(row=0, column=0, columnspan=2, sticky=f"{tk.W}{tk.E}")
+        
         # 應用標題
         app_title = ttk.Label(
-            top_frame,
+            self.header_frame,
             text=get_text("app_title", "物件監測系統"),
-            font=('Arial', 12, 'bold')
+            style='Title.TLabel'
         )
-        app_title.pack(side=tk.LEFT, padx=10)
-
+        app_title.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # 控制面板
+        self.control_panel = ControlPanel(self.header_frame)
+        self.control_panel.pack(side=tk.LEFT, padx=20, fill=tk.X, expand=True)
+        
         # 設定按鈕
         self.load_icons()
         self.settings_button = ttk.Button(
-            top_frame,
-            image=self.settings_icon,
+            self.header_frame,
+            image=self.settings_icon if self.settings_icon else None,
+            text="" if self.settings_icon else "⚙",  # 如果沒有圖標，使用文字符號
+            width=3 if not self.settings_icon else None,
             command=self.open_settings_dialog,
             style='Icon.TButton'
         )
-        self.settings_button.pack(side=tk.RIGHT, padx=10)
+        self.settings_button.pack(side=tk.RIGHT, padx=10, pady=5)
+
+    def create_content_area(self):
+        """創建內容區域，包含視訊/拍照面板和設定/分析面板"""
+        # 視訊面板（初始顯示）
+        self.video_panel = VideoPanel(self.main_frame)
+        self.video_panel.grid(row=1, column=0, padx=(10, 5), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
+        self.video_panel.configure(style='Video.TFrame')
+        
+        # 拍照面板（初始隱藏）
+        self.photo_panel = PhotoPanel(self.main_frame)
+        self.photo_panel.grid(row=1, column=0, padx=(10, 5), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
+        self.photo_panel.configure(style='Video.TFrame')
+        self.photo_panel.grid_remove()  # 隱藏拍照面板
+        
+        # 設定面板（初始顯示）
+        self.settings_panel = SettingsPanel(self.main_frame, self.config_manager)
+        self.settings_panel.grid(row=1, column=1, padx=(5, 10), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
+        self.settings_panel.configure(style='Settings.TFrame')
+        
+        # 分析面板（初始隱藏）
+        self.analysis_panel = AnalysisPanel(self.main_frame)
+        self.analysis_panel.grid(row=1, column=1, padx=(5, 10), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
+        self.analysis_panel.configure(style='Settings.TFrame')
+        self.analysis_panel.grid_remove()  # 隱藏分析面板
+
+    def create_footer_area(self):
+        """創建底部區域，包含日誌和狀態欄"""
+        # 底部框架
+        self.footer_frame = ttk.Frame(self.main_frame, style='Footer.TFrame')
+        self.footer_frame.grid(row=2, column=0, columnspan=2, sticky=f"{tk.W}{tk.E}{tk.S}")
+        
+        # 日誌區域
+        self.create_log_area()
+        
+        # 狀態欄
+        self.create_status_bar()
+
+    def create_log_area(self):
+        """創建日誌顯示區域"""
+        log_frame = ttk.Frame(self.footer_frame, style='Log.TFrame')
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # 日誌標題
+        ttk.Label(
+            log_frame, 
+            text=get_text("system_log", "系統日誌："),
+            style='Title.TLabel'
+        ).pack(side=tk.TOP, anchor=tk.W, padx=5, pady=2)
+        
+        # 日誌文本區域
+        self.log_text = scrolledtext.ScrolledText(
+            log_frame,
+            width=70,
+            height=8,
+            wrap=tk.WORD
+        )
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def create_status_bar(self):
+        """創建狀態欄"""
+        status_frame = ttk.Frame(self.footer_frame, style='Footer.TFrame')
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 左側顯示時間
+        time_frame = ttk.Frame(status_frame, style='Footer.TFrame')
+        time_frame.pack(side=tk.LEFT)
+        
+        ttk.Label(
+            time_frame, 
+            text=get_text("current_time", "目前時間："),
+            style='TLabel'
+        ).pack(side=tk.LEFT)
+        
+        self.time_label = ttk.Label(time_frame, text="", style='TLabel')
+        self.time_label.pack(side=tk.LEFT, padx=5)
+        
+        # 右側顯示版本信息
+        version_label = ttk.Label(
+            status_frame, 
+            text="v1.0.0",
+            style='TLabel'
+        )
+        version_label.pack(side=tk.RIGHT, padx=10)
 
     def load_icons(self):
         """載入圖標"""
@@ -175,80 +253,12 @@ class MainWindow:
             logging.error(f"載入圖標時發生錯誤：{str(e)}")
             self.settings_icon = None
 
-    def create_log_area(self):
-        """創建日誌顯示區域"""
-        log_frame = ttk.Frame(self.main_frame)
-        log_frame.grid(row=3, column=0, columnspan=2, pady=5, sticky=f"{tk.W}{tk.E}")
-        ttk.Label(log_frame, text=get_text("system_log", "系統日誌：")).grid(row=0, column=0, sticky=tk.W)
-
-        self.log_text = scrolledtext.ScrolledText(
-            log_frame,
-            width=70,
-            height=8,
-            wrap=tk.WORD
-        )
-        self.log_text.grid(row=1, column=0, pady=5, sticky=f"{tk.W}{tk.E}")
-
-    def create_info_area(self):
-        """創建資訊顯示區域"""
-        info_frame = ttk.Frame(self.main_frame)
-        info_frame.grid(row=3, column=1, padx=10, pady=10, sticky=f"{tk.N}{tk.E}{tk.S}")
-
-        # 左側顯示時間
-        time_frame = ttk.Frame(info_frame)
-        time_frame.pack(side=tk.LEFT, padx=(0, 20))
-
-        ttk.Label(time_frame, text=get_text("current_time", "目前時間：")).grid(row=0, column=0, sticky=tk.W)
-        self.time_label = ttk.Label(time_frame, text="")
-        self.time_label.grid(row=1, column=0, sticky=tk.W)
-
-        # 右側顯示設定圖標
-        self.load_icons()
-        settings_frame = ttk.Frame(info_frame)
-        settings_frame.pack(side=tk.RIGHT)
-
-        self.settings_button = ttk.Button(
-            settings_frame,
-            image=self.settings_icon if self.settings_icon else None,
-            text="" if self.settings_icon else "⚙",  # 如果沒有圖標，使用文字符號
-            width=3 if not self.settings_icon else None,
-            command=self.open_settings_dialog
-        )
-        self.settings_button.pack(padx=5, pady=5)
-
     def setup_layout(self):
         """設置組件布局"""
-        # 調整布局，確保所有元素可見且美觀
-        self.control_panel.grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky=f"{tk.W}{tk.E}")
-
-        # 視訊面板占據主要空間（初始顯示）
-        self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-
-        # 設定面板在視訊面板右側（初始顯示）
-        self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-
-        # 拍照面板（初始隱藏）
-        self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-        self.photo_panel.grid_remove()  # 隱藏拍照面板
-
-        # 分析面板初始化定位（初始隱藏）
-        self.analysis_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-        self.analysis_panel.configure(borderwidth=1, relief="solid")
-
-        # 也可以為其他面板添加邊框線
-        self.video_panel.configure(borderwidth=1, relief="solid")
-        self.settings_panel.configure(borderwidth=1, relief="solid")
-        self.photo_panel.configure(borderwidth=1, relief="solid")
-
-        self.analysis_panel.grid_remove()  # 隱藏分析面板
-
         # 設定行列的權重
-        self.main_frame.grid_rowconfigure(1, weight=1)
+        self.main_frame.grid_rowconfigure(1, weight=1)  # 內容區域可擴展
         self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊/拍照面板佔較多空間
         self.main_frame.grid_columnconfigure(1, weight=1)  # 設定/分析面板佔較少空間
-
-        # 日誌區域跨兩列
-        # 已在 create_log_area 中設置
 
     #==========================================================================
     # 第三部分：事件處理
@@ -275,17 +285,17 @@ class MainWindow:
 
         # 更新主題
         theme = self.config_manager.get('ui.theme', 'light')
+        self.ui_style_manager.set_theme(theme)
 
         if hasattr(self, 'system_controller') and self.system_controller is not None:
             self.system_controller.handle_theme_change(theme)
 
-            # 更新其他設定
+        # 更新其他設定
         self.log_message(get_text("settings_updated", "設定已更新"))
 
     def set_system_controller(self, controller):
         """設定系統控制器引用"""
         self.system_controller = controller
-
 
     def on_settings_applied(self):
         """設定應用回調"""
@@ -298,286 +308,108 @@ class MainWindow:
         self.config_manager.update(settings)
 
         # 記錄日誌
-        self.log_message(get_text("settings_updated", "設定已更新"))
-
-    def on_language_changed(self, language_code):
-        """
-        語言變更處理函數
-
-        Args:
-            language_code: 語言代碼
-        """
-        # 更新視窗標題
-        self.root.title(get_text("app_title", "物件監測系統"))
-
-        # 更新各組件的語言
-        self.update_components_language()
-
-        # 記錄日誌
-        self.log_message(f"語言已變更為：{language_code}")
-
-    def toggle_mode(self):
-        """切換監測/拍照模式"""
-        try:
-            if self.current_mode == "monitoring":
-                # 切換到拍照模式
-                # 1. 移除監測模式的元件
-                self.video_panel.grid_remove()  # 隱藏視訊面板
-                self.settings_panel.grid_remove()  # 隱藏設定面板
-
-                # 2. 顯示拍照模式的元件
-                self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-
-                # 3. 配置拍照模式的分析面板
-                self.analysis_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-
-                self.current_mode = "photo"
-                self.control_panel.update_mode_button_text(True)
-                self.log_message(get_text("switched_to_photo", "已切換到拍照模式"))
-
-            elif self.current_mode == "photo":
-                # 切換到監測模式
-                # 1. 移除拍照模式的元件
-                self.photo_panel.grid_remove()  # 隱藏拍照面板
-                self.analysis_panel.grid_remove()  # 隱藏分析面板
-
-                # 2. 顯示監測模式的元件
-                self.video_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-                self.settings_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-
-                self.current_mode = "monitoring"
-                self.control_panel.update_mode_button_text(False)
-                self.log_message(get_text("switched_to_monitoring", "已切換到監測模式"))
-
-            elif self.current_mode == "analysis":
-                # 從分析結果返回到拍照模式
-                # 1. 移除分析結果模式的元件
-                self.analysis_panel.grid_remove()  # 隱藏分析結果面板
-
-                # 2. 顯示拍照模式的元件
-                self.photo_panel.grid(row=1, column=0, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-                self.analysis_panel.grid(row=1, column=1, padx=(0, 10), pady=10, sticky=f"{tk.W}{tk.E}{tk.N}{tk.S}")
-
-                self.current_mode = "photo"
-                self.log_message(get_text("back_to_photo", "已返回到拍照模式"))
-
-            # 調整主視窗布局權重
-            if self.current_mode == "photo":
-                # 拍照模式：左右區域平均分配空間
-                self.main_frame.grid_columnconfigure(0, weight=1)  # 拍照面板
-                self.main_frame.grid_columnconfigure(1, weight=1)  # 分析面板
-            else:
-                # 監測模式：視訊面板佔較大空間
-                self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊面板
-                self.main_frame.grid_columnconfigure(1, weight=1)  # 設定面板
-
-            # 強制更新界面以立即顯示變更
-            self.main_frame.update_idletasks()
-
-        except Exception as e:
-            self.log_message(f"切換模式時發生錯誤: {str(e)}")
-
-    def show_analysis_results(self, result):
-        """
-        顯示分析結果
-
-        Args:
-            result: 分析結果數據
-        """
-        # 隱藏拍照面板
-        self.photo_panel.grid_remove()
-
-        # 顯示分析結果面板
-        self.analysis_panel.grid()
-
-        # 更新分析結果
-        self.analysis_panel.update_analysis_results(result)
-
-        # 設置當前模式
-        self.current_mode = "analysis"
-
-        # 記錄日誌
-        self.log_message(get_text("analysis_completed", "分析完成"))
+        self.log_message(get_text("settings_applied", "已套用設定"))
 
     #==========================================================================
     # 第四部分：設定與語言管理
     #==========================================================================
-    def update_components_language(self):
-        """更新所有組件的語言"""
-        # 更新控制面板
-        if hasattr(self.control_panel, 'update_language'):
-            self.control_panel.update_language()
+    def on_language_changed(self, language_code):
+        """
+        語言變更回調
 
-        # 更新設定面板
-        if hasattr(self.settings_panel, 'update_language'):
-            self.settings_panel.update_language()
+        Args:
+            language_code: 語言代碼
+        """
+        # 更新所有UI元件的文字
+        self.update_ui_text()
 
-        # 更新日誌區域標籤
-        for widget in self.main_frame.winfo_children():
-            if isinstance(widget, ttk.Frame):
-                for child in widget.winfo_children():
-                    if isinstance(child, ttk.Label):
-                        if "系統日誌" in child.cget('text') or "System Log" in child.cget('text'):
-                            child.configure(text=get_text("system_log", "系統日誌："))
-                        elif "目前時間" in child.cget('text') or "Current Time" in child.cget('text'):
-                            child.configure(text=get_text("current_time", "目前時間："))
+    def update_ui_text(self):
+        """更新所有UI元件的文字"""
+        # 更新視窗標題
+        self.root.title(get_text("app_title", "物件監測系統"))
+
+        # 更新各面板文字
+        # 這裡可以添加更多元件的文字更新
+        pass
 
     #==========================================================================
     # 第五部分：日誌與工具方法
     #==========================================================================
-    def start_time_update(self):
-        """開始更新時間顯示"""
-
-        def update_time():
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.time_label.configure(text=current_time)
-            self.root.after(1000, update_time)
-
-        update_time()
-
     def log_message(self, message):
         """
-        記錄訊息到日誌區域
+        記錄日誌訊息
 
         Args:
-            message: 要記錄的訊息
+            message: 日誌訊息
         """
-        try:
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = f"[{timestamp}] {message}\n"
+        # 獲取當前時間
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{current_time}] {message}\n"
 
-            self.log_text.insert(tk.END, log_entry)
-            self.log_text.see(tk.END)
+        # 在日誌區域顯示
+        self.log_text.insert(tk.END, log_entry)
+        self.log_text.see(tk.END)  # 自動滾動到最新日誌
 
-            logging.info(message)
-        except Exception as e:
-            print(f"記錄訊息時發生錯誤：{str(e)}")
+        # 同時記錄到日誌文件
+        logging.info(message)
 
-    def get_components(self):
+    def start_time_update(self):
+        """啟動時間更新"""
+        self.update_time()
+
+    def update_time(self):
+        """更新時間顯示"""
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.time_label.config(text=current_time)
+        self.root.after(1000, self.update_time)  # 每秒更新一次
+
+    def switch_mode(self, mode):
         """
-        獲取所有UI組件
-
-        Returns:
-            dict: UI組件字典
-        """
-        return {
-            'control_panel': self.control_panel,
-            'video_panel': self.video_panel,
-            'settings_panel': self.settings_panel
-        }
-
-    def get_component(self, component_name):
-        """
-        獲取指定名稱的UI組件
+        切換模式
 
         Args:
-            component_name: 組件名稱
-
-        Returns:
-            組件實例，如果不存在則返回None
+            mode: 模式名稱，'monitoring' 或 'photo'
         """
-        if component_name == 'photo_panel' and hasattr(self, 'photo_panel'):
-            return self.photo_panel
+        if mode == self.current_mode:
+            return
 
-        if component_name in self.get_components():
-            return self.get_components()[component_name]
+        self.current_mode = mode
 
-        return None
+        if mode == "monitoring":
+            # 顯示監測模式UI
+            self.video_panel.grid()
+            self.settings_panel.grid()
+            self.photo_panel.grid_remove()
+            self.analysis_panel.grid_remove()
 
-    def apply_theme(self, theme):
-        """
-        應用主題
-
-        Args:
-            theme:
-        """
-
-        pass
-
-    # ==========================================================================
-    # 第六部分：使用者介面增強
-    # ==========================================================================
-
-    def show_camera_error(self, message):
-        """顯示相機錯誤訊息"""
-        # 在相機預覽區域顯示錯誤訊息
-        if self.current_mode == "photo":
-            photo_panel = self.get_component('photo_panel')
-            if photo_panel:
-                # 設置狀態文字
-                photo_panel.set_status(message)
-
-                # 在預覽區域顯示錯誤圖像
-                error_image = self._create_error_image(message)
-                if error_image is not None:
-                    photo_panel.update_camera_preview(error_image)
-
-        # 記錄錯誤
-        self.log_message(message)
-
-    def _create_error_image(self, message):
-        """創建錯誤提示圖像"""
-        try:
-            # 創建一個黑色背景的圖像
-            img = np.zeros((480, 640, 3), dtype=np.uint8)
-
-            # 添加錯誤文字
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.7
-            thickness = 2
-            color = (255, 0, 0)  # 紅色
-
-            # 分割錯誤訊息以適應畫面
-            lines = []
-            words = message.split()
-            current_line = ""
-
-            for word in words:
-                if len(current_line + word) < 40:  # 一行約 40 個字符
-                    current_line += " " + word if current_line else word
-                else:
-                    lines.append(current_line)
-                    current_line = word
-
-            if current_line:
-                lines.append(current_line)
-
-            # 繪製文字
-            y_pos = 240 - (len(lines) * 30) // 2  # 文字置中
-            for line in lines:
-                text_size = cv2.getTextSize(line, font, font_scale, thickness)[0]
-                x_pos = (img.shape[1] - text_size[0]) // 2  # 文字置中
-
-                cv2.putText(img, line, (x_pos, y_pos), font, font_scale, color, thickness)
-                y_pos += 30
-
-            # 添加一個相機圖標或其他提示圖形
-            icon_size = 50
-            cv2.rectangle(
-                img,
-                (320 - icon_size, 120 - icon_size),
-                (320 + icon_size, 120 + icon_size),
-                (0, 0, 255),
-                2
+            # 更新控制面板按鈕文字
+            self.control_panel.mode_button.config(
+                text=get_text("mode_switch", "切換到拍照模式")
             )
 
-            # 繪製相機形狀
-            cv2.rectangle(
-                img,
-                (320 - 30, 120 - 20),
-                (320 + 30, 120 + 20),
-                (0, 0, 255),
-                2
+            # 記錄日誌
+            self.log_message(get_text("switch_to_monitoring", "已切換到監測模式"))
+
+        elif mode == "photo":
+            # 顯示拍照模式UI
+            self.video_panel.grid_remove()
+            self.settings_panel.grid_remove()
+            self.photo_panel.grid()
+            self.analysis_panel.grid()
+
+            # 更新控制面板按鈕文字
+            self.control_panel.mode_button.config(
+                text=get_text("mode_switch_back", "切換到監測模式")
             )
 
-            # 繪製相機鏡頭
-            cv2.circle(img, (320, 120), 15, (0, 0, 255), 2)
+            # 記錄日誌
+            self.log_message(get_text("switch_to_photo", "已切換到拍照模式"))
 
-            # 添加一個斜線表示錯誤
-            cv2.line(img, (270, 70), (370, 170), (0, 0, 255), 3)
+    def get_current_mode(self):
+        """
+        獲取當前模式
 
-            return img
-
-        except Exception as e:
-            logging.error(f"創建錯誤圖像時發生錯誤: {str(e)}")
-            return None
+        Returns:
+            str: 當前模式名稱
+        """
+        return self.current_mode
