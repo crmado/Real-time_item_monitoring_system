@@ -65,6 +65,9 @@ class MainWindow(tk.Frame):
         # 创建组件
         self.create_widgets()
         
+        # 註冊回調函數
+        self.register_callbacks()
+        
         # 如果提供了系统控制器，则初始化
         if system_controller:
             system_controller.initialize(self)
@@ -169,7 +172,7 @@ class MainWindow(tk.Frame):
         self.photo_panel.grid_remove()  # 初始隐藏
         
         # 创建设置面板
-        self.settings_panel = SettingsPanel(self.content)
+        self.settings_panel = self.create_settings_panel()
         self.settings_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
         
         # 创建分析面板（初始隐藏）
@@ -200,13 +203,33 @@ class MainWindow(tk.Frame):
         # 初始化当前模式
         self.current_mode = "monitoring"  # 默认为监控模式
 
+    def create_settings_panel(self):
+        """創建設定面板"""
+        # 檢查是否有系統控制器
+        config_manager = None
+        if hasattr(self, 'system_controller') and self.system_controller:
+            # 如果有系統控制器，使用其配置管理器或設定
+            if hasattr(self.system_controller, 'config_manager') and self.system_controller.config_manager:
+                config_manager = self.system_controller.config_manager
+        
+        # 創建設定面板，使用content作為父級元件
+        self.settings_panel = SettingsPanel(self.content, config_manager)
+        
+        # 如果有系統控制器，設置回調
+        if hasattr(self, 'system_controller') and self.system_controller:
+            self.settings_panel.set_callback('settings_applied', self.system_controller.handle_apply_settings)
+            
+        return self.settings_panel
+
     #==========================================================================
     # 第三部分：事件處理
     #==========================================================================
     def register_callbacks(self):
         """註冊回調函數"""
-        # 註冊語言變更回調
-        self.settings_panel.set_callback('settings_applied', self.on_settings_applied)
+        # 註冊設定面板的回調函數
+        if hasattr(self, 'settings_panel'):
+            self.settings_panel.set_callback('settings_applied', self.on_settings_applied)
+            logging.info("已註冊設定面板的回調函數")
 
     def open_settings_dialog(self):
         """開啟設定對話框"""
@@ -242,18 +265,24 @@ class MainWindow(tk.Frame):
         """
         self.system_controller = controller
 
-    def on_settings_applied(self):
-        """設定應用回調"""
-        # 從設定面板獲取最新設定
-        settings = self.settings_panel.get_settings()
+    def on_settings_applied(self, settings):
+        """
+        設定應用回調
+        
+        Args:
+            settings: 設定值字典
+        """
+        # 如果沒有設定值，直接返回
         if not settings:
+            logging.error("無法套用設定：設定值為空")
             return
 
-        # 更新配置
-        self.config_manager.update(settings)
-
-        # 記錄日誌
-        self.log_message(get_text("settings_applied", "已套用設定"))
+        # 如果有系統控制器，將設定傳遞給它
+        if self.system_controller and hasattr(self.system_controller, 'handle_apply_settings'):
+            self.system_controller.handle_apply_settings(settings)
+            logging.info(f"已將設定傳遞給系統控制器: {settings}")
+        else:
+            logging.warning("無法套用設定：系統控制器不存在或沒有 handle_apply_settings 方法")
 
     #==========================================================================
     # 第四部分：設定與語言管理
@@ -333,8 +362,9 @@ class MainWindow(tk.Frame):
         log_entry = f"[{current_time}] {message}\n"
 
         # 在日誌區域顯示
-        self.log_text.insert(tk.END, log_entry)
-        self.log_text.see(tk.END)  # 自動滾動到最新日誌
+        if hasattr(self, 'log_text'):
+            self.log_text.insert(tk.END, log_entry)
+            self.log_text.see(tk.END)  # 自動滾動到最新日誌
 
         # 同時記錄到日誌文件
         logging.info(message)
@@ -346,8 +376,9 @@ class MainWindow(tk.Frame):
     def update_time(self):
         """更新時間顯示"""
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.time_label.config(text=current_time)
-        self.root.after(1000, self.update_time)  # 每秒更新一次
+        if hasattr(self, 'time_label'):
+            self.time_label.config(text=current_time)
+            self.root.after(1000, self.update_time)  # 每秒更新一次
 
     def switch_mode(self, mode):
         """

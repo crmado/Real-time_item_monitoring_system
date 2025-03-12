@@ -40,22 +40,94 @@ class SettingsPanel(ttk.Frame):
             'settings_applied': None
         }
 
-        # 默認值
+        # 默認值 - 這些只是初始預設值，實際會從配置中讀取
         self.target_count = 1000
         self.buffer_point = 950
 
-        # 載入配置
-        if self.config_manager:
-            self.load_config()
-
         # 創建UI元件
         self.create_widgets()
+        
+        # 載入配置 - 移到UI元件創建後，確保可以更新UI
+        if self.config_manager:
+            self.load_config()
+        else:
+            # 如果沒有配置管理器，嘗試從系統控制器獲取設定
+            self.load_from_system_controller()
 
     def load_config(self):
         """載入配置"""
         if self.config_manager:
-            self.target_count = self.config_manager.get('detection.target_count', 1000)
-            self.buffer_point = self.config_manager.get('detection.buffer_point', 950)
+            # 嘗試從配置管理器獲取設定值
+            # 先檢查是否有帶前綴的鍵名
+            if self.config_manager.has('detection.target_count'):
+                self.target_count = self.config_manager.get('detection.target_count', 1000)
+            # 如果沒有，嘗試不帶前綴的鍵名
+            elif self.config_manager.has('target_count'):
+                self.target_count = self.config_manager.get('target_count', 1000)
+            
+            # 同樣處理緩衝點
+            if self.config_manager.has('detection.buffer_point'):
+                self.buffer_point = self.config_manager.get('detection.buffer_point', 950)
+            elif self.config_manager.has('buffer_point'):
+                self.buffer_point = self.config_manager.get('buffer_point', 950)
+                
+            logging.info(f"從配置管理器載入設定：目標數量={self.target_count}，緩衝點={self.buffer_point}")
+            
+            # 更新UI
+            self.update_ui()
+
+    def update_ui(self):
+        """更新UI元件的值以反映當前設定"""
+        try:
+            # 更新預計數量輸入框
+            if hasattr(self, 'target_entry'):
+                current_value = self.target_entry.get()
+                if current_value != str(self.target_count):
+                    self.target_entry.delete(0, tk.END)
+                    self.target_entry.insert(0, str(self.target_count))
+                    # 強制更新輸入框
+                    self.target_entry.update()
+                
+            # 更新緩衝點輸入框
+            if hasattr(self, 'buffer_entry'):
+                current_value = self.buffer_entry.get()
+                if current_value != str(self.buffer_point):
+                    self.buffer_entry.delete(0, tk.END)
+                    self.buffer_entry.insert(0, str(self.buffer_point))
+                    # 強制更新輸入框
+                    self.buffer_entry.update()
+                
+            # 強制更新整個面板
+            self.update()
+            
+            logging.info(f"已更新設定面板UI：目標數量={self.target_count}，緩衝點={self.buffer_point}")
+            return True
+        except Exception as e:
+            logging.error(f"更新設定面板UI時出錯：{str(e)}")
+            return False
+
+    def load_from_system_controller(self):
+        """從系統控制器載入設定"""
+        try:
+            # 嘗試獲取主視窗的系統控制器
+            if hasattr(self.parent, 'system_controller'):
+                controller = self.parent.system_controller
+                
+                # 從系統控制器的設定中獲取值
+                if hasattr(controller, 'settings'):
+                    self.target_count = controller.settings.get('target_count', 1000)
+                    self.buffer_point = controller.settings.get('buffer_point', 950)
+                    logging.info(f"從系統控制器載入設定：目標數量={self.target_count}，緩衝點={self.buffer_point}")
+                    
+                    # 更新UI
+                    self.update_ui()
+                else:
+                    logging.warning("系統控制器沒有設定屬性")
+            else:
+                logging.warning("無法從主視窗獲取系統控制器")
+        except Exception as e:
+            logging.error(f"從系統控制器載入設定時出錯：{str(e)}")
+            # 使用默認值
 
     #==========================================================================
     # 第二部分：UI元件創建
@@ -130,7 +202,25 @@ class SettingsPanel(ttk.Frame):
     def _on_apply_settings(self):
         """當點擊套用設定按鈕時處理"""
         if self.callbacks['settings_applied']:
-            var = self.callbacks['settings_applied']
+            # 獲取設定值
+            settings = self.get_settings()
+            if settings:
+                # 調用回調函數，傳遞設定值
+                result = self.callbacks['settings_applied'](settings)
+                
+                if result:
+                    # 更新自身的設定值
+                    self.target_count = settings['target_count']
+                    self.buffer_point = settings['buffer_point']
+                    
+                    # 重新創建UI元件，確保完全重新繪製
+                    self.recreate_ui()
+                    
+                    logging.info(f"已套用設定並更新UI：{settings}")
+                else:
+                    logging.error("套用設定失敗")
+            else:
+                logging.error("無法套用設定：設定值無效")
 
     #==========================================================================
     # 第四部分：數據管理
@@ -225,3 +315,23 @@ class SettingsPanel(ttk.Frame):
         # 更新套用設定按鈕
         if hasattr(self, 'apply_button'):
             self.apply_button.configure(text=get_text("apply_settings", "套用設定"))
+
+    def recreate_ui(self):
+        """重新創建UI元件，確保完全重新繪製"""
+        # 保存回調函數
+        saved_callbacks = self.callbacks.copy()
+        
+        # 移除所有現有的子元件
+        for widget in self.winfo_children():
+            widget.destroy()
+            
+        # 重新創建UI元件
+        self.create_widgets()
+        
+        # 恢復回調函數
+        self.callbacks = saved_callbacks
+        
+        # 強制更新
+        self.update()
+        
+        logging.info("已重新創建設定面板UI元件")

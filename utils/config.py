@@ -458,3 +458,28 @@ class Config:
             logging.info(f"配置文件已存在：{config_file}")
 
         return config_file
+
+    def has(self, key_path):
+        """
+        檢查配置中是否存在指定的鍵
+
+        Args:
+            key_path: 鍵路徑，例如 'system.language'
+
+        Returns:
+            bool: 如果鍵存在則返回 True，否則返回 False
+        """
+        try:
+            # 分割鍵路徑
+            parts = key_path.split('.')
+            
+            # 從配置中獲取值
+            current = self.config
+            for part in parts:
+                if part not in current:
+                    return False
+                current = current[part]
+                
+            return True
+        except Exception:
+            return False

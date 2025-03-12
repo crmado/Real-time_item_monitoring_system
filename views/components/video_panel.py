@@ -9,6 +9,8 @@ from PIL import Image, ImageTk
 import cv2
 import logging
 
+from utils.language import get_text
+
 
 class VideoPanel(ttk.Frame):
     """視訊顯示面板類別"""
@@ -104,7 +106,6 @@ class VideoPanel(ttk.Frame):
         try:
             if frame is None:
                 logging.warning("更新圖像時收到空幀")
-                print("更新圖像時收到空幀")
                 return
                 
             # 保存最後一幀，用於窗口大小變化時重新顯示
@@ -112,13 +113,13 @@ class VideoPanel(ttk.Frame):
             
             # 轉換 OpenCV 的 BGR 格式為 RGB 格式
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            print(f"已轉換 BGR 到 RGB，幀尺寸: {rgb_frame.shape}")
+            logging.debug(f"已轉換 BGR 到 RGB，幀尺寸: {rgb_frame.shape}")
 
             # 調整影像大小，保持比例
             frame_height, frame_width = frame.shape[:2]
             aspect_ratio = frame_width / frame_height
-            print(f"原始幀尺寸: {frame_width}x{frame_height}, 比例: {aspect_ratio:.2f}")
-            print(f"顯示區域尺寸: {self.display_width}x{self.display_height}")
+            logging.debug(f"原始幀尺寸: {frame_width}x{frame_height}, 比例: {aspect_ratio:.2f}")
+            logging.debug(f"顯示區域尺寸: {self.display_width}x{self.display_height}")
 
             if self.display_width / self.display_height > aspect_ratio:
                 new_height = self.display_height
@@ -127,38 +128,37 @@ class VideoPanel(ttk.Frame):
                 new_width = self.display_width
                 new_height = int(self.display_width / aspect_ratio)
                 
-            print(f"調整後的尺寸: {new_width}x{new_height}")
+            logging.debug(f"調整後的尺寸: {new_width}x{new_height}")
 
             # 調整影像大小
             img = Image.fromarray(rgb_frame)
             img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            print(f"已調整圖像大小為: {new_width}x{new_height}")
+            logging.debug(f"已調整圖像大小為: {new_width}x{new_height}")
 
             # 轉換為 Tkinter 可用的格式
             img_tk = ImageTk.PhotoImage(image=img)
-            print("已轉換為 Tkinter 格式")
+            logging.debug("已轉換為 Tkinter 格式")
 
             # 更新顯示
             self.image_label.configure(image=img_tk)
             self.image_label.image = img_tk  # 保持引用，防止被垃圾回收
-            print("已更新圖像標籤")
+            logging.debug("已更新圖像標籤")
             
             # 確保標籤可見
             self.image_label.pack(fill=tk.BOTH, expand=True)
-            print("已確保圖像標籤可見")
+            logging.debug("已確保圖像標籤可見")
             
             # 更新顯示大小
             self.display_width = new_width
             self.display_height = new_height
-            print(f"已更新顯示大小為: {self.display_width}x{self.display_height}")
+            logging.debug(f"已更新顯示大小為: {self.display_width}x{self.display_height}")
             
             # 強制更新 Tkinter
             self.update_idletasks()
-            print("已強制更新 Tkinter 界面")
+            logging.debug("已強制更新 Tkinter 界面")
 
         except Exception as e:
             logging.error(f"更新圖像顯示時發生錯誤：{str(e)}")
-            print(f"更新圖像顯示時發生錯誤：{str(e)}")
             import traceback
             traceback.print_exc()
 

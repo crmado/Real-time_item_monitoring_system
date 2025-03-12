@@ -5,6 +5,8 @@
 
 import logging
 import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from models.image_processor import ImageProcessor
 
 
@@ -73,6 +75,66 @@ class DetectionController:
             self.roi_y = 240  # 設置一個安全的默認值
             self.roi_needs_update = True
             
+    def put_chinese_text(self, img, text, position, font_size=30, color=(0, 255, 0)):
+        """
+        在圖像上添加中文文字
+        
+        Args:
+            img: OpenCV 圖像
+            text: 要添加的文字
+            position: 文字位置 (x, y)
+            font_size: 字體大小
+            color: 文字顏色 (B, G, R)
+            
+        Returns:
+            添加文字後的圖像
+        """
+        try:
+            # 將 OpenCV 圖像轉換為 PIL 圖像
+            img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            
+            # 創建繪圖對象
+            draw = ImageDraw.Draw(img_pil)
+            
+            # 嘗試加載字體
+            try:
+                # 嘗試加載系統字體
+                font_paths = [
+                    "/System/Library/Fonts/PingFang.ttc",  # macOS
+                    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",  # Linux
+                    "C:/Windows/Fonts/msyh.ttc",  # Windows
+                    "fonts/NotoSansCJK-Regular.ttc"  # 自帶字體
+                ]
+                
+                font = None
+                for path in font_paths:
+                    try:
+                        font = ImageFont.truetype(path, font_size)
+                        break
+                    except:
+                        continue
+                        
+                if font is None:
+                    # 如果無法加載任何字體，使用默認字體
+                    font = ImageFont.load_default()
+                    logging.warning("無法加載中文字體，使用默認字體")
+            except:
+                # 如果加載字體失敗，使用默認字體
+                font = ImageFont.load_default()
+                logging.warning("加載字體失敗，使用默認字體")
+            
+            # 繪製文字
+            draw.text(position, text, font=font, fill=(color[2], color[1], color[0]))  # PIL 使用 RGB 順序
+            
+            # 將 PIL 圖像轉回 OpenCV 圖像
+            return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            
+        except Exception as e:
+            logging.error(f"添加中文文字時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return img
+            
     def start_detection(self):
         """啟動物體檢測"""
         logging.info("啟動物體檢測")
@@ -129,28 +191,24 @@ class DetectionController:
                 line_color = (0, 255, 0) if self.is_detecting else (0, 0, 255)  # 綠色表示啟用，紅色表示未啟用
                 cv2.line(result_frame, (0, self.roi_y), (width, self.roi_y), line_color, 2)
                 
-                # 在檢測線右側添加標籤
+                # 在檢測線右側添加中文標籤
                 status_text = "啟用" if self.is_detecting else "未啟用"
-                cv2.putText(
+                result_frame = self.put_chinese_text(
                     result_frame,
                     f"檢測線 ({status_text})",
-                    (width - 200, self.roi_y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    line_color,
-                    2
+                    (width - 200, self.roi_y - 25),
+                    font_size=20,
+                    color=line_color
                 )
-                    
+                
                 # 如果在測試模式，顯示提示
                 if self.is_testing:
-                    cv2.putText(
+                    result_frame = self.put_chinese_text(
                         result_frame,
                         "測試模式",
-                        (width - 150, 120),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 165, 255),
-                        2
+                        (width - 150, 30),
+                        font_size=24,
+                        color=(0, 165, 255)
                     )
                     
             return result_frame
