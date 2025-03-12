@@ -17,7 +17,6 @@ from models.camera_manager import CameraManager
 from controllers.system_controller import SystemController
 from views.main_window import MainWindow
 from utils.ui_style_manager import UIStyleManager
-from utils.ui_theme import UITheme
 from utils.language import set_language, get_text
 
 # 配置日志

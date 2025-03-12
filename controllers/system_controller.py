@@ -12,7 +12,6 @@ import tkinter as tk
 import json
 
 from utils.language import get_text, change_language
-from utils.theme_manager import ThemeManager
 from models.camera_manager import CameraManager
 from controllers.detection_controller import DetectionController
 from utils.ui_style_manager import UIStyleManager
@@ -36,7 +35,6 @@ class SystemController:
         self.camera_manager = CameraManager()
         
         # 初始化检测控制器
-        from controllers.detection_controller import DetectionController
         self.detection_controller = DetectionController(self.camera_manager)
         
         # 状态标志
