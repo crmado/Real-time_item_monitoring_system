@@ -110,25 +110,38 @@ class SettingsDialog(tk.Toplevel):
         lang_frame.pack(fill=tk.X, padx=10, pady=10, anchor=tk.W)
 
         # 語言選擇下拉選單
-        self.language_var = tk.StringVar()
-        self.language_combo = ttk.Combobox(
-            lang_frame,
-            width=20,
-            textvariable=self.language_var,
-            state="readonly"
-        )
-        self.language_combo.pack(padx=10, pady=10)
+        self.language_var = tk.StringVar(value="繁體中文")  # 默认值
+        
+        try:
+            # 獲取可用語言
+            languages = get_available_languages()
+            if not languages:
+                languages = ['zh_TW']
+                
+            language_display = [f"{get_language_name(lang)}" for lang in languages]
+            
+            self.language_combo = ttk.Combobox(
+                lang_frame,
+                width=20,
+                textvariable=self.language_var,
+                values=language_display,
+                state="readonly"
+            )
+            self.language_combo.pack(padx=10, pady=10)
 
-        # 獲取可用語言
-        languages = get_available_languages()
-        language_display = [f"{get_language_name(lang)}" for lang in languages]
-        self.language_combo['values'] = language_display
-
-        # 設定當前語言
-        current_language = self.config_manager.get('system.language', 'zh_TW')
-        if current_language in languages:
-            default_index = languages.index(current_language)
-            self.language_combo.current(default_index)
+            # 設定當前語言
+            current_language = self.config_manager.get('system.language', 'zh_TW')
+            if current_language in languages:
+                default_index = languages.index(current_language)
+                self.language_combo.current(default_index)
+            else:
+                # 如果当前语言不在列表中，默认选择第一个
+                self.language_combo.current(0)
+                
+        except Exception as e:
+            logging.error(f"初始化语言下拉框时出错: {str(e)}")
+            # 创建一个简单的标签代替下拉框
+            ttk.Label(lang_frame, text="繁體中文 (默认)").pack(padx=10, pady=10)
 
         # 自動檢查更新
         self.check_update_var = tk.BooleanVar(value=self.config_manager.get('system.check_updates', True))
@@ -291,35 +304,109 @@ class SettingsDialog(tk.Toplevel):
         """獲取所有設定值"""
         try:
             # 獲取語言設定
-            selected_index = self.language_combo.current()
-            languages = get_available_languages()
-            language_code = languages[selected_index] if selected_index >= 0 else 'zh_TW'
+            try:
+                if hasattr(self, 'language_combo') and self.language_combo.winfo_exists():
+                    selected_index = self.language_combo.current()
+                    languages = get_available_languages()
+                    language_code = languages[selected_index] if selected_index >= 0 and selected_index < len(languages) else 'zh_TW'
+                else:
+                    language_code = 'zh_TW'  # 默認使用繁體中文
+            except Exception as e:
+                logging.warning(f"獲取語言設置時出錯: {str(e)}")
+                language_code = 'zh_TW'  # 默認使用繁體中文
 
             # 獲取檢測設定
-            target_count = int(self.target_entry.get())
-            buffer_point = int(self.buffer_entry.get())
-            roi_position = int(self.roi_entry.get()) / 100.0  # 從百分比轉為小數
-            min_area = int(self.min_area_entry.get())
-            max_area = int(self.max_area_entry.get())
+            try:
+                # 檢查 UI 元素是否存在
+                if hasattr(self, 'target_entry') and self.target_entry.winfo_exists():
+                    target_count = int(self.target_entry.get())
+                else:
+                    target_count = 1000  # 默認值
+                    
+                if hasattr(self, 'buffer_entry') and self.buffer_entry.winfo_exists():
+                    buffer_point = int(self.buffer_entry.get())
+                else:
+                    buffer_point = 950  # 默認值
+                    
+                if hasattr(self, 'roi_entry') and self.roi_entry.winfo_exists():
+                    roi_position = int(self.roi_entry.get()) / 100.0  # 從百分比轉為小數
+                else:
+                    roi_position = 0.5  # 默認值
+                    
+                if hasattr(self, 'min_area_entry') and self.min_area_entry.winfo_exists():
+                    min_area = int(self.min_area_entry.get())
+                else:
+                    min_area = 10  # 默認值
+                    
+                if hasattr(self, 'max_area_entry') and self.max_area_entry.winfo_exists():
+                    max_area = int(self.max_area_entry.get())
+                else:
+                    max_area = 150  # 默認值
+            except ValueError as e:
+                logging.error(f"獲取檢測設置時出錯: {str(e)}")
+                # 使用默認值
+                target_count = 1000
+                buffer_point = 950
+                roi_position = 0.5
+                min_area = 10
+                max_area = 150
 
             # 驗證設定
             if buffer_point >= target_count:
-                raise ValueError(get_text("error_buffer_target", "緩衝點必須小於預計數量"))
+                buffer_point = target_count - 1  # 自動修正
+                logging.warning("緩衝點大於或等於預計數量，已自動修正")
 
             if min_area >= max_area:
-                raise ValueError(get_text("error_min_max_area", "最小面積必須小於最大面積"))
+                min_area = max_area - 1  # 自動修正
+                logging.warning("最小面積大於或等於最大面積，已自動修正")
 
             if not (0 <= roi_position <= 1):
-                raise ValueError(get_text("error_roi_position", "ROI 位置必須在 0% 到 100% 之間"))
+                roi_position = 0.5  # 自動修正
+                logging.warning("ROI 位置超出範圍，已自動修正為 50%")
+
+            # 獲取其他設定
+            try:
+                if hasattr(self, 'check_update_var'):
+                    check_updates = self.check_update_var.get()
+                else:
+                    check_updates = True
+                    
+                if hasattr(self, 'backup_config_var'):
+                    backup_config = self.backup_config_var.get()
+                else:
+                    backup_config = True
+                    
+                if hasattr(self, 'theme_var'):
+                    theme = self.theme_var.get()
+                else:
+                    theme = 'light'
+                    
+                if hasattr(self, 'font_size_var'):
+                    font_size = self.font_size_var.get()
+                else:
+                    font_size = 'medium'
+                    
+                if hasattr(self, 'show_performance_var'):
+                    show_performance = self.show_performance_var.get()
+                else:
+                    show_performance = True
+            except Exception as e:
+                logging.warning(f"獲取其他設置時出錯: {str(e)}")
+                # 使用默認值
+                check_updates = True
+                backup_config = True
+                theme = 'light'
+                font_size = 'medium'
+                show_performance = True
 
             # 返回設定字典
             return {
                 'system.language': language_code,
-                'system.check_updates': self.check_update_var.get(),
-                'system.backup_config': self.backup_config_var.get(),
-                'ui.theme': self.theme_var.get(),
-                'ui.font_size': self.font_size_var.get(),
-                'ui.show_performance': self.show_performance_var.get(),
+                'system.check_updates': check_updates,
+                'system.backup_config': backup_config,
+                'ui.theme': theme,
+                'ui.font_size': font_size,
+                'ui.show_performance': show_performance,
                 'detection.target_count': target_count,
                 'detection.buffer_point': buffer_point,
                 'detection.roi_default_position': roi_position,
@@ -327,11 +414,19 @@ class SettingsDialog(tk.Toplevel):
                 'detection.max_object_area': max_area
             }
 
-        except ValueError as e:
-            logging.error(str(e))
-            from tkinter import messagebox
-            messagebox.showerror(get_text("settings_error", "設定錯誤"), str(e))
-            return None
         except Exception as e:
             logging.error(f"獲取設定值時發生錯誤：{str(e)}")
-            return None
+            # 返回默認設定
+            return {
+                'system.language': 'zh_TW',
+                'system.check_updates': True,
+                'system.backup_config': True,
+                'ui.theme': 'light',
+                'ui.font_size': 'medium',
+                'ui.show_performance': True,
+                'detection.target_count': 1000,
+                'detection.buffer_point': 950,
+                'detection.roi_default_position': 0.5,
+                'detection.min_object_area': 10,
+                'detection.max_object_area': 150
+            }

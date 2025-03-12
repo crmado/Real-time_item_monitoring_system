@@ -34,7 +34,21 @@ FALLBACK_RESOURCES = {
     'test_button': '測試鏡頭',
     'stop_test': '停止測試',
     'start_button': '開始監測',
-    'stop_button': '停止監測'
+    'stop_button': '停止監測',
+    'start_monitoring': '開始監測',
+    'stop_monitoring': '停止監測',
+    'control_panel': '控制面板',
+    'mode_selection': '模式選擇',
+    'monitoring_mode': '監控模式',
+    'photo_mode': '拍照模式',
+    'actions': '操作',
+    'settings': '設定',
+    'status': '狀態',
+    'status_ready': '就緒',
+    'status_running': '正在運行',
+    'status_stopped': '已停止',
+    'status_monitoring_mode': '監控模式',
+    'status_photo_mode': '拍照模式'
 }
 
 
@@ -310,6 +324,19 @@ def change_language(language_code):
         bool: 是否成功切換
     """
     return language_manager.change_language(language_code)
+
+
+def set_language(language_code):
+    """
+    设置当前语言（change_language的别名）
+    
+    Args:
+        language_code: 语言代码
+        
+    Returns:
+        bool: 是否成功设置
+    """
+    return change_language(language_code)
 
 
 def get_available_languages():

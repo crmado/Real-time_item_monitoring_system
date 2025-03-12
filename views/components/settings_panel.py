@@ -24,7 +24,7 @@ class SettingsPanel(ttk.Frame):
     #==========================================================================
     # 第一部分：基本屬性和初始化
     #==========================================================================
-    def __init__(self, parent, config_manager, **kwargs):
+    def __init__(self, parent, config_manager=None, **kwargs):
         """
         初始化設定面板
 
@@ -40,16 +40,22 @@ class SettingsPanel(ttk.Frame):
             'settings_applied': None
         }
 
+        # 默認值
+        self.target_count = 1000
+        self.buffer_point = 950
+
         # 載入配置
-        self.load_config()
+        if self.config_manager:
+            self.load_config()
 
         # 創建UI元件
         self.create_widgets()
 
     def load_config(self):
         """載入配置"""
-        self.target_count = self.config_manager.get('detection.target_count', 1000)
-        self.buffer_point = self.config_manager.get('detection.buffer_point', 950)
+        if self.config_manager:
+            self.target_count = self.config_manager.get('detection.target_count', 1000)
+            self.buffer_point = self.config_manager.get('detection.buffer_point', 950)
 
     #==========================================================================
     # 第二部分：UI元件創建
@@ -197,3 +203,25 @@ class SettingsPanel(ttk.Frame):
 
         # 更新按鈕文字
         self.apply_settings_button.configure(text=get_text("apply_settings", "套用設定"))
+
+    def update_ui_text(self):
+        """更新設定面板中的所有文字"""
+        # 更新標題
+        if hasattr(self, 'title_label'):
+            self.title_label.configure(text=get_text("settings", "設定"))
+            
+        # 更新當前計數標籤
+        if hasattr(self, 'current_count_label'):
+            self.current_count_label.configure(text=get_text("current_count", "目前數量："))
+            
+        # 更新預計數量標籤
+        if hasattr(self, 'target_count_label'):
+            self.target_count_label.configure(text=get_text("target_count", "預計數量："))
+            
+        # 更新緩衝點標籤
+        if hasattr(self, 'buffer_point_label'):
+            self.buffer_point_label.configure(text=get_text("buffer_point", "緩衝點："))
+            
+        # 更新套用設定按鈕
+        if hasattr(self, 'apply_button'):
+            self.apply_button.configure(text=get_text("apply_settings", "套用設定"))

@@ -1,0 +1,13 @@
+{
+    "language": "zh_TW",
+    "check_updates": true,
+    "backup_config": true,
+    "theme": "light",
+    "font_size": "large",
+    "show_performance": true,
+    "target_count": 1000,
+    "buffer_point": 950,
+    "roi_default_position": 0.5,
+    "min_object_area": 10,
+    "max_object_area": 150
+}

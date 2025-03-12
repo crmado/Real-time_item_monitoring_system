@@ -21,64 +21,68 @@ from utils.language import get_text
 from views.components.photo_panel import PhotoPanel
 from views.components.analysis_panel import AnalysisPanel
 from utils.ui_style_manager import UIStyleManager
+from utils.theme_manager import ThemeManager
 
+# 版本号
+VERSION = "1.0.0"
 
-class MainWindow:
+class MainWindow(tk.Frame):
     """
-    /// 主視窗類別
-    /// 功能結構：
-    /// 第一部分：基本屬性和初始化
-    /// 第二部分：UI元件創建
-    /// 第三部分：事件處理
-    /// 第四部分：設定與語言管理
-    /// 第五部分：日誌與工具方法
+    主窗口类
+    整合所有UI组件
     """
 
     #==========================================================================
     # 第一部分：基本屬性和初始化
     #==========================================================================
-    def __init__(self, root, config_manager):
+    def __init__(self, root, system_controller=None):
         """
-        初始化主視窗
-
+        初始化主窗口
+        
         Args:
-            root: Tkinter root 物件
-            config_manager: 配置管理器實例
+            root: Tkinter 根窗口
+            system_controller: 系统控制器
         """
-        self.settings_panel = None
-        self.video_panel = None
-        self.photo_panel = None
-        self.control_panel = None
-        self.main_frame = None
-        self.analysis_panel = None
+        super().__init__(root)
         self.root = root
-        self.config_manager = config_manager
-        self.root.title(get_text("app_title", "物件監測系統"))
+        self.system_controller = system_controller
+        
+        # 设置窗口属性
+        self.root.title(get_text("app_title", "实时物品监测系统"))
+        self.root.geometry("1280x720")
+        self.root.minsize(800, 600)
+        
+        # 初始化主题管理器
+        self.theme_manager = ThemeManager(root)
+        
+        # 配置根窗口的行列权重
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+        
+        # 将自身放置在根窗口中
+        self.pack(fill=tk.BOTH, expand=True)
+        
+        # 创建组件
+        self.create_widgets()
+        
+        # 如果提供了系统控制器，则初始化
+        if system_controller:
+            system_controller.initialize(self)
 
-        # 初始化UI樣式管理器
-        theme_name = self.config_manager.get('ui.theme', 'light')
-        self.ui_style_manager = UIStyleManager(root, theme_name)
+    def get_components(self):
+        """
+        獲取所有UI組件
 
-        # 載入設定
-        self.load_config()
-
-        # 當前模式（監測模式或拍照模式）
-        self.current_mode = "monitoring"    # 可選值: "monitoring" 或 "photo"
-
-        # 設定視窗基本屬性
-        self.setup_window()
-
-        # 創建UI元件
-        self.create_components()
-
-        # 設置布局
-        self.setup_layout()
-
-        # 註冊回調函數
-        self.register_callbacks()
-
-        # 啟動時間更新
-        self.start_time_update()
+        Returns:
+            dict: 包含所有UI組件的字典
+        """
+        return {
+            'control_panel': self.control_panel,
+            'video_panel': self.video_panel,
+            'photo_panel': self.photo_panel,
+            'settings_panel': self.settings_panel,
+            'analysis_panel': self.analysis_panel
+        }
 
     def setup_window(self):
         """設定視窗基本屬性"""
@@ -96,169 +100,105 @@ class MainWindow:
     #==========================================================================
     # 第二部分：UI元件創建
     #==========================================================================
-    def create_components(self):
-        """創建所有UI組件"""
-        # 主框架
-        self.main_frame = ttk.Frame(self.root)
-        self.main_frame.grid(row=0, column=0, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
-        
-        # 頂部區域（標題和控制面板）
-        self.create_header_area()
-        
-        # 內容區域（視訊/拍照面板和設定/分析面板）
-        self.create_content_area()
-        
-        # 底部區域（日誌和狀態欄）
-        self.create_footer_area()
+    def create_widgets(self):
+        """创建主窗口组件"""
+        # 创建主框架
+        self.main_frame = ttk.Frame(self, style='Main.TFrame')
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-    def create_header_area(self):
-        """創建頂部區域，包含標題和控制面板"""
-        # 頂部框架
-        self.header_frame = ttk.Frame(self.main_frame, style='Header.TFrame')
-        self.header_frame.grid(row=0, column=0, columnspan=2, sticky=f"{tk.W}{tk.E}")
-        
-        # 應用標題
-        app_title = ttk.Label(
-            self.header_frame,
-            text=get_text("app_title", "物件監測系統"),
-            style='Title.TLabel'
-        )
-        app_title.pack(side=tk.LEFT, padx=10, pady=5)
-        
-        # 控制面板
-        self.control_panel = ControlPanel(self.header_frame)
-        self.control_panel.pack(side=tk.LEFT, padx=20, fill=tk.X, expand=True)
-        
-        # 設定按鈕
-        self.load_icons()
-        self.settings_button = ttk.Button(
-            self.header_frame,
-            image=self.settings_icon if self.settings_icon else None,
-            text="" if self.settings_icon else "⚙",  # 如果沒有圖標，使用文字符號
-            width=3 if not self.settings_icon else None,
-            command=self.open_settings_dialog,
-            style='Icon.TButton'
-        )
-        self.settings_button.pack(side=tk.RIGHT, padx=10, pady=5)
+        # 创建顶部标题栏
+        self.header = ttk.Frame(self.main_frame, style='Header.TFrame')
+        self.header.pack(fill=tk.X, padx=0, pady=0)
 
-    def create_content_area(self):
-        """創建內容區域，包含視訊/拍照面板和設定/分析面板"""
-        # 視訊面板（初始顯示）
-        self.video_panel = VideoPanel(self.main_frame)
-        self.video_panel.grid(row=1, column=0, padx=(10, 5), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
-        self.video_panel.configure(style='Video.TFrame')
-        
-        # 拍照面板（初始隱藏）
-        self.photo_panel = PhotoPanel(self.main_frame)
-        self.photo_panel.grid(row=1, column=0, padx=(10, 5), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
-        self.photo_panel.configure(style='Video.TFrame')
-        self.photo_panel.grid_remove()  # 隱藏拍照面板
-        
-        # 設定面板（初始顯示）
-        self.settings_panel = SettingsPanel(self.main_frame, self.config_manager)
-        self.settings_panel.grid(row=1, column=1, padx=(5, 10), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
-        self.settings_panel.configure(style='Settings.TFrame')
-        
-        # 分析面板（初始隱藏）
-        self.analysis_panel = AnalysisPanel(self.main_frame)
-        self.analysis_panel.grid(row=1, column=1, padx=(5, 10), pady=10, sticky=f"{tk.N}{tk.S}{tk.E}{tk.W}")
-        self.analysis_panel.configure(style='Settings.TFrame')
-        self.analysis_panel.grid_remove()  # 隱藏分析面板
+        # 标题和logo
+        logo_frame = ttk.Frame(self.header, style='Header.TFrame')
+        logo_frame.pack(side=tk.LEFT, padx=10, pady=5)
 
-    def create_footer_area(self):
-        """創建底部區域，包含日誌和狀態欄"""
-        # 底部框架
-        self.footer_frame = ttk.Frame(self.main_frame, style='Footer.TFrame')
-        self.footer_frame.grid(row=2, column=0, columnspan=2, sticky=f"{tk.W}{tk.E}{tk.S}")
-        
-        # 日誌區域
-        self.create_log_area()
-        
-        # 狀態欄
-        self.create_status_bar()
-
-    def create_log_area(self):
-        """創建日誌顯示區域"""
-        log_frame = ttk.Frame(self.footer_frame, style='Log.TFrame')
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # 日誌標題
-        ttk.Label(
-            log_frame, 
-            text=get_text("system_log", "系統日誌："),
-            style='Title.TLabel'
-        ).pack(side=tk.TOP, anchor=tk.W, padx=5, pady=2)
-        
-        # 日誌文本區域
-        self.log_text = scrolledtext.ScrolledText(
-            log_frame,
-            width=70,
-            height=8,
-            wrap=tk.WORD
-        )
-        self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-    def create_status_bar(self):
-        """創建狀態欄"""
-        status_frame = ttk.Frame(self.footer_frame, style='Footer.TFrame')
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        # 左側顯示時間
-        time_frame = ttk.Frame(status_frame, style='Footer.TFrame')
-        time_frame.pack(side=tk.LEFT)
-        
-        ttk.Label(
-            time_frame, 
-            text=get_text("current_time", "目前時間："),
-            style='TLabel'
-        ).pack(side=tk.LEFT)
-        
-        self.time_label = ttk.Label(time_frame, text="", style='TLabel')
-        self.time_label.pack(side=tk.LEFT, padx=5)
-        
-        # 右側顯示版本信息
-        version_label = ttk.Label(
-            status_frame, 
-            text="v1.0.0",
-            style='TLabel'
-        )
-        version_label.pack(side=tk.RIGHT, padx=10)
-
-    def load_icons(self):
-        """載入圖標"""
+        # 添加应用图标
         try:
-            # 創建icons目錄（如果不存在）
-            icons_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                "icons"
-            )
-            if not os.path.exists(icons_dir):
-                os.makedirs(icons_dir)
-
-            # 設定圖標路徑
-            settings_icon_path = os.path.join(icons_dir, "settings.png")
-
-            # 檢查圖標是否存在，不存在則創建預設圖標
-            if not os.path.exists(settings_icon_path):
-                # 如果需要，可以在這裡添加代碼動態創建圖標
-                # 暫時使用文字代替
-                self.settings_icon = None
-            else:
-                # 載入並調整圖標大小
-                icon = Image.open(settings_icon_path)
-                icon = icon.resize((24, 24), Image.Resampling.LANCZOS)
-                self.settings_icon = ImageTk.PhotoImage(icon)
-
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'icon.png')
+            if os.path.exists(icon_path):
+                icon_img = Image.open(icon_path)
+                icon_img = icon_img.resize((32, 32), Image.Resampling.LANCZOS)
+                self.icon_photo = ImageTk.PhotoImage(icon_img)
+                icon_label = ttk.Label(logo_frame, image=self.icon_photo, style='Header.TLabel')
+                icon_label.pack(side=tk.LEFT, padx=(0, 10))
         except Exception as e:
-            logging.error(f"載入圖標時發生錯誤：{str(e)}")
-            self.settings_icon = None
+            logging.error(f"加载图标时出错: {str(e)}")
 
-    def setup_layout(self):
-        """設置組件布局"""
-        # 設定行列的權重
-        self.main_frame.grid_rowconfigure(1, weight=1)  # 內容區域可擴展
-        self.main_frame.grid_columnconfigure(0, weight=3)  # 視訊/拍照面板佔較多空間
-        self.main_frame.grid_columnconfigure(1, weight=1)  # 設定/分析面板佔較少空間
+        # 应用标题
+        title_label = ttk.Label(
+            logo_frame, 
+            text=get_text("app_title", "实时物品监测系统"),
+            style='HeaderTitle.TLabel'
+        )
+        title_label.pack(side=tk.LEFT)
+
+        # 右侧控制按钮
+        control_buttons = ttk.Frame(self.header, style='Header.TFrame')
+        control_buttons.pack(side=tk.RIGHT, padx=10, pady=5)
+
+        # 设置按钮
+        self.settings_btn = ttk.Button(
+            control_buttons,
+            text=get_text("settings", "设置"),
+            style='Header.TButton',
+            command=self._on_settings
+        )
+        self.settings_btn.pack(side=tk.RIGHT, padx=5)
+
+        # 创建内容区域
+        self.content = ttk.Frame(self.main_frame, style='Content.TFrame')
+        self.content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 使用网格布局
+        self.content.columnconfigure(0, weight=1)  # 左侧控制面板
+        self.content.columnconfigure(1, weight=4)  # 右侧视频/照片面板
+
+        # 创建左侧控制面板
+        self.control_panel = ControlPanel(self.content)
+        self.control_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+
+        # 创建右侧视频面板（默认显示）
+        self.video_panel = VideoPanel(self.content)
+        self.video_panel.grid(row=0, column=1, sticky="nsew")
+
+        # 创建右侧照片面板（初始隐藏）
+        self.photo_panel = PhotoPanel(self.content)
+        self.photo_panel.grid(row=0, column=1, sticky="nsew")
+        self.photo_panel.grid_remove()  # 初始隐藏
+        
+        # 创建设置面板
+        self.settings_panel = SettingsPanel(self.content)
+        self.settings_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
+        
+        # 创建分析面板（初始隐藏）
+        self.analysis_panel = AnalysisPanel(self.content)
+        self.analysis_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
+        self.analysis_panel.grid_remove()  # 初始隐藏
+
+        # 创建底部状态栏
+        self.status_bar = ttk.Frame(self.main_frame, style='Footer.TFrame')
+        self.status_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=0, pady=0)
+
+        # 状态信息
+        self.status_label = ttk.Label(
+            self.status_bar,
+            text=get_text("status_ready", "就绪"),
+            style='Footer.TLabel'
+        )
+        self.status_label.pack(side=tk.LEFT, padx=10, pady=5)
+
+        # 版本信息
+        version_label = ttk.Label(
+            self.status_bar,
+            text=f"v{VERSION}",
+            style='Footer.TLabel'
+        )
+        version_label.pack(side=tk.RIGHT, padx=10, pady=5)
+
+        # 初始化当前模式
+        self.current_mode = "monitoring"  # 默认为监控模式
 
     #==========================================================================
     # 第三部分：事件處理
@@ -285,7 +225,7 @@ class MainWindow:
 
         # 更新主題
         theme = self.config_manager.get('ui.theme', 'light')
-        self.ui_style_manager.set_theme(theme)
+        self.theme_manager.set_theme(theme)
 
         if hasattr(self, 'system_controller') and self.system_controller is not None:
             self.system_controller.handle_theme_change(theme)
@@ -294,7 +234,12 @@ class MainWindow:
         self.log_message(get_text("settings_updated", "設定已更新"))
 
     def set_system_controller(self, controller):
-        """設定系統控制器引用"""
+        """
+        设置系统控制器
+        
+        Args:
+            controller: 系统控制器实例
+        """
         self.system_controller = controller
 
     def on_settings_applied(self):
@@ -328,9 +273,50 @@ class MainWindow:
         # 更新視窗標題
         self.root.title(get_text("app_title", "物件監測系統"))
 
-        # 更新各面板文字
-        # 這裡可以添加更多元件的文字更新
-        pass
+        # 更新標題標籤
+        for widget in self.header.winfo_children():
+            if isinstance(widget, ttk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Label) and hasattr(child, 'cget') and child.cget('text') != '':
+                        if 'HeaderTitle' in str(child):
+                            child.configure(text=get_text("app_title", "物件監測系統"))
+
+        # 更新設定按鈕
+        if hasattr(self, 'settings_btn'):
+            self.settings_btn.configure(text=get_text("settings", "設定"))
+
+        # 更新控制面板
+        if hasattr(self, 'control_panel'):
+            self.control_panel.update_ui_text()
+
+        # 更新設定面板
+        if hasattr(self, 'settings_panel'):
+            self.settings_panel.update_ui_text()
+
+        # 更新狀態標籤
+        if hasattr(self, 'status_label'):
+            current_status = self.status_label.cget('text')
+            if current_status == "就绪" or current_status == "就緒":
+                self.status_label.configure(text=get_text("status_ready", "就緒"))
+            elif current_status == "正在运行" or current_status == "正在運行":
+                self.status_label.configure(text=get_text("status_running", "正在運行"))
+            elif current_status == "已停止":
+                self.status_label.configure(text=get_text("status_stopped", "已停止"))
+
+        # 更新視頻面板
+        if hasattr(self, 'video_panel'):
+            self.video_panel.update_ui_text()
+
+        # 更新照片面板
+        if hasattr(self, 'photo_panel'):
+            self.photo_panel.update_ui_text()
+
+        # 更新分析面板
+        if hasattr(self, 'analysis_panel'):
+            self.analysis_panel.update_ui_text()
+
+        # 強制更新 Tkinter
+        self.root.update_idletasks()
 
     #==========================================================================
     # 第五部分：日誌與工具方法
@@ -365,45 +351,33 @@ class MainWindow:
 
     def switch_mode(self, mode):
         """
-        切換模式
-
+        切换模式
+        
         Args:
-            mode: 模式名稱，'monitoring' 或 'photo'
+            mode: 模式名称 ("monitoring" 或 "photo")
         """
         if mode == self.current_mode:
             return
-
+            
         self.current_mode = mode
-
+        
         if mode == "monitoring":
-            # 顯示監測模式UI
+            # 显示视频面板，隐藏照片面板
             self.video_panel.grid()
-            self.settings_panel.grid()
             self.photo_panel.grid_remove()
-            self.analysis_panel.grid_remove()
-
-            # 更新控制面板按鈕文字
-            self.control_panel.mode_button.config(
-                text=get_text("mode_switch", "切換到拍照模式")
-            )
-
-            # 記錄日誌
-            self.log_message(get_text("switch_to_monitoring", "已切換到監測模式"))
-
+            
+            # 更新控制面板状态
+            if hasattr(self.control_panel, 'current_mode'):
+                self.control_panel.current_mode.set("monitoring")
+                
         elif mode == "photo":
-            # 顯示拍照模式UI
+            # 显示照片面板，隐藏视频面板
             self.video_panel.grid_remove()
-            self.settings_panel.grid_remove()
             self.photo_panel.grid()
-            self.analysis_panel.grid()
-
-            # 更新控制面板按鈕文字
-            self.control_panel.mode_button.config(
-                text=get_text("mode_switch_back", "切換到監測模式")
-            )
-
-            # 記錄日誌
-            self.log_message(get_text("switch_to_photo", "已切換到拍照模式"))
+            
+            # 更新控制面板状态
+            if hasattr(self.control_panel, 'current_mode'):
+                self.control_panel.current_mode.set("photo")
 
     def get_current_mode(self):
         """
@@ -413,3 +387,16 @@ class MainWindow:
             str: 當前模式名稱
         """
         return self.current_mode
+
+    def _on_settings(self):
+        """处理设置按钮点击事件"""
+        try:
+            # 如果有系统控制器，调用其处理方法
+            if self.system_controller and hasattr(self.system_controller, '_on_settings'):
+                self.system_controller._on_settings()
+            else:
+                # 否则显示简单的消息框
+                from tkinter import messagebox
+                messagebox.showinfo("设置", "设置功能尚未实现")
+        except Exception as e:
+            logging.error(f"打开设置对话框时出错: {str(e)}")

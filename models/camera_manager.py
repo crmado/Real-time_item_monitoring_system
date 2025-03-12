@@ -13,6 +13,7 @@ import logging
 from threading import Event
 # 引入pylon庫
 from pypylon import pylon
+import numpy as np
 
 class CameraManager:
     """攝影機管理類別"""
@@ -20,22 +21,42 @@ class CameraManager:
     # ==========================================================================
     # 第一部分：基本屬性和初始化
     # ==========================================================================
-    def __init__(self):
-        """初始化攝影機管理器"""
+    def __init__(self, config=None):
+        """
+        初始化相機管理器
+        
+        Args:
+            config: 配置對象
+        """
+        self.config = config or {}
         self.camera = None
-        self.test_camera_obj = None
-        self.test_stop_event = None
-        self.test_libcamera_thread = None
-        self.current_source = None
-        self.is_recording = False
-        self.TEST_MODE = False  # 測試模式，移到這裡
-
+        self.basler_camera = None
         self.pylon_camera = None
         self.preview_timer = None
-
-    # ==========================================================================
-    # 第二部分：攝影機操作
-    # ==========================================================================
+        self.is_virtual = True  # 默認使用虛擬相機
+        self.virtual_frame = None
+        self.TEST_MODE = True  # 始終啟用測試模式
+        self.current_frame = None  # 添加 current_frame 屬性
+        
+        # 初始化虛擬相機
+        self._init_virtual_camera()
+        
+    def _init_virtual_camera(self):
+        """初始化虛擬相機"""
+        try:
+            # 創建一個黑色背景
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            # 添加一些文字
+            cv2.putText(frame, "Virtual Camera", (50, 240),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            self.virtual_frame = frame
+            logging.info("成功初始化虛擬相機")
+        except Exception as e:
+            logging.error(f"初始化虛擬相機時發生錯誤: {str(e)}")
+            # 創建一個備用幀
+            self.virtual_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            
     def get_available_sources(self):
         """
         獲取可用的視訊來源
@@ -43,202 +64,379 @@ class CameraManager:
         Returns:
             sources: 可用視訊來源列表
         """
-        sources = ["Test video"] if self.TEST_MODE else []
+        sources = []
+        
+        logging.info("开始检测可用的视频源...")
+        
+        # 首先添加測試視頻選項（如果在測試模式下）
+        if self.TEST_MODE:
+            sources.append("Test video")
+            logging.info("已添加測試視頻選項")
 
-        # 檢查 libcamera 是否可用
-        try:
-            result = subprocess.run(
-                ['libcamera-vid', '--help'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=2  # 添加超時限制
-            )
-            if result.returncode == 0:
-                sources.append("libcamera")
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            logging.warning("libcamera Not Installed or not responding")
-
-        # 修改：更穩健的USB攝像頭檢測
-        for i in range(5):
+        # 添加虛擬相機選項
+        sources.append("Virtual Camera")
+        logging.info("已添加虛擬相機選項")
+        
+        # 检测内置摄像头 - 不再使用安全模式限制
+        # 在 macOS 上，检查内建相机（索引 0）
+        if os.name == 'posix' and 'darwin' in os.uname().sysname.lower():
+            logging.info("检测到 macOS 系统，尝试检测内建相机...")
             try:
-                # 使用更安全的方式開啟攝像頭
-                cap = cv2.VideoCapture(i)
+                cap = cv2.VideoCapture(0)
                 if cap.isOpened():
-                    # 使用超時機制讀取幀
-                    start_time = time.time()
-                    ret = False
-                    while time.time() - start_time < 0.5:  # 最多等待0.5秒
-                        ret, frame = cap.read()
-                        if ret and frame is not None:
-                            break
-                        time.sleep(0.05)
-
-                    if ret:
-                        # 只有成功讀取到有效幀時才添加來源
-                        sources.append(f"USB Camera {i}")
-                        logging.info(f"發現可用攝像頭: USB Camera {i}")
+                    logging.info("成功打开内建相机")
+                    ret, frame = cap.read()
+                    if ret and frame is not None and frame.size > 0:
+                        sources.append("Built-in Camera")
+                        logging.info("已檢測到內建相機并成功读取帧")
+                    else:
+                        logging.warning("内建相机打开成功但无法读取帧")
+                else:
+                    logging.warning("无法打开内建相机")
                 cap.release()
             except Exception as e:
-                logging.warning(f"檢查攝像頭 {i} 時發生錯誤：{str(e)}")
-                continue
+                logging.warning(f"檢查內建相機時發生錯誤: {str(e)}")
+        else:
+            # 在其他系统上检查USB摄像头
+            logging.info("非 macOS 系统，尝试检测 USB 相机...")
+            for i in range(2):  # 只检查前两个摄像头索引，避免过多检查导致的问题
+                try:
+                    logging.info(f"尝试打开 USB 相机 {i}...")
+                    cap = cv2.VideoCapture(i)
+                    if cap.isOpened():
+                        logging.info(f"成功打开 USB 相机 {i}")
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            sources.append(f"USB Camera {i}")
+                            logging.info(f"已檢測到 USB 相機 {i} 并成功读取帧")
+                        else:
+                            logging.warning(f"USB 相机 {i} 打开成功但无法读取帧")
+                    else:
+                        logging.warning(f"无法打开 USB 相机 {i}")
+                    cap.release()
+                except Exception as e:
+                    logging.warning(f"檢查 USB 相機 {i} 時發生錯誤: {str(e)}")
+
+        # 檢查 Basler 相機
+        logging.info("尝试检测 Basler 相机...")
+        try:
+            tlf = pylon.TlFactory.GetInstance()
+            devices = tlf.EnumerateDevices()
+            if devices:
+                logging.info(f"检测到 {len(devices)} 个 Basler 相机")
+                for i, device in enumerate(devices):
+                    sources.append(f"Basler Camera {i}")
+                    logging.info(f"已檢測到 Basler 相機 {i}: {device.GetModelName()}")
+            else:
+                logging.info("未检测到 Basler 相机")
+        except Exception as e:
+            logging.warning(f"Basler 相機檢測失敗: {str(e)}")
+
+        # 如果没有检测到任何相机，确保至少有一个选项
+        if len(sources) == 0:
+            sources.append("Virtual Camera")
+            logging.info("未檢測到任何相機，使用虛擬相機")
+            
+        logging.info(f"可用视频源检测完成，共找到 {len(sources)} 个源: {sources}")
 
         return sources
-
+        
     def open_camera(self, source):
         """
-        開啟指定的視訊來源
-
+        開啟相機
+        
         Args:
-            source: 視訊來源名稱
-
+            source: 相機來源
+        
         Returns:
-            bool: 是否成功開啟
+            bool: 是否成功開啟相機
         """
         try:
-            # 記錄要開啟的相機
-            logging.info(f"嘗試開啟相機: {source}")
-
-            # 如果已有開啟的相機，先釋放它
-            if self.camera is not None:
-                try:
-                    if self.camera.isOpened():
-                        self.camera.release()
-                except Exception as e:
-                    logging.warning(f"釋放相機時發生錯誤: {str(e)}")
-                finally:
-                    self.camera = None
-                    time.sleep(0.3)  # 確保資源釋放
-
-            # 如果有活躍的 Pylon 相機，釋放它
-            if hasattr(self, 'pylon_camera') and self.pylon_camera:
-                self.release_pylon_camera()
-                time.sleep(0.3)
-
-            # 根據來源類型開啟相機
+            # 首先釋放所有現有相機資源
+            self.release_all_cameras()
+            
+            logging.info(f"嘗試開啟相機源: {source}")
+            
             if source == "Test video":
-                # 測試視頻處理邏輯
-                video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
-                if not os.path.exists(video_path):
-                    backup_paths = ["testDate/test_video.mp4", "video/sample.mp4"]
-                    for path in backup_paths:
-                        if os.path.exists(path):
-                            video_path = path
-                            break
-                    else:
-                        logging.error(f"未找到測試影片: {video_path}")
-                        return False
-
-                logging.info(f"使用測試視頻: {video_path}")
-                self.camera = cv2.VideoCapture(video_path)
-
-            elif source == "libcamera":
-                logging.info("初始化 libcamera")
-                return self.setup_libcamera()
-
+                return self._open_test_video()
+            elif source == "Virtual Camera":
+                return self._open_virtual_camera()
+            elif "Basler" in source:
+                return self._open_basler_camera(source)
             else:
-                # 處理 USB 相機或其他相機索引
-                camera_index = -1
+                return self._open_usb_camera(source)
+                
+        except Exception as e:
+            logging.error(f"開啟相機時發生錯誤: {str(e)}")
+            self.release_all_cameras()
+            # 默認使用虛擬相機
+            self.is_virtual = True
+            return True
+            
+    def _open_virtual_camera(self):
+        """開啟虛擬相機"""
+        try:
+            # 創建一個黑色背景
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            # 添加一些文字
+            cv2.putText(frame, "Virtual Camera", (50, 240),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            self.virtual_frame = frame
+            self.is_virtual = True
+            logging.info("成功開啟虛擬相機")
+            return True
+            
+        except Exception as e:
+            logging.error(f"開啟虛擬相機時發生錯誤: {str(e)}")
+            return False
+            
+    def read_frame(self):
+        """
+        讀取一幀圖像
+        
+        Returns:
+            tuple: (成功標誌, 幀數據)
+        """
+        try:
+            # 如果是虛擬相機，直接返回虛擬幀
+            if self.is_virtual:
+                if self.virtual_frame is None:
+                    self._init_virtual_camera()
+                self.current_frame = self.virtual_frame.copy()
+                return True, self.current_frame
+            
+            # 检查是否有 Basler 相机
+            if hasattr(self, 'pylon_camera') and self.pylon_camera is not None and self.pylon_camera.IsGrabbing():
+                try:
+                    # 尝试从 Basler 相机获取图像
+                    grab_result = self.pylon_camera.RetrieveResult(1000, pylon.TimeoutHandling_Return)
+                    if grab_result and grab_result.GrabSucceeded():
+                        image = grab_result.Array
+                        grab_result.Release()
+                        self.current_frame = image
+                        return True, image
+                    if grab_result:
+                        grab_result.Release()
+                except Exception as e:
+                    logging.error(f"从 Basler 相机读取帧时出错: {str(e)}")
+                
+            # 检查普通相机
+            if self.camera is None:
+                logging.error("相機未初始化")
+                self.is_virtual = True
+                self.current_frame = self.virtual_frame.copy()
+                return True, self.current_frame
+                
+            if not self.camera.isOpened():
+                logging.error("相機未打開")
+                self.is_virtual = True
+                self.current_frame = self.virtual_frame.copy()
+                return True, self.current_frame
+                
+            ret, frame = self.camera.read()
+            
+            if not ret or frame is None:
+                logging.error("讀取幀失敗")
+                self.is_virtual = True
+                self.current_frame = self.virtual_frame.copy()
+                return True, self.current_frame
+            
+            self.current_frame = frame
+            return True, frame
+            
+        except Exception as e:
+            logging.error(f"讀取幀時發生錯誤: {str(e)}")
+            self.is_virtual = True
+            self.current_frame = self.virtual_frame.copy()
+            return True, self.current_frame
+            
+    def release_all_cameras(self):
+        """釋放所有相機資源"""
+        try:
+            self.is_virtual = False
+            self.virtual_frame = None
+            
+            if self.camera is not None:
+                if hasattr(self.camera, 'isOpened') and self.camera.isOpened():
+                    self.camera.release()
+                self.camera = None
+                
+            if hasattr(self, 'basler_camera') and self.basler_camera is not None:
+                self.basler_camera.Close()
+                self.basler_camera = None
+                
+        except Exception as e:
+            logging.error(f"釋放相機資源時發生錯誤: {str(e)}")
+            
+        finally:
+            self.camera = None
+            self.basler_camera = None
+            self.is_virtual = False
+            self.virtual_frame = None
 
-                # 嘗試從來源名稱中獲取索引
+    def _open_test_video(self):
+        """開啟測試視頻"""
+        try:
+            video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
+            if not os.path.exists(video_path):
+                backup_paths = ["testDate/test_video.mp4", "video/sample.mp4"]
+                for path in backup_paths:
+                    if os.path.exists(path):
+                        video_path = path
+                        break
+                else:
+                    logging.error("未找到測試影片")
+                    return False
+
+            logging.info(f"使用測試視頻: {video_path}")
+            self.camera = cv2.VideoCapture(video_path)
+            return self.camera.isOpened()
+        except Exception as e:
+            logging.error(f"開啟測試視頻時發生錯誤: {str(e)}")
+            return False
+
+    def _open_usb_camera(self, source):
+        """開啟 USB 相機"""
+        try:
+            print(f"尝试打开相机源: {source}")
+            # 在 macOS 上，我們只使用內建相機（索引 0）
+            camera_index = 0
+            if os.name == 'posix' and 'darwin' in os.uname().sysname.lower():
+                print("检测到 macOS 系统")
+                if source == "Built-in Camera":
+                    # 使用内建相机
+                    camera_index = 0
+                    print(f"使用内建相机，索引: {camera_index}")
+                else:
+                    # 尝试解析其他相机索引
+                    try:
+                        if "USB Camera" in source:
+                            camera_index = int(source.split()[-1])
+                        else:
+                            camera_index = int(source)
+                    except ValueError:
+                        logging.warning(f"無法從 '{source}' 解析相機索引，使用預設值 0")
+                        camera_index = 0
+                    print(f"使用其他相机，索引: {camera_index}")
+                
+                logging.info(f"在 macOS 上使用相機索引: {camera_index}")
+                
+                # 嘗試開啟相機
+                print(f"尝试打开相机，索引: {camera_index}")
+                self.camera = cv2.VideoCapture(camera_index)
+                if self.camera.isOpened():
+                    print(f"成功打开相机，索引: {camera_index}")
+                    # 設置相機屬性
+                    self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    self.camera.set(cv2.CAP_PROP_FPS, 30)
+                    
+                    # 測試讀取幾幀，確保相機穩定
+                    for i in range(3):  # 减少测试帧数，避免长时间阻塞
+                        print(f"测试读取第 {i+1} 帧...")
+                        ret, frame = self.camera.read()
+                        if not ret:
+                            print(f"无法读取第 {i+1} 帧")
+                            break
+                        print(f"成功读取第 {i+1} 帧，尺寸: {frame.shape if frame is not None else 'None'}")
+                        time.sleep(0.1)
+                    
+                    if not ret or frame is None:
+                        print("无法从相机读取稳定的帧")
+                        logging.error("無法從相機讀取穩定的幀")
+                        self.release_all_cameras()
+                        return False
+                        
+                    print("成功初始化 macOS 相机")
+                    logging.info("成功初始化 macOS 相機")
+                    return True
+                else:
+                    print("无法打开 macOS 相机")
+                    logging.error("無法開啟 macOS 相機")
+                    return False
+            else:
+                # 在其他系統上解析相機索引
+                print("非 macOS 系统")
                 if "USB Camera" in source:
                     try:
                         camera_index = int(source.split()[-1])
-                        logging.info(f"從來源名稱解析相機索引: {camera_index}")
                     except ValueError:
-                        logging.warning(f"無法從 '{source}' 解析相機索引")
-                        camera_index = 0
+                        logging.warning(f"無法從 '{source}' 解析相機索引，使用預設值 0")
                 else:
-                    # 嘗試將整個字符串解析為索引
                     try:
                         camera_index = int(source)
-                        logging.info(f"將來源直接解析為索引: {camera_index}")
                     except ValueError:
-                        logging.warning(f"無法將 '{source}' 解析為相機索引，使用預設索引 0")
-                        camera_index = 0
+                        logging.warning(f"無法將 '{source}' 解析為相機索引，使用預設值 0")
 
-                # 嘗試開啟相機，增加重試機制
-                max_tries = 3
-                success = False
+            # 嘗試開啟相機
+            print(f"尝试打开相机，索引: {camera_index}")
+            logging.info(f"嘗試開啟相機 {camera_index}")
+            self.camera = cv2.VideoCapture(camera_index)
 
-                for attempt in range(max_tries):
-                    try:
-                        logging.info(f"嘗試開啟相機 {camera_index} (嘗試 {attempt + 1}/{max_tries})")
-
-                        # 使用 OpenCV 開啟相機
-                        self.camera = cv2.VideoCapture(camera_index)
-
-                        if self.camera.isOpened():
-                            # 設定相機屬性
-                            self.camera.set(cv2.CAP_PROP_FOURCC, 0x4D4A5047)  # MJPEG 的四字節編碼
-                            self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 3)
-
-                            # 測試讀取，確保相機可用
-                            read_success, test_frame = self.camera.read()
-                            if read_success and test_frame is not None:
-                                logging.info(f"成功讀取相機 {camera_index} 的測試幀")
-                                success = True
-                                break
-                            else:
-                                logging.warning(f"相機 {camera_index} 已開啟但無法讀取幀")
-                                self.camera.release()
-                                self.camera = None
-                        else:
-                            logging.warning(f"無法開啟相機 {camera_index}")
-
-                    except Exception as e:
-                        logging.warning(f"開啟相機 {camera_index} 時發生錯誤: {str(e)}")
-                        if self.camera:
-                            try:
-                                self.camera.release()
-                            except:
-                                pass
-                            self.camera = None
-
-                    # 如果失敗但還有更多嘗試，等待一下再試
-                    if not success and attempt < max_tries - 1:
-                        time.sleep(0.5)
-
-                # 如果所有嘗試都失敗
-                if not success:
-                    logging.error(f"所有嘗試開啟相機 {camera_index} 的嘗試都失敗了")
-                    return False
-
-            # 驗證相機是否開啟並能讀取幀
-            if not self.camera or not self.camera.isOpened():
-                logging.error("無法開啟視訊來源")
+            if not self.camera.isOpened():
+                print(f"无法打开相机，索引: {camera_index}")
+                logging.error(f"無法開啟相機 {camera_index}")
                 return False
 
-            # 讀取多個幀以確認相機穩定性
-            success_reads = 0
-            for _ in range(3):
-                try:
-                    ret, frame = self.camera.read()
-                    if ret and frame is not None:
-                        success_reads += 1
-                except Exception as e:
-                    logging.warning(f"讀取相機測試幀時出錯: {str(e)}")
-                time.sleep(0.1)
+            # 設定相機屬性
+            self.camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-            if success_reads < 2:  # 至少要有 2/3 的成功讀取
-                logging.error(f"相機連接不穩定，僅成功讀取 {success_reads}/3 幀")
-                if self.camera:
-                    self.camera.release()
-                    self.camera = None
+            # 測試讀取
+            print("测试读取帧...")
+            ret, frame = self.camera.read()
+            if not ret or frame is None:
+                print("无法从相机读取帧")
+                logging.error(f"無法從相機 {camera_index} 讀取幀")
+                self.release_all_cameras()
                 return False
 
-            # 更新當前來源並返回成功
-            self.current_source = source
-            logging.info(f"成功開啟相機: {source}")
+            print(f"成功打开相机，索引: {camera_index}")
+            logging.info(f"成功開啟相機 {camera_index}")
             return True
 
         except Exception as e:
-            logging.error(f"開啟視訊來源時發生錯誤: {str(e)}")
-            if self.camera:
+            print(f"打开相机时发生错误: {str(e)}")
+            logging.error(f"開啟相機時發生錯誤: {str(e)}")
+            self.release_all_cameras()
+            return False
+
+    def _open_basler_camera(self, source):
+        """開啟 Basler 相機"""
+        try:
+            # 解析相機索引
+            camera_index = int(source.split()[-1])
+            
+            # 獲取相機列表
+            tlf = pylon.TlFactory.GetInstance()
+            devices = tlf.EnumerateDevices()
+            
+            if not devices or camera_index >= len(devices):
+                logging.error(f"找不到指定的 Basler 相機 {camera_index}")
+                return False
+            
+            # 創建相機實例
+            self.pylon_camera = pylon.InstantCamera(tlf.CreateDevice(devices[camera_index]))
+            self.pylon_camera.Open()
+            
+            if not self.pylon_camera.IsOpen():
+                logging.error(f"無法開啟 Basler 相機 {camera_index}")
+                return False
+            
+            # 配置相機
+            self.pylon_camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            logging.info(f"成功開啟 Basler 相機 {camera_index}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"開啟 Basler 相機時發生錯誤: {str(e)}")
+            if self.pylon_camera:
                 try:
-                    self.camera.release()
+                    self.pylon_camera.Close()
                 except:
                     pass
-                self.camera = None
+                self.pylon_camera = None
             return False
 
     def setup_libcamera(self):
@@ -317,136 +515,58 @@ class CameraManager:
         獲取攝影機資訊
 
         Returns:
-            dict: 攝影機資訊
+            dict: 攝影機資訊，如果無法獲取則返回默認值
         """
-        if not self.camera or not self.camera.isOpened():
-            return None
-
-        return {
-            'width': int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            'height': int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            'fps': self.camera.get(cv2.CAP_PROP_FPS),
-            'frame_count': int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
+        default_info = {
+            'width': 640,
+            'height': 480,
+            'fps': 30,
+            'frame_count': 0
         }
 
-    def read_frame(self):
-        """
-        讀取一幀影像，包含錯誤處理
-
-        Returns:
-            tuple: (是否成功, 影像幀)
-        """
-        if not self.camera or not self.camera.isOpened():
-            logging.warning("嘗試讀取未開啟的相機")
-            return False, None
-
         try:
-            # 添加嘗試次數機制，增加成功機率
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                ret, frame = self.camera.read()
-                if ret and frame is not None and frame.size > 0:  # 確保幀有效且非空
-                    return ret, frame
-                elif attempt < max_attempts - 1:
-                    # 不是最後一次嘗試，等待一小段時間後重試
-                    time.sleep(0.1)  # 增加等待時間，給相機更多緩衝
-
-            # 所有嘗試都失敗了
-            logging.warning(f"讀取攝影機幀失敗，嘗試 {max_attempts} 次後放棄")
-            return False, None
-
-        except Exception as e:
-            logging.error(f"讀取攝影機幀時發生異常: {str(e)}")
-            return False, None
-
-    def initialize_pylon_camera(self):
-        """初始化Basler相機"""
-        try:
-            # 如果已經有初始化的相機，先使用它
-            if self.camera and self.camera.isOpened():
-                logging.info("使用已初始化的相機，跳過 Pylon 相機初始化")
-                return True
-
-            # 確保已安裝pypylon
-            try:
-                from pypylon import pylon
-            except ImportError:
-                logging.warning("未安裝pypylon庫，將使用普通相機")
-                # 如果沒有 pypylon，嘗試使用 OpenCV 相機
-                for i in range(5):
+            if not self.camera or not self.camera.isOpened():
+                if hasattr(self, 'pylon_camera') and self.pylon_camera:
+                    # 獲取 Basler 相機資訊
                     try:
-                        cap = cv2.VideoCapture(i)
-                        if cap.isOpened():
-                            self.camera = cap
-                            return True
-                    except Exception:
-                        continue
-                return False
-
-            # 嘗試獲取 Basler 相機設備
-            tlf = pylon.TlFactory.GetInstance()
-            devices = tlf.EnumerateDevices()
-
-            if not devices:
-                logging.warning("未檢測到Basler相機，嘗試使用普通相機")
-                # 嘗試使用 OpenCV 相機
-                for i in range(5):
-                    try:
-                        cap = cv2.VideoCapture(i)
-                        if cap.isOpened():
-                            self.camera = cap
-                            return True
-                    except Exception:
-                        continue
-                return False
-
-            # 初始化 Pylon 相機
-            try:
-                self.pylon_camera = pylon.InstantCamera(tlf.CreateFirstDevice())
-                self.pylon_camera.Open()
-
-                # 配置相機參數
-                device_info = self.pylon_camera.GetDeviceInfo()
-                logging.info(f"相機類型: {device_info.GetDeviceClass()}")
-                logging.info(f"型號: {device_info.GetModelName()}")
-
-                # 根據相機類型設置參數
-                if device_info.GetDeviceClass() == "BaslerGigE":
-                    if hasattr(self.pylon_camera, 'GainRaw') and self.pylon_camera.GainRaw.IsWritable():
-                        self.pylon_camera.GainRaw.SetValue(0)
-                    if hasattr(self.pylon_camera, 'ExposureTimeRaw') and self.pylon_camera.ExposureTimeRaw.IsWritable():
-                        self.pylon_camera.ExposureTimeRaw.SetValue(10000)
+                        width = self.pylon_camera.Width.GetValue()
+                        height = self.pylon_camera.Height.GetValue()
+                        fps = self.pylon_camera.ResultingFrameRate.GetValue() if hasattr(self.pylon_camera, 'ResultingFrameRate') else 30
+                        return {
+                            'width': width,
+                            'height': height,
+                            'fps': fps,
+                            'frame_count': 0  # Basler相機不提供總幀數
+                        }
+                    except Exception as e:
+                        logging.warning(f"獲取Basler相機資訊失敗: {str(e)}")
+                        return default_info
                 else:
-                    if hasattr(self.pylon_camera, 'Gain') and self.pylon_camera.Gain.IsWritable():
-                        self.pylon_camera.Gain.SetValue(0)
-                    if hasattr(self.pylon_camera, 'ExposureTime') and self.pylon_camera.ExposureTime.IsWritable():
-                        self.pylon_camera.ExposureTime.SetValue(10000)
+                    return default_info
 
-                if hasattr(self.pylon_camera, 'PixelFormat') and self.pylon_camera.PixelFormat.IsWritable():
-                    self.pylon_camera.PixelFormat.SetValue('Mono8')
+            # 獲取OpenCV相機資訊
+            info = {
+                'width': int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                'height': int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                'fps': self.camera.get(cv2.CAP_PROP_FPS),
+                'frame_count': int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
+            }
 
-                # 開始抓取圖像
-                self.pylon_camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            # 驗證並修正資訊
+            if info['width'] <= 0 or info['width'] > 4096:
+                info['width'] = default_info['width']
+            if info['height'] <= 0 or info['height'] > 4096:
+                info['height'] = default_info['height']
+            if info['fps'] <= 0 or info['fps'] > 240:
+                info['fps'] = default_info['fps']
+            if info['frame_count'] < 0:
+                info['frame_count'] = default_info['frame_count']
 
-                return True
-            except Exception as e:
-                logging.error(f"初始化Basler相機失敗: {str(e)}")
-                self.pylon_camera = None
-
-                # 失敗後嘗試使用普通相機
-                for i in range(5):
-                    try:
-                        cap = cv2.VideoCapture(i)
-                        if cap.isOpened():
-                            self.camera = cap
-                            return True
-                    except Exception:
-                        continue
-                return False
+            return info
 
         except Exception as e:
-            logging.error(f"初始化相機失敗: {str(e)}")
-            return False
+            logging.error(f"獲取攝影機資訊時發生錯誤: {str(e)}")
+            return default_info
 
     def capture_pylon_image(self):
         """從Basler相機拍攝圖像"""

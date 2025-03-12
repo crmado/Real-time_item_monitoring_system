@@ -367,48 +367,36 @@ class AnalysisPanel(ttk.Frame):
                         child.configure(background=bg_color)
 
     def update_language(self):
-        """更新所有元件的語言設定"""
-        try:
-            # 更新標題標籤
-            for widget in self.winfo_children():
-                if isinstance(widget, ttk.Frame):  # main_frame
-                    for child in widget.winfo_children():
-                        if isinstance(child, ttk.Frame):  # grid_frame
-                            for i, title_label in enumerate(child.winfo_children()):
-                                if isinstance(title_label, ttk.Label) and hasattr(title_label, 'original_key'):
-                                    title_label.configure(
-                                        text=get_text(title_label.original_key, title_label.original_default))
-            # 更新檢測結果框架標題
-            self.result_frame.configure(text=get_text("inspection_result", "檢測結果"))
+        """更新語言"""
+        # 更新標題標籤
+        for widget in self.winfo_children():
+            if isinstance(widget, ttk.LabelFrame):
+                if widget.cget('text') == "檢測結果" or widget.cget('text') == "Inspection Result":
+                    widget.configure(text=get_text("inspection_result", "檢測結果"))
 
-            # 如果已有檢測結果，更新結果文字
-            if self.result_text.get(1.0, tk.END).strip():
-                # 獲取當前的檢測狀態（從現有文字）
-                current_text = self.result_text.get(1.0, tk.END)
-                is_defective = "有缺陷" in current_text or "defective" in current_text.lower()
-
-                # 重新格式化並更新結果文字
-                status_text = get_text("defective", "有缺陷") if is_defective else get_text("normal", "正常")
-
-                # 從現有文字中提取數值
-                # 這裡需要根據文字格式進行調整
-                try:
-                    score = float(current_text.split(":")[-2].split("\n")[0].strip())
-                    mean_error = float(current_text.split(":")[-1].strip())
-                except:
-                    score = 0.0
-                    mean_error = 0.0
-
-                result_text = f"""
-                    {get_text("inspection_status", "檢測狀態")}: {status_text}
-                    {get_text("inspection_score", "檢測分數")}: {score:.2E}
-                    {get_text("mean_error", "平均誤差")}: {mean_error:.2E}
-                """
-
-                self.result_text.configure(state=tk.NORMAL)
-                self.result_text.delete(1.0, tk.END)
-                self.result_text.insert(tk.END, result_text)
-                self.result_text.configure(state=tk.DISABLED)
-
-        except Exception as e:
-            logging.error(f"更新語言設定時發生錯誤：{str(e)}")
+        # 更新其他標籤
+        for widget in self.grid_slaves():
+            if isinstance(widget, ttk.Label) and hasattr(widget, 'original_key'):
+                widget.configure(text=get_text(widget.original_key, widget.original_default))
+                
+    def update_ui_text(self):
+        """更新分析面板中的所有文字"""
+        # 更新標題標籤
+        for widget in self.winfo_children():
+            if isinstance(widget, ttk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.LabelFrame):
+                        if child.cget('text') == "檢測結果" or child.cget('text') == "Inspection Result":
+                            child.configure(text=get_text("inspection_result", "檢測結果"))
+        
+        # 更新網格中的標題標籤
+        for widget in self.winfo_children():
+            if isinstance(widget, ttk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Frame):
+                        for grandchild in child.winfo_children():
+                            if isinstance(grandchild, ttk.Label) and hasattr(grandchild, 'original_key'):
+                                grandchild.configure(text=get_text(grandchild.original_key, grandchild.original_default))
+        
+        # 強制更新 Tkinter
+        self.update_idletasks()

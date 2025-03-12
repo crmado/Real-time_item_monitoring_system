@@ -9,43 +9,51 @@ class UITheme:
     # 預設主題顏色
     DEFAULT_COLORS = {
         # 主要顏色
-        'primary': '#0078D7',       # 主要強調色（藍色）
-        'secondary': '#2E8B57',     # 次要強調色（綠色）
-        'success': '#28a745',       # 成功提示色（綠色）
-        'warning': '#ffc107',       # 警告提示色（黃色）
-        'danger': '#dc3545',        # 危險提示色（紅色）
-        'info': '#17a2b8',          # 信息提示色（淺藍色）
+        'primary': '#1976D2',       # 主要強調色（深藍色）
+        'secondary': '#43A047',     # 次要強調色（綠色）
+        'success': '#2E7D32',       # 成功提示色（深綠色）
+        'warning': '#F57C00',       # 警告提示色（橙色）
+        'danger': '#D32F2F',        # 危險提示色（紅色）
+        'info': '#0288D1',          # 信息提示色（藍色）
         
         # 背景顏色
-        'bg_main': '#F0F0F0',       # 主背景色（淺灰色）
+        'bg_main': '#F5F5F5',       # 主背景色（淺灰色）
         'bg_panel': '#FFFFFF',      # 面板背景色（白色）
-        'bg_header': '#E0E0E0',     # 頂部區域背景色（灰色）
+        'bg_header': '#1976D2',     # 頂部區域背景色（深藍色）
         'bg_footer': '#E0E0E0',     # 底部區域背景色（灰色）
-        'bg_control': '#F5F5F5',    # 控制區域背景色（淺灰色）
+        'bg_control': '#FFFFFF',    # 控制區域背景色（白色）
         'bg_video': '#000000',      # 視頻區域背景色（黑色）
-        'bg_settings': '#F8F8F8',   # 設定區域背景色（淺灰色）
+        'bg_settings': '#FFFFFF',   # 設定區域背景色（白色）
         
         # 文字顏色
-        'text_primary': '#212529',  # 主要文字顏色（深灰色）
-        'text_secondary': '#6C757D', # 次要文字顏色（灰色）
+        'text_primary': '#212121',  # 主要文字顏色（深灰色）
+        'text_secondary': '#757575', # 次要文字顏色（灰色）
         'text_light': '#FFFFFF',    # 淺色文字（白色）
         'text_dark': '#000000',     # 深色文字（黑色）
         
         # 邊框顏色
-        'border': '#CCCCCC',        # 邊框顏色（灰色）
-        'border_light': '#E9ECEF',  # 淺色邊框（淺灰色）
-        'border_dark': '#343A40',   # 深色邊框（深灰色）
+        'border': '#E0E0E0',        # 邊框顏色（淺灰色）
+        'border_light': '#F5F5F5',  # 淺色邊框（更淺的灰色）
+        'border_dark': '#BDBDBD',   # 深色邊框（深灰色）
         
         # 按鈕顏色
-        'button_bg': '#E0E0E0',     # 按鈕背景色（灰色）
-        'button_fg': '#212529',     # 按鈕文字顏色（深灰色）
-        'button_accent_bg': '#0078D7', # 強調按鈕背景色（藍色）
+        'button_bg': '#FFFFFF',     # 按鈕背景色（白色）
+        'button_fg': '#212121',     # 按鈕文字顏色（深灰色）
+        'button_accent_bg': '#1976D2', # 強調按鈕背景色（深藍色）
         'button_accent_fg': '#FFFFFF', # 強調按鈕文字顏色（白色）
         
         # 輸入框顏色
         'input_bg': '#FFFFFF',      # 輸入框背景色（白色）
-        'input_fg': '#212529',      # 輸入框文字顏色（深灰色）
-        'input_border': '#CED4DA',  # 輸入框邊框顏色（灰色）
+        'input_fg': '#212121',      # 輸入框文字顏色（深灰色）
+        'input_border': '#E0E0E0',  # 輸入框邊框顏色（淺灰色）
+        
+        # 狀態顏色
+        'hover': '#E3F2FD',         # 懸停效果顏色（淺藍色）
+        'active': '#BBDEFB',        # 活動狀態顏色（中藍色）
+        'disabled': '#BDBDBD',      # 禁用狀態顏色（灰色）
+        
+        # 陰影效果
+        'shadow': 'rgba(0, 0, 0, 0.1)'  # 陰影顏色（半透明黑色）
     }
     
     # 暗色主題顏色
