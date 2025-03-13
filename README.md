@@ -77,6 +77,117 @@
 
 所有設定會即時保存到配置文件，並在下次啟動時自動載入。使用者可以通過點擊主界面右上角的設定圖標隨時進入設定界面進行調整。
 
+## 程式碼流程說明
+
+### 系統啟動流程
+
+1. **程式入口**：
+   - `main.py` -> `main()` 函數：初始化系統，創建主視窗和控制器
+
+2. **初始化過程**：
+   - `main.py` -> `main()` -> `MainWindow(root)` (`views/main_window.py`)：創建主視窗
+   - `main.py` -> `main()` -> `SystemController(main_window)` (`controllers/system_controller.py`)：創建系統控制器
+   - `main.py` -> `main()` -> `main_window.set_system_controller(system_controller)`：將系統控制器設置到主視窗
+
+3. **相機初始化**：
+   - `main.py` -> `main()` -> `system_controller.camera_manager.get_available_sources()`：獲取可用相機
+   - `main.py` -> `main()` -> `system_controller.handle_camera_open(default_camera)`：自動打開默認相機
+
+### 監測模式功能流程
+
+1. **開始監測**：
+   - 用戶點擊「開始」按鈕 -> `views/components/control_panel.py` -> `_on_start_button_click()` 
+   - -> `controllers/system_controller.py` -> `handle_start()` 
+   - -> `start_monitoring(source)` 
+   - -> `detection_controller.start_detection()`
+
+2. **停止監測**：
+   - 用戶點擊「停止」按鈕 -> `views/components/control_panel.py` -> `_on_stop_button_click()` 
+   - -> `controllers/system_controller.py` -> `handle_stop()` 
+   - -> `stop_current_operation()` 
+   - -> `detection_controller.stop_detection()`
+
+3. **視頻幀處理**：
+   - `controllers/system_controller.py` -> `update_video_frame()` 
+   - -> `camera_manager.read_frame()` (`models/camera_manager.py`) 
+   - -> `detection_controller.process_frame(frame)` (`controllers/detection_controller.py`) 
+   - -> `main_window.video_panel.update_image(processed_frame)` (`views/components/video_panel.py`)
+
+4. **ROI 線調整**：
+   - 用戶拖動 ROI 線 -> `views/components/video_panel.py` -> `_on_canvas_drag()` 
+   - -> `controllers/system_controller.py` -> `handle_roi_selection(event)` 
+   - -> `detection_controller.update_roi_position(event)` (`controllers/detection_controller.py`)
+
+### 拍照模式功能流程
+
+1. **切換到拍照模式**：
+   - 用戶點擊「拍照模式」按鈕 -> `views/components/control_panel.py` -> `_on_mode_switch()` 
+   - -> `controllers/system_controller.py` -> `handle_mode_switch(mode)` 
+   - -> `main_window.switch_mode("photo")` (`views/main_window.py`)
+
+2. **開始拍照預覽**：
+   - 用戶點擊「開始」按鈕 -> `views/components/control_panel.py` -> `_on_start_button_click()` 
+   - -> `controllers/system_controller.py` -> `handle_start()` 
+   - -> `start_photo_mode(source)` 
+   - -> `update_photo_preview()`
+
+3. **拍攝照片**：
+   - 用戶點擊「拍攝」按鈕 -> `views/components/photo_panel.py` -> `_on_capture_button_click()` 
+   - -> `controllers/system_controller.py` -> `handle_photo_capture()` 
+   - -> `main_window.photo_panel.update_photo_preview(frame)` (`views/components/photo_panel.py`)
+
+4. **分析照片**：
+   - 用戶點擊「分析」按鈕 -> `views/components/photo_panel.py` -> `_on_analyze_button_click()` 
+   - -> `controllers/system_controller.py` -> `handle_photo_analysis()` 
+   - -> `detection_controller.process_frame(current_photo)` (`controllers/detection_controller.py`) 
+   - -> `main_window.photo_panel.update_photo_preview(result_frame)` (`views/components/photo_panel.py`)
+
+### 設定功能流程
+
+1. **打開設定對話框**：
+   - 用戶點擊「設定」按鈕 -> `views/components/control_panel.py` -> `_on_settings_button_click()` 
+   - -> `controllers/system_controller.py` -> `handle_settings_button()` 
+   - -> `_on_settings()` 
+   - -> `SettingsDialog(self.main_window, config_manager)` (`views/components/setting/settings_dialog.py`)
+
+2. **套用設定**：
+   - 用戶點擊「套用設定」按鈕 -> `views/components/settings_panel.py` -> `_on_apply_settings()` 
+   - -> `controllers/system_controller.py` -> `handle_apply_settings(settings)` 
+   - -> `detection_controller.set_target_count(target_count)` 和 `detection_controller.set_buffer_point(buffer_point)` 
+   - -> `save_settings()` 
+   - -> `main_window.settings_panel.update_ui()` 或 `main_window.settings_panel.recreate_ui()`
+
+3. **語言切換**：
+   - 用戶在設定對話框中選擇語言 -> `views/components/setting/settings_dialog.py` -> `_on_language_changed()` 
+   - -> `controllers/system_controller.py` -> `handle_language_change(language_code)` 
+   - -> `main_window.on_language_changed(language_code)` (`views/main_window.py`) 
+   - -> 各組件的 `update_language()` 方法
+
+4. **主題切換**：
+   - 用戶在設定對話框中選擇主題 -> `views/components/setting/settings_dialog.py` -> `_on_theme_changed()` 
+   - -> `controllers/system_controller.py` -> `handle_theme_change(theme_name)` 
+   - -> `apply_dark_theme()` 或 `apply_light_theme()`
+
+### 數據流程
+
+1. **相機數據流**：
+   - `models/camera_manager.py` -> `read_frame()` 
+   - -> `controllers/detection_controller.py` -> `process_frame(frame)` 
+   - -> `models/image_processor.py` -> 各種圖像處理方法 
+   - -> 返回處理後的幀到 `detection_controller` 
+   - -> 返回到 `system_controller` 
+   - -> `views/components/video_panel.py` 或 `views/components/photo_panel.py` 顯示
+
+2. **設定數據流**：
+   - `utils/config.py` -> 讀取/寫入配置文件 
+   - -> `controllers/system_controller.py` -> `load_settings()` 和 `save_settings()` 
+   - -> 更新到 `detection_controller` 和 UI 組件
+
+3. **計數數據流**：
+   - `controllers/detection_controller.py` -> `process_frame()` 中的物件計數 
+   - -> 通過回調函數 `count_updated` 
+   - -> `views/components/settings_panel.py` -> `update_count(count)` 更新顯示
+
 ## 目錄結構
 
 ```plaintext

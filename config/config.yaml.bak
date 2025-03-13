@@ -13,19 +13,15 @@ detection:
   bg_history: 20000
   bg_threshold: 16
   binary_threshold: 30
-  buffer_point: 600
+  buffer_point: 95
   canny_threshold1: 50
   canny_threshold2: 110
   detect_shadows: true
-  expected_count: 1000
-  max_area: 150
   max_object_area: 150
-  min_area: 10
   min_object_area: 10
-  roi_default_position: 0.3
+  roi_default_position: 0.5
   roi_height: 16
-  roi_position: 20
-  target_count: 800
+  target_count: 1000
   track_tolerance_x: 64
   track_tolerance_y: 48
 display:
@@ -40,15 +36,12 @@ language: zh_TW
 max_object_area: 150
 min_object_area: 10
 photo_analysis:
-  api_url: http://skaiqwenapi.skaispace.com:5002/api/inspect
   auto_analyze: true
-  auto_save: true
   max_circle_radius: 300
   min_circle_radius: 50
   quality_threshold: 9.0
   save_captured: true
   save_directory: captured_images
-  timeout: 300
 roi_default_position: 0.5
 show_performance: true
 system:
@@ -66,7 +59,7 @@ ui:
   theme: light
   video_quality: high
   window_state:
-    height: 714
-    position_x: 1180
-    position_y: 299
-    width: 884
+    height: 600
+    position_x: null
+    position_y: null
+    width: 800

@@ -22,6 +22,7 @@ from views.components.photo_panel import PhotoPanel
 from views.components.analysis_panel import AnalysisPanel
 from utils.ui_style_manager import UIStyleManager
 from utils.theme_manager import ThemeManager
+from utils.settings_manager import get_settings_manager
 
 # 版本号
 VERSION = "1.0.0"
@@ -98,7 +99,29 @@ class MainWindow(tk.Frame):
         """載入配置"""
         # 從配置檔載入設定
         # 配置會在創建UI元件時使用
-        pass
+        self.config_manager = self.system_controller.config_manager
+
+        # 應用設定
+        self.apply_settings()
+
+        # 設定語言
+        language_code = self.config_manager.get('system.language', 'zh_TW')
+        self.on_language_changed(language_code)
+
+        # 設定主題
+        theme = self.config_manager.get('ui.theme', 'light')
+        self.theme_manager.set_theme(theme)
+
+        # 設定視窗樣式
+        self.style = ttk.Style()
+        self.style.configure('Main.TFrame', background=self.theme_manager.get_main_color())
+        self.style.configure('Header.TFrame', background=self.theme_manager.get_main_color())
+        self.style.configure('Content.TFrame', background=self.theme_manager.get_main_color())
+        self.style.configure('Footer.TFrame', background=self.theme_manager.get_main_color())
+        self.style.configure('Header.TLabel', background=self.theme_manager.get_main_color())
+        self.style.configure('HeaderTitle.TLabel', background=self.theme_manager.get_main_color())
+        self.style.configure('Header.TButton', background=self.theme_manager.get_main_color())
+
 
     #==========================================================================
     # 第二部分：UI元件創建
@@ -205,15 +228,8 @@ class MainWindow(tk.Frame):
 
     def create_settings_panel(self):
         """創建設定面板"""
-        # 檢查是否有系統控制器
-        config_manager = None
-        if hasattr(self, 'system_controller') and self.system_controller:
-            # 如果有系統控制器，使用其配置管理器或設定
-            if hasattr(self.system_controller, 'config_manager') and self.system_controller.config_manager:
-                config_manager = self.system_controller.config_manager
-        
         # 創建設定面板，使用content作為父級元件
-        self.settings_panel = SettingsPanel(self.content, config_manager)
+        self.settings_panel = SettingsPanel(self.content)
         
         # 如果有系統控制器，設置回調
         if hasattr(self, 'system_controller') and self.system_controller:

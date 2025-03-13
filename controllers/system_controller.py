@@ -17,6 +17,7 @@ from controllers.detection_controller import DetectionController
 from utils.ui_style_manager import UIStyleManager
 from views.components.setting.settings_dialog import SettingsDialog
 from utils.config import Config
+from utils.settings_manager import get_settings_manager
 
 
 class SystemController:
@@ -521,9 +522,20 @@ class SystemController:
             logging.info(f"套用設定: {settings}")
             print(f"套用設定: {settings}")
             
+            # 獲取設定管理器
+            settings_manager = get_settings_manager()
+            
+            # 更新設定管理器
+            result = settings_manager.update(settings)
+            
+            if not result:
+                logging.error("更新設定管理器失敗")
+                print("更新設定管理器失敗")
+                return False
+                
             # 獲取設定值
-            target_count = settings.get('target_count', 1000)
-            buffer_point = settings.get('buffer_point', 950)
+            target_count = int(settings.get('target_count', 1000))
+            buffer_point = int(settings.get('buffer_point', 950))
             
             # 更新檢測控制器設定
             if self.detection_controller:
@@ -538,46 +550,6 @@ class SystemController:
             self.settings['target_count'] = target_count
             self.settings['buffer_point'] = buffer_point
             
-            # 保存設置到配置文件
-            self.save_settings()
-            
-            # 更新主畫面的設定面板
-            if hasattr(self.main_window, 'settings_panel'):
-                try:
-                    # 更新設定面板內部的變數
-                    self.main_window.settings_panel.target_count = target_count
-                    self.main_window.settings_panel.buffer_point = buffer_point
-                    
-                    # 嘗試使用recreate_ui方法
-                    if hasattr(self.main_window.settings_panel, 'recreate_ui'):
-                        self.main_window.settings_panel.recreate_ui()
-                        logging.info("使用recreate_ui方法更新設定面板")
-                    else:
-                        # 如果沒有recreate_ui方法，使用update_ui
-                        self.main_window.settings_panel.update_ui()
-                        logging.info("使用update_ui方法更新設定面板")
-                    
-                    # 強制更新整個主視窗
-                    self.main_window.update()
-                    
-                    logging.info(f"已同步更新主畫面設定面板：目標數量={target_count}，緩衝點={buffer_point}")
-                    print(f"已同步更新主畫面設定面板：目標數量={target_count}，緩衝點={buffer_point}")
-                except Exception as e:
-                    logging.error(f"更新設定面板時出錯：{str(e)}")
-                    print(f"更新設定面板時出錯：{str(e)}")
-            
-            # 更新語言
-            if new_language != old_language:
-                logging.info(f"變更語言為: {new_language}")
-                print(f"變更語言為: {new_language}")
-                self.handle_language_change(new_language)
-                
-            # 更新主題
-            if new_theme != old_theme:
-                logging.info(f"變更主題為: {new_theme}")
-                print(f"變更主題為: {new_theme}")
-                self.handle_theme_change(new_theme)
-                
             # 更新狀態欄 - 檢查不同的可能性
             status_message = get_text("settings_updated", "設置已更新")
             logging.info(status_message)
@@ -852,21 +824,11 @@ class SystemController:
             logging.info("打開設置對話框")
             print("打開設置對話框")
             
-            # 檢查設置是否已初始化
-            if not hasattr(self, 'settings'):
-                self.settings = {}
-                logging.info("初始化設置字典")
-                print("初始化設置字典")
-            
-            # 創建設置對話框
-            config_manager = Config()
-            
-            # 將當前設置轉換為 Config 格式
-            for key, value in self.settings.items():
-                config_manager.set(key, value)
+            # 從設定管理器獲取設定
+            settings_manager = get_settings_manager()
             
             # 創建並顯示設置對話框
-            settings_dialog = SettingsDialog(self.main_window, config_manager)
+            settings_dialog = SettingsDialog(self.main_window)
             
             # 等待對話框關閉
             self.main_window.wait_window(settings_dialog)
@@ -877,70 +839,21 @@ class SystemController:
                 print("用戶取消設置")
                 return
                 
-            # 獲取新設置
-            new_settings_dict = settings_dialog.get_settings()
-            if not new_settings_dict:
-                logging.warning("無法獲取設置")
-                print("無法獲取設置")
-                return
-                
-            # 將 Config 格式的設置轉換為我們的格式
-            new_settings = {}
-            for key, value in new_settings_dict.items():
-                # 移除前綴，例如 'system.language' -> 'language'
-                simple_key = key.split('.')[-1]
-                new_settings[simple_key] = value
-                
-            # 更新設置
-            old_language = self.settings.get('language', 'zh_TW')
-            old_theme = self.settings.get('theme', 'light')
+            # 獲取所有設定
+            all_settings = settings_manager.get_all_settings()
             
-            # 獲取新設置
-            new_language = new_settings.get('language', old_language)
-            new_theme = new_settings.get('theme', old_theme)
-            new_target_count = int(new_settings.get('target_count', 1000))
-            new_buffer_point = int(new_settings.get('buffer_point', 950))
+            # 更新本地設定
+            self.settings = all_settings
             
-            # 更新設置
-            self.settings = new_settings
-            self.save_settings()
-            
-            # 更新檢測控制器設置
-            if self.detection_controller:
-                self.detection_controller.set_target_count(new_target_count)
-                self.detection_controller.set_buffer_point(new_buffer_point)
-                
-                # 設置 ROI 位置
-                roi_default_position = float(new_settings.get('roi_default_position', 0.5))
-                if hasattr(self.camera_manager, 'current_frame') and self.camera_manager.current_frame is not None:
-                    height = self.camera_manager.current_frame.shape[0]
-                    self.detection_controller.roi_y = int(height * roi_default_position)
-                    self.detection_controller.saved_roi_percentage = roi_default_position
-                    logging.info(f"設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
-                    print(f"設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
-                else:
-                    # 如果當前沒有幀，設置一個標誌，在下一幀處理時更新 ROI 位置
-                    self.detection_controller.saved_roi_percentage = roi_default_position
-                    self.detection_controller.roi_needs_update = True
-                    logging.info(f"設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
-                    print(f"設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
+            # 獲取關鍵設定值
+            new_language = all_settings.get('language', 'zh_TW')
+            new_theme = all_settings.get('theme', 'light')
+            new_target_count = int(all_settings.get('target_count', 1000))
+            new_buffer_point = int(all_settings.get('buffer_point', 950))
             
             # 更新主畫面的設定面板
             if hasattr(self.main_window, 'settings_panel'):
                 try:
-                    # 更新設定面板內部的變數
-                    self.main_window.settings_panel.target_count = new_target_count
-                    self.main_window.settings_panel.buffer_point = new_buffer_point
-                    
-                    # 嘗試使用recreate_ui方法
-                    if hasattr(self.main_window.settings_panel, 'recreate_ui'):
-                        self.main_window.settings_panel.recreate_ui()
-                        logging.info("使用recreate_ui方法更新設定面板")
-                    else:
-                        # 如果沒有recreate_ui方法，使用update_ui
-                        self.main_window.settings_panel.update_ui()
-                        logging.info("使用update_ui方法更新設定面板")
-                    
                     # 強制更新整個主視窗
                     self.main_window.update()
                     
@@ -951,12 +864,14 @@ class SystemController:
                     print(f"更新設定面板時出錯：{str(e)}")
             
             # 更新語言
+            old_language = self.settings.get('language', 'zh_TW')
             if new_language != old_language:
                 logging.info(f"變更語言為: {new_language}")
                 print(f"變更語言為: {new_language}")
                 self.handle_language_change(new_language)
                 
             # 更新主題
+            old_theme = self.settings.get('theme', 'light')
             if new_theme != old_theme:
                 logging.info(f"變更主題為: {new_theme}")
                 print(f"變更主題為: {new_theme}")
@@ -984,6 +899,26 @@ class SystemController:
             except Exception as e:
                 logging.error(f"刷新預覽時出錯: {str(e)}")
                 print(f"刷新預覽時出錯: {str(e)}")
+            
+            # 更新檢測控制器設置
+            if self.detection_controller:
+                self.detection_controller.set_target_count(new_target_count)
+                self.detection_controller.set_buffer_point(new_buffer_point)
+                
+                # 設置 ROI 位置
+                roi_default_position = float(all_settings.get('roi_default_position', 0.5))
+                if hasattr(self.camera_manager, 'current_frame') and self.camera_manager.current_frame is not None:
+                    height = self.camera_manager.current_frame.shape[0]
+                    self.detection_controller.roi_y = int(height * roi_default_position)
+                    self.detection_controller.saved_roi_percentage = roi_default_position
+                    logging.info(f"設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
+                    print(f"設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
+                else:
+                    # 如果當前沒有幀，設置一個標誌，在下一幀處理時更新 ROI 位置
+                    self.detection_controller.saved_roi_percentage = roi_default_position
+                    self.detection_controller.roi_needs_update = True
+                    logging.info(f"設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
+                    print(f"設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
             
         except Exception as e:
             logging.error(f"打開設置對話框時出錯: {str(e)}")

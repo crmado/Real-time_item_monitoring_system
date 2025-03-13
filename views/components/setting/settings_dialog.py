@@ -9,23 +9,30 @@ import logging
 
 from utils.language import get_text, change_language, get_available_languages, get_language_name
 from utils.config import Config
+from utils.settings_manager import get_settings_manager
 
 
 class SettingsDialog(tk.Toplevel):
     """設定對話框類別"""
 
-    def __init__(self, parent, config_manager, **kwargs):
+    def __init__(self, parent, config_manager=None, **kwargs):
         """
         初始化設定對話框
 
         Args:
             parent: 父級視窗
-            config_manager: 配置管理器實例
+            config_manager: 配置管理器實例（已棄用，保留參數是為了向後兼容）
             **kwargs: 其他參數
         """
         super().__init__(parent, **kwargs)
         self.parent = parent
+        
+        # 初始化設定管理器
+        self.settings_manager = get_settings_manager()
+        
+        # 保留舊的配置管理器參數，以便向後兼容
         self.config_manager = config_manager
+        
         self.result = None
 
         # 設定對話框屬性
@@ -130,7 +137,7 @@ class SettingsDialog(tk.Toplevel):
             self.language_combo.pack(padx=10, pady=10)
 
             # 設定當前語言
-            current_language = self.config_manager.get('system.language', 'zh_TW')
+            current_language = self.settings_manager.get('language', 'zh_TW')
             if current_language in languages:
                 default_index = languages.index(current_language)
                 self.language_combo.current(default_index)
@@ -144,7 +151,7 @@ class SettingsDialog(tk.Toplevel):
             ttk.Label(lang_frame, text="繁體中文 (默认)").pack(padx=10, pady=10)
 
         # 自動檢查更新
-        self.check_update_var = tk.BooleanVar(value=self.config_manager.get('system.check_updates', True))
+        self.check_update_var = tk.BooleanVar(value=self.settings_manager.get('check_updates', True))
         check_update_cb = ttk.Checkbutton(
             parent,
             text=get_text("check_updates", "啟動時檢查更新"),
@@ -153,7 +160,7 @@ class SettingsDialog(tk.Toplevel):
         check_update_cb.pack(fill=tk.X, padx=10, pady=10, anchor=tk.W)
 
         # 備份配置
-        self.backup_config_var = tk.BooleanVar(value=self.config_manager.get('system.backup_config', True))
+        self.backup_config_var = tk.BooleanVar(value=self.settings_manager.get('backup_config', True))
         backup_config_cb = ttk.Checkbutton(
             parent,
             text=get_text("backup_config", "修改配置前自動備份"),
@@ -168,7 +175,7 @@ class SettingsDialog(tk.Toplevel):
         theme_frame.pack(fill=tk.X, padx=10, pady=10, anchor=tk.W)
 
         # 主題選擇按鈕
-        self.theme_var = tk.StringVar(value=self.config_manager.get('ui.theme', 'light'))
+        self.theme_var = tk.StringVar(value=self.settings_manager.get('theme', 'light'))
         self.light_radio = ttk.Radiobutton(
             theme_frame,
             text=get_text("light_theme", "亮色模式"),
@@ -189,7 +196,7 @@ class SettingsDialog(tk.Toplevel):
         font_frame = ttk.LabelFrame(parent, text=get_text("font_size", "字體大小"))
         font_frame.pack(fill=tk.X, padx=10, pady=10, anchor=tk.W)
 
-        self.font_size_var = tk.StringVar(value=self.config_manager.get('ui.font_size', 'medium'))
+        self.font_size_var = tk.StringVar(value=self.settings_manager.get('font_size', 'medium'))
         self.small_radio = ttk.Radiobutton(
             font_frame,
             text=get_text("small", "小"),
@@ -214,7 +221,7 @@ class SettingsDialog(tk.Toplevel):
         self.large_radio.pack(padx=10, pady=5, anchor=tk.W)
 
         # 顯示效能資訊
-        self.show_performance_var = tk.BooleanVar(value=self.config_manager.get('ui.show_performance', True))
+        self.show_performance_var = tk.BooleanVar(value=self.settings_manager.get('show_performance', True))
         performance_cb = ttk.Checkbutton(
             parent,
             text=get_text("show_performance", "顯示效能資訊"),
@@ -235,7 +242,11 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(target_frame, text=get_text("target_count", "預計數量：")).pack(side=tk.LEFT)
         self.target_entry = ttk.Entry(target_frame, width=10)
         self.target_entry.pack(side=tk.LEFT, padx=5)
-        self.target_entry.insert(0, str(self.config_manager.get('detection.target_count', 1000)))
+        
+        # 從設定管理器獲取目標數量
+        target_count = self.settings_manager.get('target_count', 1000)
+        self.target_entry.insert(0, str(target_count))
+        logging.info(f"設定對話框：目標數量={target_count}")
 
         # 緩衝點
         buffer_frame = ttk.Frame(default_frame)
@@ -244,7 +255,11 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(buffer_frame, text=get_text("buffer_point", "緩衝點：")).pack(side=tk.LEFT)
         self.buffer_entry = ttk.Entry(buffer_frame, width=10)
         self.buffer_entry.pack(side=tk.LEFT, padx=5)
-        self.buffer_entry.insert(0, str(self.config_manager.get('detection.buffer_point', 950)))
+        
+        # 從設定管理器獲取緩衝點
+        buffer_point = self.settings_manager.get('buffer_point', 950)
+        self.buffer_entry.insert(0, str(buffer_point))
+        logging.info(f"設定對話框：緩衝點={buffer_point}")
 
         # ROI 預設位置
         roi_frame = ttk.Frame(default_frame)
@@ -253,8 +268,12 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(roi_frame, text=get_text("roi_position", "ROI 預設位置 (%):")).pack(side=tk.LEFT)
         self.roi_entry = ttk.Entry(roi_frame, width=10)
         self.roi_entry.pack(side=tk.LEFT, padx=5)
-        roi_value = self.config_manager.get('detection.roi_default_position', 0.2) * 100
+        
+        # 從設定管理器獲取ROI預設位置
+        roi_position = self.settings_manager.get('roi_default_position', 0.5)
+        roi_value = roi_position * 100
         self.roi_entry.insert(0, str(int(roi_value)))
+        logging.info(f"設定對話框：ROI預設位置={roi_position}")
 
         # 物件面積範圍
         area_frame = ttk.LabelFrame(parent, text=get_text("object_area", "物件面積範圍"))
@@ -267,7 +286,11 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(min_frame, text=get_text("min_area", "最小面積:")).pack(side=tk.LEFT)
         self.min_area_entry = ttk.Entry(min_frame, width=10)
         self.min_area_entry.pack(side=tk.LEFT, padx=5)
-        self.min_area_entry.insert(0, str(self.config_manager.get('detection.min_object_area', 10)))
+        
+        # 從設定管理器獲取最小面積
+        min_area = self.settings_manager.get('min_object_area', 10)
+        self.min_area_entry.insert(0, str(min_area))
+        logging.info(f"設定對話框：最小面積={min_area}")
 
         # 最大面積
         max_frame = ttk.Frame(area_frame)
@@ -276,7 +299,11 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(max_frame, text=get_text("max_area", "最大面積:")).pack(side=tk.LEFT)
         self.max_area_entry = ttk.Entry(max_frame, width=10)
         self.max_area_entry.pack(side=tk.LEFT, padx=5)
-        self.max_area_entry.insert(0, str(self.config_manager.get('detection.max_object_area', 150)))
+        
+        # 從設定管理器獲取最大面積
+        max_area = self.settings_manager.get('max_object_area', 150)
+        self.max_area_entry.insert(0, str(max_area))
+        logging.info(f"設定對話框：最大面積={max_area}")
 
     def on_save(self):
         """保存設定"""
@@ -286,8 +313,8 @@ class SettingsDialog(tk.Toplevel):
             if not settings:
                 return
 
-            # 更新配置
-            self.config_manager.update(settings)
+            # 更新設定管理器
+            self.settings_manager.update(settings)
 
             # 設定結果
             self.result = True
@@ -401,32 +428,32 @@ class SettingsDialog(tk.Toplevel):
 
             # 返回設定字典
             return {
-                'system.language': language_code,
-                'system.check_updates': check_updates,
-                'system.backup_config': backup_config,
-                'ui.theme': theme,
-                'ui.font_size': font_size,
-                'ui.show_performance': show_performance,
-                'detection.target_count': target_count,
-                'detection.buffer_point': buffer_point,
-                'detection.roi_default_position': roi_position,
-                'detection.min_object_area': min_area,
-                'detection.max_object_area': max_area
+                'language': language_code,
+                'check_updates': check_updates,
+                'backup_config': backup_config,
+                'theme': theme,
+                'font_size': font_size,
+                'show_performance': show_performance,
+                'target_count': target_count,
+                'buffer_point': buffer_point,
+                'roi_default_position': roi_position,
+                'min_object_area': min_area,
+                'max_object_area': max_area
             }
 
         except Exception as e:
             logging.error(f"獲取設定值時發生錯誤：{str(e)}")
             # 返回默認設定
             return {
-                'system.language': 'zh_TW',
-                'system.check_updates': True,
-                'system.backup_config': True,
-                'ui.theme': 'light',
-                'ui.font_size': 'medium',
-                'ui.show_performance': True,
-                'detection.target_count': 1000,
-                'detection.buffer_point': 950,
-                'detection.roi_default_position': 0.5,
-                'detection.min_object_area': 10,
-                'detection.max_object_area': 150
+                'language': 'zh_TW',
+                'check_updates': True,
+                'backup_config': True,
+                'theme': 'light',
+                'font_size': 'medium',
+                'show_performance': True,
+                'target_count': 1000,
+                'buffer_point': 950,
+                'roi_default_position': 0.5,
+                'min_object_area': 10,
+                'max_object_area': 150
             }
