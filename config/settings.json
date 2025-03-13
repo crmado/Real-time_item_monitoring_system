@@ -31,7 +31,7 @@
         "detect_shadows": true
     },
     "ui": {
-        "theme": "light",
+        "theme": "dark",
         "font_size": "medium",
         "show_performance": true,
         "video_quality": "high",

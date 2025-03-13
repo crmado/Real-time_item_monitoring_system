@@ -1,76 +1,20 @@
 """
-語言模組
-管理系統的多語言支援
-注意：此模組已被 language_manager.py 取代，但為了向後兼容而保留
+語言管理模組
+管理系統的多語言支援，使用觀察者模式通知語言變更
 """
 
 import os
 import json
 import logging
 from pathlib import Path
-
-# 嘗試導入新的語言管理器
-try:
-    from utils.language_manager import (
-        get_text as new_get_text,
-        change_language as new_change_language,
-        get_available_languages as new_get_available_languages,
-        get_language_name as new_get_language_name,
-        register_language_observer,
-        unregister_language_observer
-    )
-    _use_new_manager = True
-    logging.info("使用新的語言管理器")
-except ImportError:
-    _use_new_manager = False
-    logging.warning("無法導入新的語言管理器，使用舊的語言模組")
-
-
-# 語言資源字典
-_resources = {}
-_current_language = 'zh_TW'
-
-# 語言名稱對照表
-LANGUAGE_NAMES = {
-    'zh_TW': '繁體中文',
-    'en_US': 'English',
-    'zh_CN': '简体中文'
-}
-
-# 備用語言資源
-FALLBACK_RESOURCES = {
-    'app_title': '物件監測系統',
-    'current_count': '目前數量：',
-    'target_count': '預計數量：',
-    'buffer_point': '緩衝點：',
-    'language': '語言：',
-    'apply_settings': '套用設定',
-    'system_log': '系統日誌：',
-    'current_time': '目前時間：',
-    'select_source': '選擇視訊來源：',
-    'test_button': '測試鏡頭',
-    'stop_test': '停止測試',
-    'start_button': '開始監測',
-    'stop_button': '停止監測',
-    'start_monitoring': '開始監測',
-    'stop_monitoring': '停止監測',
-    'control_panel': '控制面板',
-    'mode_selection': '模式選擇',
-    'monitoring_mode': '監控模式',
-    'photo_mode': '拍照模式',
-    'actions': '操作',
-    'settings': '設定',
-    'status': '狀態',
-    'status_ready': '就緒',
-    'status_running': '正在運行',
-    'status_stopped': '已停止',
-    'status_monitoring_mode': '監控模式',
-    'status_photo_mode': '拍照模式'
-}
+from typing import Dict, Any, List, Callable, Optional
 
 
 class LanguageManager:
-    """語言管理類別"""
+    """
+    語言管理類別
+    負責管理系統的多語言支援，並提供統一的介面給視圖層和邏輯層
+    """
 
     def __init__(self, default_language='zh_TW'):
         """
@@ -82,7 +26,9 @@ class LanguageManager:
         self.current_language = default_language
         self.languages = {}
         self.available_languages = []
+        self.observers: List[Callable[[str], None]] = []  # 觀察者列表，用於通知語言變更
         self.load_languages()
+        logging.info(f"語言管理器初始化完成，當前語言：{self.current_language}")
 
     def load_languages(self):
         """載入所有可用的語言檔案"""
@@ -295,8 +241,14 @@ class LanguageManager:
             bool: 是否成功切換
         """
         if language_code in self.available_languages:
+            old_language = self.current_language
             self.current_language = language_code
             logging.info(f"語言已切換為：{language_code}")
+            
+            # 如果語言確實變更了，通知觀察者
+            if old_language != language_code:
+                self._notify_observers(language_code)
+                
             return True
         else:
             logging.error(f"不支援的語言：{language_code}")
@@ -311,9 +263,108 @@ class LanguageManager:
         """
         return self.available_languages
 
+    def get_language_name(self, lang_code):
+        """
+        獲取語言名稱
 
-# 建立全域語言管理器實例
-language_manager = LanguageManager()
+        Args:
+            lang_code: 語言代碼
+
+        Returns:
+            str: 語言名稱
+        """
+        return LANGUAGE_NAMES.get(lang_code, lang_code)
+
+    def register_observer(self, callback: Callable[[str], None]):
+        """
+        註冊語言變更觀察者
+
+        Args:
+            callback: 回調函數，接收語言代碼作為參數
+        """
+        if callback not in self.observers:
+            self.observers.append(callback)
+            logging.info(f"已註冊語言變更觀察者")
+
+    def unregister_observer(self, callback: Callable[[str], None]):
+        """
+        取消註冊語言變更觀察者
+
+        Args:
+            callback: 回調函數
+        """
+        if callback in self.observers:
+            self.observers.remove(callback)
+            logging.info(f"已取消註冊語言變更觀察者")
+
+    def _notify_observers(self, language_code: str):
+        """
+        通知語言變更觀察者
+
+        Args:
+            language_code: 新的語言代碼
+        """
+        for callback in self.observers:
+            try:
+                callback(language_code)
+            except Exception as e:
+                logging.error(f"通知語言變更觀察者時出錯：{str(e)}")
+
+
+# 語言名稱對照表
+LANGUAGE_NAMES = {
+    'zh_TW': '繁體中文',
+    'en_US': 'English',
+    'zh_CN': '简体中文'
+}
+
+# 備用語言資源
+FALLBACK_RESOURCES = {
+    'app_title': '物件監測系統',
+    'current_count': '目前數量：',
+    'target_count': '預計數量：',
+    'buffer_point': '緩衝點：',
+    'language': '語言：',
+    'apply_settings': '套用設定',
+    'system_log': '系統日誌：',
+    'current_time': '目前時間：',
+    'select_source': '選擇視訊來源：',
+    'test_button': '測試鏡頭',
+    'stop_test': '停止測試',
+    'start_button': '開始監測',
+    'stop_button': '停止監測',
+    'start_monitoring': '開始監測',
+    'stop_monitoring': '停止監測',
+    'control_panel': '控制面板',
+    'mode_selection': '模式選擇',
+    'monitoring_mode': '監控模式',
+    'photo_mode': '拍照模式',
+    'actions': '操作',
+    'settings': '設定',
+    'status': '狀態',
+    'status_ready': '就緒',
+    'status_running': '正在運行',
+    'status_stopped': '已停止',
+    'status_monitoring_mode': '監控模式',
+    'status_photo_mode': '拍照模式'
+}
+
+
+# 全局語言管理器實例
+_language_manager: Optional[LanguageManager] = None
+
+
+def get_language_manager() -> LanguageManager:
+    """
+    獲取全局語言管理器實例
+
+    Returns:
+        LanguageManager: 語言管理器實例
+    """
+    global _language_manager
+    if _language_manager is None:
+        _language_manager = LanguageManager()
+    return _language_manager
 
 
 def get_text(key, default=None):
@@ -327,9 +378,7 @@ def get_text(key, default=None):
     Returns:
         str: 對應的文字
     """
-    if _use_new_manager:
-        return new_get_text(key, default)
-    return language_manager.get_text(key, default)
+    return get_language_manager().get_text(key, default)
 
 
 def change_language(language_code):
@@ -342,22 +391,7 @@ def change_language(language_code):
     Returns:
         bool: 是否成功切換
     """
-    if _use_new_manager:
-        return new_change_language(language_code)
-    return language_manager.change_language(language_code)
-
-
-def set_language(language_code):
-    """
-    設置當前語言（change_language的別名）
-    
-    Args:
-        language_code: 語言代碼
-        
-    Returns:
-        bool: 是否成功設置
-    """
-    return change_language(language_code)
+    return get_language_manager().change_language(language_code)
 
 
 def get_available_languages():
@@ -367,14 +401,12 @@ def get_available_languages():
     Returns:
         list: 語言代碼列表
     """
-    if _use_new_manager:
-        return new_get_available_languages()
-    return language_manager.get_available_languages()
+    return get_language_manager().get_available_languages()
 
 
 def get_language_name(lang_code):
     """
-    獲取語言名稱
+    便捷函數：獲取語言名稱
 
     Args:
         lang_code: 語言代碼
@@ -382,6 +414,24 @@ def get_language_name(lang_code):
     Returns:
         str: 語言名稱
     """
-    if _use_new_manager:
-        return new_get_language_name(lang_code)
-    return LANGUAGE_NAMES.get(lang_code, lang_code)
+    return get_language_manager().get_language_name(lang_code)
+
+
+def register_language_observer(callback: Callable[[str], None]):
+    """
+    便捷函數：註冊語言變更觀察者
+
+    Args:
+        callback: 回調函數，接收語言代碼作為參數
+    """
+    get_language_manager().register_observer(callback)
+
+
+def unregister_language_observer(callback: Callable[[str], None]):
+    """
+    便捷函數：取消註冊語言變更觀察者
+
+    Args:
+        callback: 回調函數
+    """
+    get_language_manager().unregister_observer(callback) 
