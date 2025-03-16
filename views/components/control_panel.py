@@ -57,7 +57,7 @@ class ControlPanel(ttk.Frame):
         # 相机选择区域
         camera_frame = ttk.LabelFrame(
             main_controls, 
-            text=get_text("camera_selection", "相机选择")
+            text=get_text("camera_selection", "相機選擇")
         )
         camera_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -83,7 +83,7 @@ class ControlPanel(ttk.Frame):
         
         self.monitoring_radio = ttk.Radiobutton(
             modes_container,
-            text=get_text("monitoring_mode", "监控模式"),
+            text=get_text("monitoring_mode", "監控模式"),
             variable=self.current_mode,
             value="monitoring",
             command=self._on_mode_changed
@@ -112,18 +112,18 @@ class ControlPanel(ttk.Frame):
         
         self.start_btn = ttk.Button(
             buttons_container,
-            text=get_text("start", "开始"),
+            text=get_text("start", "開始"),
             command=self._on_start,
             style='Accent.TButton'
         )
         self.start_btn.pack(fill=tk.X, pady=2)
         
-        self.refresh_btn = ttk.Button(
-            buttons_container,
-            text=get_text("refresh_preview", "刷新預覽"),
-            command=self._on_refresh_preview
-        )
-        self.refresh_btn.pack(fill=tk.X, pady=2)
+        # self.refresh_btn = ttk.Button(
+        #     buttons_container,
+        #     text=get_text("refresh_preview", "刷新預覽"),
+        #     command=self._on_refresh_preview
+        # )
+        # self.refresh_btn.pack(fill=tk.X, pady=2)
         
         self.stop_btn = ttk.Button(
             buttons_container,
@@ -134,17 +134,17 @@ class ControlPanel(ttk.Frame):
         )
         self.stop_btn.pack(fill=tk.X, pady=2)
         
-        self.settings_btn = ttk.Button(
-            buttons_container,
-            text=get_text("settings", "设置"),
-            command=self._on_settings
-        )
-        self.settings_btn.pack(fill=tk.X, pady=2)
+        # self.settings_btn = ttk.Button(
+        #     buttons_container,
+        #     text=get_text("settings", "设置"),
+        #     command=self._on_settings
+        # )
+        # self.settings_btn.pack(fill=tk.X, pady=2)
         
         # 状态显示区域
         status_frame = ttk.LabelFrame(
             main_controls, 
-            text=get_text("status", "状态")
+            text=get_text("status", "狀態")
         )
         status_frame.pack(fill=tk.X, padx=5, pady=5)
         
@@ -241,15 +241,15 @@ class ControlPanel(ttk.Frame):
         if 'stop' in self.callbacks and self.callbacks['stop']:
             self.callbacks['stop']()
             
-    def _on_settings(self):
-        """處理設置按鈕點擊事件"""
-        if 'settings' in self.callbacks and self.callbacks['settings']:
-            self.callbacks['settings']()
+    # def _on_settings(self):
+    #     """處理設置按鈕點擊事件"""
+    #     if 'settings' in self.callbacks and self.callbacks['settings']:
+    #         self.callbacks['settings']()
 
-    def _on_refresh_preview(self):
-        """處理刷新預覽按鈕點擊事件"""
-        if 'refresh_preview' in self.callbacks:
-            self.callbacks['refresh_preview']()
+    # def _on_refresh_preview(self):
+    #     """處理刷新預覽按鈕點擊事件"""
+    #     if 'refresh_preview' in self.callbacks:
+    #         self.callbacks['refresh_preview']()
 
     def update_language(self):
         """更新語言"""
