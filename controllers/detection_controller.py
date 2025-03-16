@@ -6,6 +6,8 @@
 import logging
 import cv2
 import numpy as np
+import os
+from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from models.image_processor import ImageProcessor
 
@@ -50,6 +52,10 @@ class DetectionController:
         
         # 回调函数字典
         self.callbacks = {}
+        
+        # 檢測日誌
+        self.detection_log_file = None
+        self.detection_logger = None
         
         # 初始化 ROI 位置（確保有一個初始值）
         logging.info("初始化 ROI 位置")
@@ -117,7 +123,7 @@ class DetectionController:
                 if font is None:
                     # 如果無法加載任何字體，使用默認字體
                     font = ImageFont.load_default()
-                    logging.warning("無法加載中文字體，使用默認字體")
+                    # logging.warning("無法加載中文字體，使用默認字體")
             except:
                 # 如果加載字體失敗，使用默認字體
                 font = ImageFont.load_default()
@@ -137,7 +143,7 @@ class DetectionController:
             
     def start_detection(self):
         """啟動物體檢測"""
-        logging.info("啟動物體檢測")
+        logging.info("[資訊] 啟動物體檢測")
         print("啟動物體檢測")
         self.is_detecting = True
         
@@ -146,24 +152,90 @@ class DetectionController:
         self.object_count = 0
         self.tracked_objects = []
         
+        # 創建檢測日誌文件
+        self._setup_detection_log()
+        
         # 觸發監控開始回調
         if 'monitoring_started' in self.callbacks and self.callbacks['monitoring_started']:
             self.callbacks['monitoring_started']()
             
-        logging.info("物體檢測已啟動")
+        logging.info("[資訊] 物體檢測已啟動")
         print("物體檢測已啟動")
+        
+    def _setup_detection_log(self):
+        """設置檢測日誌"""
+        try:
+            # 確保日誌目錄存在
+            logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+            if not os.path.exists(logs_dir):
+                os.makedirs(logs_dir)
+                
+            # 創建檢測日誌文件名
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.detection_log_file = os.path.join(logs_dir, f"detection_{timestamp}.log")
+            
+            # 配置檢測日誌
+            detection_logger = logging.getLogger('detection_logger')
+            detection_logger.setLevel(logging.INFO)
+            
+            # 清除現有處理器
+            for handler in detection_logger.handlers[:]:
+                detection_logger.removeHandler(handler)
+                
+            # 添加文件處理器
+            file_handler = logging.FileHandler(self.detection_log_file, encoding='utf-8')
+            formatter = logging.Formatter('%(asctime)s %(levelname_cn)s %(message)s', 
+                                         datefmt='%Y-%m-%d %H:%M:%S')
+            file_handler.setFormatter(formatter)
+            detection_logger.addHandler(file_handler)
+            
+            # 保存日誌器引用
+            self.detection_logger = detection_logger
+            
+            # 記錄初始信息
+            self._log_detection("[資訊]", "檢測日誌已創建")
+            self._log_detection("[資訊]", f"ROI 位置百分比: {self.saved_roi_percentage}")
+            self._log_detection("[資訊]", f"目標計數: {self.target_count}")
+            
+            logging.info(f"[資訊] 檢測日誌已創建: {self.detection_log_file}")
+            
+        except Exception as e:
+            logging.error(f"[錯誤] 創建檢測日誌失敗: {str(e)}")
+            
+    def _log_detection(self, level_cn, message):
+        """記錄檢測日誌
+        
+        Args:
+            level_cn: 中文日誌級別
+            message: 日誌消息
+        """
+        if self.detection_logger:
+            extra = {'levelname_cn': level_cn}
+            if level_cn == "[資訊]":
+                self.detection_logger.info(message, extra=extra)
+            elif level_cn == "[警告]":
+                self.detection_logger.warning(message, extra=extra)
+            elif level_cn == "[錯誤]":
+                self.detection_logger.error(message, extra=extra)
+            elif level_cn == "[嚴重]":
+                self.detection_logger.critical(message, extra=extra)
         
     def stop_detection(self):
         """停止物體檢測"""
-        logging.info("停止物體檢測")
+        logging.info("[資訊] 停止物體檢測")
         print("停止物體檢測")
         self.is_detecting = False
+        
+        # 記錄檢測結束信息
+        if self.detection_logger:
+            self._log_detection("[資訊]", f"檢測結束，總計數: {self.current_count}")
+            self._log_detection("[資訊]", f"檢測到的物體數量: {self.object_count}")
         
         # 觸發監控停止回調
         if 'monitoring_stopped' in self.callbacks and self.callbacks['monitoring_stopped']:
             self.callbacks['monitoring_stopped']()
             
-        logging.info("物體檢測已停止")
+        logging.info("[資訊] 物體檢測已停止")
         print("物體檢測已停止")
         
     def draw_detection_line(self, frame):
@@ -230,15 +302,19 @@ class DetectionController:
             處理後的視頻幀
         """
         if frame is None:
-            logging.warning("處理幀為空")
+            logging.warning("[警告] 處理幀為空")
+            if self.detection_logger:
+                self._log_detection("[警告]", "處理幀為空")
             return None
             
         # 如果 ROI 位置為空或需要更新，則初始化或更新 ROI 位置
         if self.roi_y is None or (hasattr(self, 'roi_needs_update') and self.roi_needs_update):
-            logging.info("更新 ROI 位置")
+            logging.info("[資訊] 更新 ROI 位置")
             height = frame.shape[0]
             self.roi_y = int(height * self.saved_roi_percentage)
-            logging.info(f"已更新 ROI 位置: {self.roi_y}, 幀高度: {height}")
+            logging.info(f"[資訊] 已更新 ROI 位置: {self.roi_y}, 幀高度: {height}")
+            if self.detection_logger:
+                self._log_detection("[資訊]", f"更新 ROI 位置: {self.roi_y}, 幀高度: {height}")
             if hasattr(self, 'roi_needs_update'):
                 self.roi_needs_update = False
             
@@ -261,6 +337,9 @@ class DetectionController:
             # 檢測物體
             if processed_roi is not None:
                 detected_objects = self.image_processor.detect_objects(processed_roi)
+                
+                if detected_objects and self.detection_logger:
+                    self._log_detection("[資訊]", f"檢測到 {len(detected_objects)} 個物體")
                 
                 # 更新物體追蹤和計數
                 self.update_object_tracking(detected_objects, self.roi_y)
@@ -292,7 +371,10 @@ class DetectionController:
             return processed_frame
 
         except Exception as e:
-            logging.error(f"處理視頻幀時出錯: {str(e)}")
+            error_msg = f"處理視頻幀時出錯: {str(e)}"
+            logging.error(f"[錯誤] {error_msg}")
+            if self.detection_logger:
+                self._log_detection("[錯誤]", error_msg)
             import traceback
             traceback.print_exc()
         return frame
@@ -338,8 +420,13 @@ class DetectionController:
                         # 增加計數
                         self.object_count += 1
                         self.current_count = self.object_count
-                        logging.info(f"檢測到新物體，當前計數: {self.current_count}")
+                        logging.info(f"[資訊] 檢測到新物體，當前計數: {self.current_count}")
                         print(f"檢測到新物體，當前計數: {self.current_count}")
+                        
+                        # 記錄檢測日誌
+                        if self.detection_logger:
+                            self._log_detection("[資訊]", f"檢測到新物體，位置: ({x}, {y})，大小: {w}x{h}")
+                            self._log_detection("[資訊]", f"當前計數: {self.current_count}")
                         
                         # 觸發計數更新回調
                         if 'count_updated' in self.callbacks and self.callbacks['count_updated']:
@@ -347,16 +434,26 @@ class DetectionController:
                             
                         # 檢查是否達到緩衝點
                         if self.current_count == self.buffer_point:
-                            logging.info(f"達到緩衝點: {self.buffer_point}")
+                            logging.info(f"[資訊] 達到緩衝點: {self.buffer_point}")
                             print(f"達到緩衝點: {self.buffer_point}")
+                            
+                            # 記錄檢測日誌
+                            if self.detection_logger:
+                                self._log_detection("[資訊]", f"達到緩衝點: {self.buffer_point}")
+                            
                             # 觸發緩衝點回調
                             if 'buffer_reached' in self.callbacks and self.callbacks['buffer_reached']:
                                 self.callbacks['buffer_reached'](self.buffer_point)
                                 
                         # 檢查是否達到目標計數
                         if self.current_count == self.target_count:
-                            logging.info(f"達到目標計數: {self.target_count}")
+                            logging.info(f"[資訊] 達到目標計數: {self.target_count}")
                             print(f"達到目標計數: {self.target_count}")
+                            
+                            # 記錄檢測日誌
+                            if self.detection_logger:
+                                self._log_detection("[資訊]", f"達到目標計數: {self.target_count}")
+                            
                             # 觸發目標計數回調
                             if 'target_reached' in self.callbacks and self.callbacks['target_reached']:
                                 self.callbacks['target_reached'](self.target_count)
@@ -365,7 +462,10 @@ class DetectionController:
             self.last_detected_objects = detected_objects
             
         except Exception as e:
-            logging.error(f"更新物體追蹤時出錯: {str(e)}")
+            error_msg = f"更新物體追蹤時出錯: {str(e)}"
+            logging.error(f"[錯誤] {error_msg}")
+            if self.detection_logger:
+                self._log_detection("[錯誤]", error_msg)
             import traceback
             traceback.print_exc()
 

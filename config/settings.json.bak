@@ -18,7 +18,7 @@
         "target_count": 400,
         "buffer_point": 200,
         "roi_height": 16,
-        "roi_default_position": 0.5,
+        "roi_default_position": 0.3236111111111111,
         "min_object_area": 10,
         "max_object_area": 150,
         "track_tolerance_x": 64,

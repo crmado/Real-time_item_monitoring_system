@@ -203,6 +203,9 @@ class MainWindow(tk.Frame):
         self.analysis_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
         self.analysis_panel.grid_remove()  # 初始隐藏
 
+        # 創建日誌顯示區域
+        self.create_log_area()
+
         # 创建底部状态栏
         self.status_bar = ttk.Frame(self.main_frame, style='Footer.TFrame')
         self.status_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=0, pady=0)
@@ -225,6 +228,42 @@ class MainWindow(tk.Frame):
 
         # 初始化当前模式
         self.current_mode = "monitoring"  # 默认为监控模式
+
+    def create_log_area(self):
+        """創建日誌顯示區域"""
+        # 創建日誌框架
+        self.log_frame = ttk.Frame(self.main_frame)
+        self.log_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+        
+        # 創建日誌標題
+        log_title = ttk.Label(self.log_frame, text=get_text("log_title", "系統日誌"))
+        log_title.pack(side=tk.TOP, anchor=tk.W, padx=5, pady=2)
+        
+        # 創建日誌文本區域
+        self.log_text = scrolledtext.ScrolledText(self.log_frame, height=6, wrap=tk.WORD)
+        self.log_text.pack(fill=tk.X, expand=True, padx=5, pady=2)
+        self.log_text.config(state=tk.DISABLED)  # 設為只讀
+        
+        # 創建日誌控制按鈕框架
+        log_buttons = ttk.Frame(self.log_frame)
+        log_buttons.pack(fill=tk.X, side=tk.BOTTOM, padx=5, pady=2)
+        
+        # 清除日誌按鈕
+        clear_log_btn = ttk.Button(
+            log_buttons,
+            text=get_text("clear_log", "清除日誌"),
+            command=self.clear_log
+        )
+        clear_log_btn.pack(side=tk.RIGHT, padx=5)
+        
+        # 顯示/隱藏日誌按鈕
+        self.log_visible = tk.BooleanVar(value=True)
+        self.toggle_log_btn = ttk.Button(
+            log_buttons,
+            text=get_text("hide_log", "隱藏日誌"),
+            command=self.toggle_log_visibility
+        )
+        self.toggle_log_btn.pack(side=tk.RIGHT, padx=5)
 
     def create_settings_panel(self):
         """創建設定面板"""
@@ -360,6 +399,13 @@ class MainWindow(tk.Frame):
         if hasattr(self, 'analysis_panel'):
             self.analysis_panel.update_ui_text()
 
+        # 更新日誌區域按鈕
+        if hasattr(self, 'toggle_log_btn'):
+            if self.log_visible.get():
+                self.toggle_log_btn.configure(text=get_text("hide_log", "隱藏日誌"))
+            else:
+                self.toggle_log_btn.configure(text=get_text("show_log", "顯示日誌"))
+
         # 強制更新 Tkinter
         self.root.update_idletasks()
 
@@ -379,11 +425,33 @@ class MainWindow(tk.Frame):
 
         # 在日誌區域顯示
         if hasattr(self, 'log_text'):
+            self.log_text.config(state=tk.NORMAL)  # 臨時啟用編輯
             self.log_text.insert(tk.END, log_entry)
             self.log_text.see(tk.END)  # 自動滾動到最新日誌
+            self.log_text.config(state=tk.DISABLED)  # 恢復只讀狀態
 
-        # 同時記錄到日誌文件
-        logging.info(message)
+    def clear_log(self):
+        """清除日誌顯示區域的內容"""
+        if hasattr(self, 'log_text'):
+            self.log_text.config(state=tk.NORMAL)
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.config(state=tk.DISABLED)
+            self.log_message(get_text("log_cleared", "日誌已清除"))
+
+    def toggle_log_visibility(self):
+        """切換日誌顯示區域的可見性"""
+        if self.log_visible.get():
+            # 隱藏日誌
+            self.log_frame.pack_forget()
+            self.log_visible.set(False)
+            self.toggle_log_btn.configure(text=get_text("show_log", "顯示日誌"))
+        else:
+            # 顯示日誌
+            self.log_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+            self.log_visible.set(True)
+            self.toggle_log_btn.configure(text=get_text("hide_log", "隱藏日誌"))
+            # 更新一下佈局
+            self.root.update_idletasks()
 
     def start_time_update(self):
         """啟動時間更新"""

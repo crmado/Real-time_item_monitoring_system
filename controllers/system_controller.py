@@ -311,35 +311,29 @@ class SystemController:
         Args:
             mode: 新的模式 ("monitoring" 或 "photo")
         """
-        logging.info(f"切換模式: {mode}, 當前模式: {self.current_mode}")
-        print(f"切換模式: {mode}, 當前模式: {self.current_mode}")
+        logging.info(f"[資訊] 切換模式: {mode}, 當前模式: {self.current_mode}")
         
         if mode == self.current_mode:
-            logging.info("模式未變更，不執行切換")
-            print("模式未變更，不執行切換")
+            logging.info("[資訊] 模式未變更，不執行切換")
             return
             
         # 停止當前運行的功能
         if self.is_running:
-            logging.info("停止當前運行的功能")
-            print("停止當前運行的功能")
+            logging.info("[資訊] 停止當前運行的功能")
             self.stop_current_operation()
             self.main_window.control_panel.update_button_states(False)
             
         # 更新當前模式
         self.current_mode = mode
-        logging.info(f"已更新當前模式為: {mode}")
-        print(f"已更新當前模式為: {mode}")
+        logging.info(f"[資訊] 已更新當前模式為: {mode}")
         
         # 切換UI顯示
         if mode == "monitoring":
-            logging.info("切換到監控模式UI")
-            print("切換到監控模式UI")
+            logging.info("[資訊] 切換到監控模式UI")
             self.main_window.switch_mode("monitoring")
             self.main_window.control_panel.set_status(get_text("status_monitoring_mode", "監控模式"))
         else:
-            logging.info("切換到拍照模式UI")
-            print("切換到拍照模式UI")
+            logging.info("[資訊] 切換到拍照模式UI")
             self.main_window.switch_mode("photo")
             self.main_window.control_panel.set_status(get_text("status_photo_mode", "拍照模式"))
             
@@ -351,41 +345,38 @@ class SystemController:
             source: 相機源
         """
         try:
-            logging.info(f"開始啟動監控模式，相機源: {source}")
-            
             # 打開相機
-            logging.info("嘗試打開相機...")
+            logging.info("[資訊] 嘗試開啟相機...")
             success = self.camera_manager.open_camera(source)
             if not success:
-                error_msg = f"無法打開相機: {source}"
-                logging.error(error_msg)
+                error_msg = f"無法開啟相機: {source}"
+                logging.error(f"[錯誤] {error_msg}")
                 self.show_error(error_msg)
                 self.main_window.control_panel.update_button_states(False)
                 return
                 
-            logging.info(f"成功打開相機: {source}")
+            logging.info(f"[資訊] 成功開啟相機: {source}")
             
             # 啟動視頻流
             self.is_running = True
             self.monitoring_active = True
-            logging.info("開始更新視頻幀...")
+            logging.info("[資訊] 開始更新視頻幀...")
             self.update_video_frame()
             
             # 啟動檢測
             if self.detection_controller:
-                logging.info("啟動物體檢測...")
+                logging.info("[資訊] 啟動物體檢測...")
                 self.detection_controller.start_detection()
                 
-            logging.info("監控模式啟動成功")
+            logging.info("[資訊] 監控模式啟動成功")
                 
         except Exception as e:
             error_msg = f"啟動監控失敗: {str(e)}"
-            logging.error(error_msg)
+            logging.error(f"[錯誤] {error_msg}")
             self.show_error(error_msg)
             self.main_window.control_panel.update_button_states(False)
             self.is_running = False
-            self.monitoring_active = False
-            
+
     def start_photo_mode(self, source):
         """
         啟動拍照模式
@@ -435,18 +426,16 @@ class SystemController:
             # 讀取一幀
             ret, frame = self.camera_manager.read_frame()
             if ret and frame is not None:
-                print(f"成功讀取視頻幀，尺寸: {frame.shape}")
-                logging.debug(f"成功讀取視頻幀，尺寸: {frame.shape}")
+                logging.debug(f"[除錯] 成功讀取視頻幀，尺寸: {frame.shape}")
                 
                 # 如果有檢測控制器，進行物體檢測
                 if self.detection_controller:
                     processed_frame = self.detection_controller.process_frame(frame)
                     if processed_frame is not None:
-                        # 更新視頻面板
                         self.main_window.video_panel.update_image(processed_frame)
-                        print("已更新視頻面板顯示")
+                        logging.debug("[除錯] 已更新視頻面板顯示")
                     else:
-                        print("處理後的幀為空，無法更新視頻面板")
+                        logging.warning("[警告] 處理後的幀為空，無法更新視頻面板")
                         # 直接顯示原始幀
                         self.main_window.video_panel.update_image(frame)
                 else:
@@ -545,8 +534,7 @@ class SystemController:
             settings: 設定值字典
         """
         try:
-            logging.info(f"套用設定: {settings}")
-            print(f"套用設定: {settings}")
+            logging.info(f"[資訊] 套用設定: {settings}")
             
             # 獲取設定管理器
             settings_manager = get_settings_manager()
@@ -555,8 +543,7 @@ class SystemController:
             result = settings_manager.update(settings)
             
             if not result:
-                logging.error("更新設定管理器失敗")
-                print("更新設定管理器失敗")
+                logging.error("[錯誤] 更新設定管理器失敗")
                 return False
                 
             # 獲取設定值
@@ -577,9 +564,8 @@ class SystemController:
             self.settings['buffer_point'] = buffer_point
             
             # 更新狀態欄 - 檢查不同的可能性
-            status_message = get_text("settings_updated", "設置已更新")
-            logging.info(status_message)
-            print(status_message)
+            status_message = get_text("settings_updated", "設定已更新")
+            logging.info(f"[資訊] {status_message}")
             
             # 嘗試不同的方式更新狀態
             if hasattr(self.main_window, 'status_bar') and hasattr(self.main_window.status_bar, 'set_status'):
@@ -591,20 +577,36 @@ class SystemController:
             elif hasattr(self.main_window, 'set_status'):
                 # 如果 main_window 本身有 set_status 方法
                 self.main_window.set_status(status_message)
-                
+            
             # 嘗試刷新預覽
             try:
                 self.refresh_preview()
             except Exception as e:
-                logging.error(f"刷新預覽時出錯: {str(e)}")
-                print(f"刷新預覽時出錯: {str(e)}")
+                logging.error(f"[錯誤] 刷新預覽時出錯: {str(e)}")
+            
+            # 更新檢測控制器設置
+            if self.detection_controller:
+                self.detection_controller.set_target_count(target_count)
+                self.detection_controller.set_buffer_point(buffer_point)
+                
+                # 設置 ROI 位置
+                roi_default_position = float(settings.get('roi_default_position', 0.5))
+                if hasattr(self.camera_manager, 'current_frame') and self.camera_manager.current_frame is not None:
+                    height = self.camera_manager.current_frame.shape[0]
+                    self.detection_controller.roi_y = int(height * roi_default_position)
+                    self.detection_controller.saved_roi_percentage = roi_default_position
+                    logging.info(f"[資訊] 設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
+                else:
+                    # 如果當前沒有幀，設置一個標誌，在下一幀處理時更新 ROI 位置
+                    self.detection_controller.saved_roi_percentage = roi_default_position
+                    self.detection_controller.roi_needs_update = True
+                    logging.info(f"[資訊] 設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
             
             return True
             
         except Exception as e:
             error_message = f"套用設定時出錯: {str(e)}"
-            logging.error(error_message)
-            print(error_message)
+            logging.error(f"[錯誤] {error_message}")
             
             # 更新狀態欄
             if hasattr(self.main_window, 'control_panel') and hasattr(self.main_window.control_panel, 'set_status'):
@@ -784,19 +786,16 @@ class SystemController:
         """
         try:
             # 開啟相機
-            print(f"嘗試打開相機源: {source}")
-            logging.info(f"嘗試打開相機源: {source}")
+            logging.info(f"[資訊] 嘗試開啟相機源: {source}")
                 
             success = self.camera_manager.open_camera(source)
             
             if success:
-                print(f"成功打開相機: {source}")
-                logging.info(f"成功開啟相機: {source}")
+                logging.info(f"[資訊] 成功開啟相機: {source}")
                 
                 # 確保按鈕狀態正確 - 相機開啟後，開始按鈕應該是可點擊的
                 self.main_window.control_panel.update_button_states(False)
-                print("更新按鈕狀態：開始按鈕可點擊")
-                logging.info("更新按鈕狀態：開始按鈕可點擊")
+                logging.info("[資訊] 更新按鈕狀態：開始按鈕可點擊")
                 
                 # 顯示相機預覽 - 讀取一幀並顯示
                 ret, frame = self.camera_manager.read_frame()
@@ -806,30 +805,24 @@ class SystemController:
                         processed_frame = self.detection_controller.process_frame(frame)
                         if processed_frame is not None:
                             self.main_window.video_panel.update_image(processed_frame)
-                            print("已顯示相機預覽（帶 ROI 線）")
-                            logging.info("已顯示相機預覽（帶 ROI 線）")
+                            logging.info("[資訊] 已顯示相機預覽（帶 ROI 線）")
                         else:
                             self.main_window.video_panel.update_image(frame)
-                            print("已顯示相機預覽（原始幀）")
-                            logging.info("已顯示相機預覽（原始幀）")
+                            logging.info("[資訊] 已顯示相機預覽（原始幀）")
                     else:
                         self.main_window.video_panel.update_image(frame)
-                        print("已顯示相機預覽（原始幀）")
-                        logging.info("已顯示相機預覽（原始幀）")
+                        logging.info("[資訊] 已顯示相機預覽（原始幀）")
                 else:
-                    print("無法讀取相機幀進行預覽")
-                    logging.warning("無法讀取相機幀進行預覽")
+                    logging.warning("[警告] 無法讀取相機幀進行預覽")
                 
                 # 如果在監控模式，不要自動開始監控，讓用戶手動點擊開始按鈕
                 if self.current_mode == "monitoring":
-                    print("相機已準備好，等待用戶點擊開始按鈕啟動監控")
-                    logging.info("相機已準備好，等待用戶點擊開始按鈕啟動監控")
+                    logging.info("[資訊] 相機已準備好，等待用戶點擊開始按鈕啟動監控")
                     # 不要自動調用 self.start_monitoring(source)
                     
                 # 如果在拍照模式，不要自動開始預覽，讓用戶手動點擊開始按鈕
                 elif self.current_mode == "photo":
-                    print("相機已準備好，等待用戶點擊開始按鈕啟動拍照模式")
-                    logging.info("相機已準備好，等待用戶點擊開始按鈕啟動拍照模式")
+                    logging.info("[資訊] 相機已準備好，等待用戶點擊開始按鈕啟動拍照模式")
                     # 不要自動調用 self.start_photo_mode(source)
             else:
                 print(f"無法打開相機: {source}")
@@ -837,8 +830,7 @@ class SystemController:
                 self.show_error(f"無法開啟相機: {source}")
 
         except Exception as e:
-            print(f"打開相機時發生錯誤: {str(e)}")
-            logging.error(f"開啟相機時發生錯誤: {str(e)}")
+            logging.error(f"[錯誤] 開啟相機時發生錯誤: {str(e)}")
             self.show_error(f"開啟相機時發生錯誤: {str(e)}")
             
     def start_ui_update(self):
@@ -861,7 +853,7 @@ class SystemController:
             self.main_window.root.after(1000, self._update_time)
 
         except Exception as e:
-            logging.error(f"更新時間顯示時出錯: {str(e)}")
+            logging.error(f"[錯誤] 更新時間顯示時出錯: {str(e)}")
 
     def show_error(self, message):
         """
@@ -870,7 +862,7 @@ class SystemController:
         Args:
             message: 錯誤訊息
         """
-        logging.error(message)
+        logging.error(f"[錯誤] {message}")
         
         # 在狀態欄顯示錯誤
         if hasattr(self.main_window, 'control_panel'):
@@ -883,8 +875,7 @@ class SystemController:
     def _on_settings(self):
         """打開設置對話框"""
         try:
-            logging.info("打開設置對話框")
-            print("打開設置對話框")
+            logging.info("[資訊] 開啟設定對話框")
             
             # 從設定管理器獲取設定
             settings_manager = get_settings_manager()
@@ -897,8 +888,7 @@ class SystemController:
             
             # 檢查結果
             if not settings_dialog.result:
-                logging.info("用戶取消設置")
-                print("用戶取消設置")
+                logging.info("[資訊] 使用者取消設定")
                 return
                 
             # 獲取所有設定
@@ -919,48 +909,31 @@ class SystemController:
                     # 強制更新整個主視窗
                     self.main_window.update()
                     
-                    logging.info(f"已同步更新主畫面設定面板：目標數量={new_target_count}，緩衝點={new_buffer_point}")
-                    print(f"已同步更新主畫面設定面板：目標數量={new_target_count}，緩衝點={new_buffer_point}")
+                    logging.info(f"[資訊] 已同步更新主畫面設定面板：目標數量={new_target_count}，緩衝點={new_buffer_point}")
                 except Exception as e:
-                    logging.error(f"更新設定面板時出錯：{str(e)}")
-                    print(f"更新設定面板時出錯：{str(e)}")
+                    logging.error(f"[錯誤] 更新設定面板時出錯：{str(e)}")
             
             # 更新語言
             old_language = self.settings.get('language', 'zh_TW')
             if new_language != old_language:
-                logging.info(f"變更語言為: {new_language}")
-                print(f"變更語言為: {new_language}")
+                logging.info(f"[資訊] 變更語言為: {new_language}")
                 self.handle_language_change(new_language)
                 
             # 更新主題
             old_theme = self.settings.get('theme', 'light')
             if new_theme != old_theme:
-                logging.info(f"變更主題為: {new_theme}")
-                print(f"變更主題為: {new_theme}")
+                logging.info(f"[資訊] 變更主題為: {new_theme}")
                 self.handle_theme_change(new_theme)
                 
             # 更新狀態欄 - 檢查不同的可能性
-            status_message = get_text("settings_updated", "設置已更新")
-            logging.info(status_message)
-            print(status_message)
+            status_message = get_text("settings_updated", "設定已更新")
+            logging.info(f"[資訊] {status_message}")
             
-            # 嘗試不同的方式更新狀態
-            if hasattr(self.main_window, 'status_bar') and hasattr(self.main_window.status_bar, 'set_status'):
-                # 如果有 status_bar 對象且有 set_status 方法
-                self.main_window.status_bar.set_status(status_message)
-            elif hasattr(self.main_window, 'control_panel') and hasattr(self.main_window.control_panel, 'set_status'):
-                # 如果有 control_panel 對象且有 set_status 方法
-                self.main_window.control_panel.set_status(status_message)
-            elif hasattr(self.main_window, 'set_status'):
-                # 如果 main_window 本身有 set_status 方法
-                self.main_window.set_status(status_message)
-                
             # 嘗試刷新預覽
             try:
                 self.refresh_preview()
             except Exception as e:
-                logging.error(f"刷新預覽時出錯: {str(e)}")
-                print(f"刷新預覽時出錯: {str(e)}")
+                logging.error(f"[錯誤] 刷新預覽時出錯: {str(e)}")
             
             # 更新檢測控制器設置
             if self.detection_controller:
@@ -973,21 +946,18 @@ class SystemController:
                     height = self.camera_manager.current_frame.shape[0]
                     self.detection_controller.roi_y = int(height * roi_default_position)
                     self.detection_controller.saved_roi_percentage = roi_default_position
-                    logging.info(f"設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
-                    print(f"設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
+                    logging.info(f"[資訊] 設置 ROI 位置: {self.detection_controller.roi_y}, 百分比: {roi_default_position}")
                 else:
                     # 如果當前沒有幀，設置一個標誌，在下一幀處理時更新 ROI 位置
                     self.detection_controller.saved_roi_percentage = roi_default_position
                     self.detection_controller.roi_needs_update = True
-                    logging.info(f"設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
-                    print(f"設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
+                    logging.info(f"[資訊] 設置 ROI 百分比: {roi_default_position}，將在下一幀更新位置")
             
         except Exception as e:
-            logging.error(f"打開設置對話框時出錯: {str(e)}")
-            print(f"打開設置對話框時出錯: {str(e)}")
+            logging.error(f"[錯誤] 開啟設定對話框時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
-            logging.error("無法打開設置對話框")
+            logging.error("[錯誤] 無法開啟設定對話框")
             
     def update_camera_sources(self):
         """更新相機源列表"""
@@ -999,125 +969,101 @@ class SystemController:
             if hasattr(self.main_window, 'control_panel'):
                 self.main_window.control_panel.set_camera_sources(sources)
                 
-            logging.info(f"已更新相機源列表: {sources}")
+            logging.info(f"[資訊] 已更新相機源列表: {sources}")
             return sources
         except Exception as e:
-            logging.error(f"更新相機源列表時出錯: {str(e)}")
+            logging.error(f"[錯誤] 更新相機源列表時出錯: {str(e)}")
             return []
 
     def refresh_preview(self):
         """刷新相機預覽畫面"""
         try:
-            logging.info("刷新相機預覽畫面")
-            print("刷新相機預覽畫面")
+            logging.info("[資訊] 刷新相機預覽畫面")
             
             # 檢查 main_window 和 video_panel 是否存在
             if not hasattr(self, 'main_window') or self.main_window is None:
-                logging.error("無法刷新預覽：main_window 不存在")
+                logging.error("[錯誤] 無法刷新預覽：main_window 不存在")
                 print("無法刷新預覽：main_window 不存在")
                 return False
                 
             if not hasattr(self.main_window, 'video_panel') or self.main_window.video_panel is None:
-                logging.error("無法刷新預覽：video_panel 不存在")
-                print("無法刷新預覽：video_panel 不存在")
+                logging.error("[錯誤] 無法刷新預覽：video_panel 不存在")
                 return False
                 
             # 檢查當前模式
             if hasattr(self.main_window, 'current_mode') and self.main_window.current_mode != "monitoring":
-                logging.warning(f"當前模式不是監控模式，而是 {self.main_window.current_mode}，切換到監控模式")
-                print(f"當前模式不是監控模式，而是 {self.main_window.current_mode}，切換到監控模式")
+                logging.warning(f"[警告] 當前模式不是監控模式，而是 {self.main_window.current_mode}，切換到監控模式")
                 self.main_window.switch_mode("monitoring")
             
             # 檢查相機是否已打開
             if not hasattr(self.camera_manager, 'current_frame') or self.camera_manager.current_frame is None:
-                logging.info("相機未打開或沒有當前幀，嘗試讀取一幀")
-                print("相機未打開或沒有當前幀，嘗試讀取一幀")
+                logging.info("[資訊] 相機未開啟或沒有當前幀，嘗試讀取一幀")
                 
                 # 嘗試讀取一幀
                 ret, frame = self.camera_manager.read_frame()
                 if not ret or frame is None:
-                    logging.warning("無法讀取相機幀進行預覽刷新")
-                    print("無法讀取相機幀進行預覽刷新")
+                    logging.warning("[警告] 無法讀取相機幀進行預覽刷新")
                     return False
                     
-                logging.info(f"成功讀取一幀，尺寸: {frame.shape}")
-                print(f"成功讀取一幀，尺寸: {frame.shape}")
+                logging.info(f"[資訊] 成功讀取一幀，尺寸: {frame.shape}")
             else:
                 # 使用當前幀
                 frame = self.camera_manager.current_frame.copy()
-                logging.info(f"使用當前幀，尺寸: {frame.shape}")
-                print(f"使用當前幀，尺寸: {frame.shape}")
                 
             # 檢查 detection_controller 是否存在
             if not hasattr(self, 'detection_controller') or self.detection_controller is None:
-                logging.warning("檢測控制器不存在，直接顯示原始幀")
-                print("檢測控制器不存在，直接顯示原始幀")
+                logging.info("[資訊] 檢測控制器不存在，直接顯示原始幀")
                 self.main_window.video_panel.update_image(frame)
-                logging.info("已刷新相機預覽（原始幀）")
-                print("已刷新相機預覽（原始幀）")
+                logging.info("[資訊] 已刷新相機預覽（原始幀）")
                 return True
                 
             # 如果有檢測控制器，處理幀以顯示 ROI 線
             processed_frame = self.detection_controller.process_frame(frame)
             if processed_frame is not None:
-                logging.info(f"成功處理幀，尺寸: {processed_frame.shape}")
-                print(f"成功處理幀，尺寸: {processed_frame.shape}")
+                logging.info(f"[資訊] 成功處理幀，尺寸: {processed_frame.shape}")
                 
                 # 確保 video_panel 可見
                 if hasattr(self.main_window, 'current_mode') and self.main_window.current_mode != "monitoring":
-                    logging.info("切換到監控模式以顯示視頻面板")
-                    print("切換到監控模式以顯示視頻面板")
+                    logging.info("[資訊] 切換到監控模式以顯示視頻面板")
                     self.main_window.switch_mode("monitoring")
                 
                 # 更新圖像
                 self.main_window.video_panel.update_image(processed_frame)
-                logging.info("已刷新相機預覽（帶 ROI 線）")
-                print("已刷新相機預覽（帶 ROI 線）")
+                logging.info("[資訊] 已刷新相機預覽（帶 ROI 線）")
                 
                 # 強制更新 Tkinter
                 self.main_window.root.update_idletasks()
-                logging.info("已強制更新 Tkinter 界面")
-                print("已強制更新 Tkinter 界面")
+                logging.info("[資訊] 已強制更新 Tkinter 界面")
                 
                 return True
             else:
-                logging.warning("處理幀失敗，顯示原始幀")
-                print("處理幀失敗，顯示原始幀")
+                logging.warning("[警告] 處理幀失敗，顯示原始幀")
+                
+                # 顯示原始幀
                 self.main_window.video_panel.update_image(frame)
-                
-                # 強制更新 Tkinter
-                self.main_window.root.update_idletasks()
-                logging.info("已強制更新 Tkinter 界面")
-                print("已強制更新 Tkinter 界面")
-                
-                logging.info("已刷新相機預覽（原始幀）")
-                print("已刷新相機預覽（原始幀）")
+                logging.info("[資訊] 已刷新相機預覽（原始幀）")
                 return True
                 
         except Exception as e:
-            logging.error(f"刷新相機預覽時出錯: {str(e)}")
-            print(f"刷新相機預覽時出錯: {str(e)}")
+            logging.error(f"[錯誤] 刷新相機預覽時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
 
     def handle_refresh_preview(self):
         """處理刷新預覽按鈕點擊事件"""
-        logging.info("刷新預覽按鈕被點擊")
-        print("刷新預覽按鈕被點擊")
+        logging.info("[資訊] 刷新預覽按鈕被點擊")
         
         # 嘗試刷新預覽
         if not self.refresh_preview():
             # 如果刷新失敗，嘗試打開相機
-            logging.info("刷新預覽失敗，嘗試打開相機...")
-            print("刷新預覽失敗，嘗試打開相機...")
+            logging.info("[資訊] 刷新預覽失敗，嘗試開啟相機...")
             selected_source = self.main_window.control_panel.selected_camera.get()
             if selected_source:
                 self.handle_camera_open(selected_source)
             else:
                 self.show_error("請先選擇一個相機源")
-                logging.error("無法刷新預覽：未選擇相機源")
-                print("無法刷新預覽：未選擇相機源")
+                logging.error("[錯誤] 無法刷新預覽：未選擇相機源")
 
     def apply_dark_theme(self):
         """應用暗色主題"""
@@ -1195,11 +1141,10 @@ class SystemController:
                                 if isinstance(child, tk.Label) or isinstance(child, ttk.Label):
                                     child.configure(foreground='#000000')
                 
-            logging.info("已應用亮色主題")
-            print("已應用亮色主題")
+            logging.info("[資訊] 已應用亮色主題")
             
         except Exception as e:
-            logging.error(f"應用亮色主題時出錯: {str(e)}")
+            logging.error(f"[錯誤] 應用亮色主題時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
@@ -1218,13 +1163,11 @@ class SystemController:
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, ensure_ascii=False, indent=4)
                 
-            logging.info(f"設置已保存到 {settings_file}")
-            print(f"設置已保存到 {settings_file}")
+            logging.info(f"[資訊] 設定已保存到 {settings_file}")
             return True
             
         except Exception as e:
-            logging.error(f"保存設置時出錯: {str(e)}")
-            print(f"保存設置時出錯: {str(e)}")
+            logging.error(f"[錯誤] 保存設定時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
@@ -1240,8 +1183,7 @@ class SystemController:
             if os.path.exists(settings_file):
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-                logging.info(f"已從 {settings_file} 加載設置")
-                print(f"已從 {settings_file} 加載設置")
+                logging.info(f"[資訊] 已從 {settings_file} 載入設定")
                 return settings
             else:
                 # 返回默認設置
@@ -1252,13 +1194,11 @@ class SystemController:
                     'buffer_point': 950,
                     'roi_default_position': 0.5
                 }
-                logging.info("使用默認設置")
-                print("使用默認設置")
+                logging.info("[資訊] 使用預設設定")
                 return default_settings
                 
         except Exception as e:
-            logging.error(f"加載設置時出錯: {str(e)}")
-            print(f"加載設置時出錯: {str(e)}")
+            logging.error(f"[錯誤] 載入設定時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
             
@@ -1275,9 +1215,9 @@ class SystemController:
         """初始化相機管理器"""
         try:
             self.camera_manager = CameraManager()
-            logging.info("相機管理器初始化成功")
+            logging.info("[資訊] 相機管理器初始化成功")
         except Exception as e:
-            logging.error(f"初始化相機管理器時出錯: {str(e)}")
+            logging.error(f"[錯誤] 初始化相機管理器時出錯: {str(e)}")
             self.camera_manager = None
             
     def init_detection_controller(self):
@@ -1293,12 +1233,12 @@ class SystemController:
                     self.detection_controller.set_target_count(target_count)
                     self.detection_controller.set_buffer_point(buffer_point)
                     
-                logging.info("檢測控制器初始化成功")
+                logging.info("[資訊] 檢測控制器初始化成功")
             else:
-                logging.error("無法初始化檢測控制器：相機管理器未初始化")
+                logging.error("[錯誤] 無法初始化檢測控制器：相機管理器未初始化")
                 self.detection_controller = None
         except Exception as e:
-            logging.error(f"初始化檢測控制器時出錯: {str(e)}")
+            logging.error(f"[錯誤] 初始化檢測控制器時出錯: {str(e)}")
             self.detection_controller = None
             
     def setup_control_panel_callbacks(self):

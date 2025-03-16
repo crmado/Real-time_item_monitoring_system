@@ -66,71 +66,71 @@ class CameraManager:
         """
         sources = []
         
-        logging.info("开始检测可用的视频源...")
+        logging.info("[資訊] 開始檢測可用的視訊來源...")
         
         # 移除測試視頻選項和虛擬相機選項，只保留實際可用的相機
         
-        # 检测内置摄像头 - 不再使用安全模式限制
-        # 在 macOS 上，检查内建相机（索引 0）
+        # 檢測內置攝像頭 - 不再使用安全模式限制
+        # 在 macOS 上，檢查內建相機（索引 0）
         if os.name == 'posix' and 'darwin' in os.uname().sysname.lower():
-            logging.info("检测到 macOS 系统，尝试检测内建相机...")
+            logging.info("[資訊] 檢測到 macOS 系統")
             try:
                 cap = cv2.VideoCapture(0)
                 if cap.isOpened():
-                    logging.info("成功打开内建相机")
+                    logging.info("[資訊] 使用內建相機，索引: 0")
                     ret, frame = cap.read()
                     if ret and frame is not None and frame.size > 0:
                         sources.append("Built-in Camera")
-                        logging.info("已檢測到內建相機并成功读取帧")
+                        logging.info("[資訊] 成功讀取第一幀，尺寸: {}".format(frame.shape))
                     else:
-                        logging.warning("内建相机打开成功但无法读取帧")
+                        logging.warning("[警告] 內建相機開啟成功但無法讀取幀")
                 else:
-                    logging.warning("无法打开内建相机")
+                    logging.warning("[警告] 無法開啟內建相機")
                 cap.release()
             except Exception as e:
-                logging.warning(f"檢查內建相機時發生錯誤: {str(e)}")
+                logging.warning(f"[警告] 檢查內建相機時發生錯誤: {str(e)}")
         else:
-            # 在其他系统上检查USB摄像头
-            logging.info("非 macOS 系统，尝试检测 USB 相机...")
-            for i in range(2):  # 只检查前两个摄像头索引，避免过多检查导致的问题
+            # 在其他系統上檢查USB攝像頭
+            logging.info("[資訊] 非 macOS 系統，嘗試檢測 USB 相機...")
+            for i in range(2):  # 只檢查前兩個攝像頭索引，避免過多檢查導致的問題
                 try:
-                    logging.info(f"尝试打开 USB 相机 {i}...")
+                    logging.info(f"[資訊] 嘗試開啟 USB 相機 {i}...")
                     cap = cv2.VideoCapture(i)
                     if cap.isOpened():
-                        logging.info(f"成功打开 USB 相机 {i}")
+                        logging.info(f"[資訊] 成功開啟 USB 相機 {i}")
                         ret, frame = cap.read()
                         if ret and frame is not None:
                             sources.append(f"USB Camera {i}")
-                            logging.info(f"已檢測到 USB 相機 {i} 并成功读取帧")
+                            logging.info(f"[資訊] 已檢測到 USB 相機 {i} 並成功讀取幀，尺寸: {frame.shape}")
                         else:
-                            logging.warning(f"USB 相机 {i} 打开成功但无法读取帧")
+                            logging.warning(f"[警告] USB 相機 {i} 開啟成功但無法讀取幀")
                     else:
-                        logging.warning(f"无法打开 USB 相机 {i}")
+                        logging.warning(f"[警告] 無法開啟 USB 相機 {i}")
                     cap.release()
                 except Exception as e:
-                    logging.warning(f"檢查 USB 相機 {i} 時發生錯誤: {str(e)}")
+                    logging.warning(f"[警告] 檢查 USB 相機 {i} 時發生錯誤: {str(e)}")
 
         # 檢查 Basler 相機
-        logging.info("尝试检测 Basler 相机...")
+        logging.info("[資訊] 嘗試檢測 Basler 相機...")
         try:
             tlf = pylon.TlFactory.GetInstance()
             devices = tlf.EnumerateDevices()
             if devices:
-                logging.info(f"检测到 {len(devices)} 个 Basler 相机")
+                logging.info(f"[資訊] 檢測到 {len(devices)} 個 Basler 相機")
                 for i, device in enumerate(devices):
                     sources.append(f"Basler Camera {i}")
-                    logging.info(f"已檢測到 Basler 相機 {i}: {device.GetModelName()}")
+                    logging.info(f"[資訊] 已檢測到 Basler 相機 {i}: {device.GetModelName()}")
             else:
-                logging.info("未检测到 Basler 相机")
+                logging.info("[資訊] 未檢測到 Basler 相機")
         except Exception as e:
-            logging.warning(f"Basler 相機檢測失敗: {str(e)}")
+            logging.warning(f"[警告] Basler 相機檢測失敗: {str(e)}")
 
-        # 如果没有检测到任何相机，添加一個提示選項
+        # 如果沒有檢測到任何相機，添加一個提示選項
         if len(sources) == 0:
             sources.append("未檢測到可用相機")
-            logging.info("未檢測到任何相機")
+            logging.info("[資訊] 未檢測到任何相機")
             
-        logging.info(f"可用视频源检测完成，共找到 {len(sources)} 个源: {sources}")
+        logging.info(f"[資訊] 可用視訊來源檢測完成，共找到 {len(sources)} 個來源: {sources}")
 
         return sources
         
@@ -148,11 +148,11 @@ class CameraManager:
             # 首先釋放所有現有相機資源
             self.release_all_cameras()
             
-            logging.info(f"嘗試開啟相機源: {source}")
+            logging.info(f"[資訊] 嘗試開啟相機源: {source}")
             
             # 處理「未檢測到可用相機」的情況
             if source == "未檢測到可用相機":
-                logging.warning("未檢測到可用相機，使用虛擬相機替代")
+                logging.warning("[警告] 未檢測到可用相機，使用虛擬相機替代")
                 return self._open_virtual_camera()
             elif source == "Test video":
                 return self._open_test_video()
@@ -164,7 +164,7 @@ class CameraManager:
                 return self._open_usb_camera(source)
                 
         except Exception as e:
-            logging.error(f"開啟相機時發生錯誤: {str(e)}")
+            logging.error(f"[錯誤] 開啟相機時發生錯誤: {str(e)}")
             self.release_all_cameras()
             # 默認使用虛擬相機
             self.is_virtual = True
@@ -181,11 +181,11 @@ class CameraManager:
             
             self.virtual_frame = frame
             self.is_virtual = True
-            logging.info("成功開啟虛擬相機")
+            logging.info("[資訊] 成功開啟虛擬相機")
             return True
             
         except Exception as e:
-            logging.error(f"開啟虛擬相機時發生錯誤: {str(e)}")
+            logging.error(f"[錯誤] 開啟虛擬相機時發生錯誤: {str(e)}")
             return False
             
     def read_frame(self):
@@ -296,84 +296,80 @@ class CameraManager:
     def _open_usb_camera(self, source):
         """開啟 USB 相機"""
         try:
-            print(f"尝试打开相机源: {source}")
+            logging.info(f"[資訊] 嘗試開啟相機源: {source}")
             # 在 macOS 上，我們只使用內建相機（索引 0）
             camera_index = 0
             if os.name == 'posix' and 'darwin' in os.uname().sysname.lower():
-                print("检测到 macOS 系统")
+                logging.info("[資訊] 檢測到 macOS 系統")
                 if source == "Built-in Camera":
-                    # 使用内建相机
+                    # 使用內建相機
                     camera_index = 0
-                    print(f"使用内建相机，索引: {camera_index}")
+                    logging.info(f"[資訊] 使用內建相機，索引: {camera_index}")
                 else:
-                    # 尝试解析其他相机索引
+                    # 嘗試解析其他相機索引
                     try:
                         if "USB Camera" in source:
                             camera_index = int(source.split()[-1])
                         else:
                             camera_index = int(source)
                     except ValueError:
-                        logging.warning(f"無法從 '{source}' 解析相機索引，使用預設值 0")
+                        logging.warning(f"[警告] 無法從 '{source}' 解析相機索引，使用預設值 0")
                         camera_index = 0
-                    print(f"使用其他相机，索引: {camera_index}")
+                    logging.info(f"[資訊] 使用其他相機，索引: {camera_index}")
                 
-                logging.info(f"在 macOS 上使用相機索引: {camera_index}")
+                logging.info(f"[資訊] 在 macOS 上使用相機索引: {camera_index}")
                 
                 # 嘗試開啟相機
-                print(f"尝试打开相机，索引: {camera_index}")
+                logging.info(f"[資訊] 嘗試開啟相機，索引: {camera_index}")
                 self.camera = cv2.VideoCapture(camera_index)
                 if self.camera.isOpened():
-                    print(f"成功打开相机，索引: {camera_index}")
+                    logging.info(f"[資訊] 成功開啟相機，索引: {camera_index}")
                     # 設置相機屬性
                     self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
                     self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                     self.camera.set(cv2.CAP_PROP_FPS, 30)
                     
                     # 測試讀取幾幀，確保相機穩定
-                    for i in range(3):  # 减少测试帧数，避免长时间阻塞
-                        print(f"测试读取第 {i+1} 帧...")
+                    for i in range(3):  # 減少測試幀數，避免長時間阻塞
+                        logging.info(f"[資訊] 測試讀取第 {i+1} 幀...")
                         ret, frame = self.camera.read()
                         if not ret:
-                            print(f"无法读取第 {i+1} 帧")
+                            logging.warning(f"[警告] 無法讀取第 {i+1} 幀")
                             break
-                        print(f"成功读取第 {i+1} 帧，尺寸: {frame.shape if frame is not None else 'None'}")
+                        logging.info(f"[資訊] 成功讀取第 {i+1} 幀，尺寸: {frame.shape if frame is not None else 'None'}")
                         time.sleep(0.1)
                     
                     if not ret or frame is None:
-                        print("无法从相机读取稳定的帧")
-                        logging.error("無法從相機讀取穩定的幀")
+                        logging.error("[錯誤] 無法從相機讀取穩定的幀")
                         self.release_all_cameras()
                         return False
                         
-                    print("成功初始化 macOS 相机")
-                    logging.info("成功初始化 macOS 相機")
+                    logging.info("[資訊] 成功初始化 macOS 相機")
                     return True
                 else:
-                    print("无法打开 macOS 相机")
-                    logging.error("無法開啟 macOS 相機")
+                    logging.error("[錯誤] 無法開啟 macOS 相機")
                     return False
             else:
                 # 在其他系統上解析相機索引
-                print("非 macOS 系统")
+                logging.info("非 macOS 系统")
                 if "USB Camera" in source:
                     try:
                         camera_index = int(source.split()[-1])
                     except ValueError:
-                        logging.warning(f"無法從 '{source}' 解析相機索引，使用預設值 0")
+                        logging.warning(f"[警告] 無法從 '{source}' 解析相機索引，使用預設值 0")
                 else:
                     try:
                         camera_index = int(source)
                     except ValueError:
-                        logging.warning(f"無法將 '{source}' 解析為相機索引，使用預設值 0")
+                        logging.warning(f"[警告] 無法將 '{source}' 解析為相機索引，使用預設值 0")
 
             # 嘗試開啟相機
-            print(f"尝试打开相机，索引: {camera_index}")
-            logging.info(f"嘗試開啟相機 {camera_index}")
+            logging.info(f"[資訊] 嘗試開啟相機，索引: {camera_index}")
+            logging.info(f"[資訊] 嘗試開啟相機 {camera_index}")
             self.camera = cv2.VideoCapture(camera_index)
 
             if not self.camera.isOpened():
-                print(f"无法打开相机，索引: {camera_index}")
-                logging.error(f"無法開啟相機 {camera_index}")
+                logging.error(f"[錯誤] 無法開啟相機 {camera_index}")
                 return False
 
             # 設定相機屬性
@@ -381,21 +377,18 @@ class CameraManager:
             self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             # 測試讀取
-            print("测试读取帧...")
+            logging.info("[資訊] 測試讀取幀...")
             ret, frame = self.camera.read()
             if not ret or frame is None:
-                print("无法从相机读取帧")
-                logging.error(f"無法從相機 {camera_index} 讀取幀")
+                logging.error(f"[錯誤] 無法從相機 {camera_index} 讀取幀")
                 self.release_all_cameras()
                 return False
 
-            print(f"成功打开相机，索引: {camera_index}")
-            logging.info(f"成功開啟相機 {camera_index}")
+            logging.info(f"[資訊] 成功開啟相機 {camera_index}")
             return True
 
         except Exception as e:
-            print(f"打开相机时发生错误: {str(e)}")
-            logging.error(f"開啟相機時發生錯誤: {str(e)}")
+            logging.error(f"[錯誤] 開啟相機時發生錯誤: {str(e)}")
             self.release_all_cameras()
             return False
 
