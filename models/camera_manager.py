@@ -68,14 +68,7 @@ class CameraManager:
         
         logging.info("开始检测可用的视频源...")
         
-        # 首先添加測試視頻選項（如果在測試模式下）
-        if self.TEST_MODE:
-            sources.append("Test video")
-            logging.info("已添加測試視頻選項")
-
-        # 添加虛擬相機選項
-        sources.append("Virtual Camera")
-        logging.info("已添加虛擬相機選項")
+        # 移除測試視頻選項和虛擬相機選項，只保留實際可用的相機
         
         # 检测内置摄像头 - 不再使用安全模式限制
         # 在 macOS 上，检查内建相机（索引 0）
@@ -132,10 +125,10 @@ class CameraManager:
         except Exception as e:
             logging.warning(f"Basler 相機檢測失敗: {str(e)}")
 
-        # 如果没有检测到任何相机，确保至少有一个选项
+        # 如果没有检测到任何相机，添加一個提示選項
         if len(sources) == 0:
-            sources.append("Virtual Camera")
-            logging.info("未檢測到任何相機，使用虛擬相機")
+            sources.append("未檢測到可用相機")
+            logging.info("未檢測到任何相機")
             
         logging.info(f"可用视频源检测完成，共找到 {len(sources)} 个源: {sources}")
 
@@ -157,7 +150,11 @@ class CameraManager:
             
             logging.info(f"嘗試開啟相機源: {source}")
             
-            if source == "Test video":
+            # 處理「未檢測到可用相機」的情況
+            if source == "未檢測到可用相機":
+                logging.warning("未檢測到可用相機，使用虛擬相機替代")
+                return self._open_virtual_camera()
+            elif source == "Test video":
                 return self._open_test_video()
             elif source == "Virtual Camera":
                 return self._open_virtual_camera()

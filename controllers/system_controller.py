@@ -98,12 +98,23 @@ class SystemController:
         # 更新相機源列表
         self.update_camera_sources()
         
-        # 默認選擇第一個相機
+        # 獲取可用相機源
         sources = self.camera_manager.get_available_sources()
-        if sources:
-            self.main_window.control_panel.set_camera_source(sources[0])
+        
+        # 檢查是否有實際可用的相機
+        real_cameras = [s for s in sources if s != "未檢測到可用相機" and s != "Virtual Camera" and s != "Test video"]
+        
+        if real_cameras:
+            # 有實際可用的相機，選擇第一個
+            self.main_window.control_panel.set_camera_source(real_cameras[0])
             # 自動開啟第一個相機
-            self.handle_camera_open(sources[0])
+            self.handle_camera_open(real_cameras[0])
+        elif sources:
+            # 沒有實際可用的相機，但有其他選項
+            self.main_window.control_panel.set_camera_source(sources[0])
+            # 顯示警告訊息
+            if sources[0] == "未檢測到可用相機":
+                self.show_error("未檢測到可用相機，請連接相機後重新啟動應用程式")
             
         # 開始更新 UI
         self.start_ui_update()
@@ -712,7 +723,15 @@ class SystemController:
             source: 选择的相机源
         """
         logging.info(f"选择相机: {source}")
-        # 如果有需要，可以在这里添加相机选择的处理逻辑
+        
+        # 處理「未檢測到可用相機」的情況
+        if source == "未檢測到可用相機":
+            logging.warning("用戶選擇了「未檢測到可用相機」選項")
+            self.show_error("未檢測到可用相機，請連接相機後重新啟動應用程式")
+            return
+            
+        # 自動開啟選擇的相機
+        self.handle_camera_open(source)
 
     def handle_camera_open(self, source):
         """
@@ -725,6 +744,13 @@ class SystemController:
             # 開啟相機
             print(f"嘗試打開相機源: {source}")
             logging.info(f"嘗試打開相機源: {source}")
+            
+            # 檢查是否為虛擬相機或測試視頻
+            if source == "Virtual Camera" or source == "Test video":
+                logging.warning(f"嘗試開啟非實際相機: {source}")
+                self.show_error("請選擇實際可用的相機")
+                return
+                
             success = self.camera_manager.open_camera(source)
             
             if success:

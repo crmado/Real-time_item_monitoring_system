@@ -49,7 +49,7 @@ class MainWindow(tk.Frame):
         self.system_controller = system_controller
         
         # 设置窗口属性
-        self.root.title(get_text("app_title", "实时物品监测系统"))
+        self.root.title(get_text("app_title", "即時物品監測系統"))
         self.root.geometry("1280x720")
         self.root.minsize(800, 600)
         
@@ -155,7 +155,7 @@ class MainWindow(tk.Frame):
         # 应用标题
         title_label = ttk.Label(
             logo_frame, 
-            text=get_text("app_title", "实时物品监测系统"),
+            text=get_text("app_title", "實時物品檢測系統"),
             style='HeaderTitle.TLabel'
         )
         title_label.pack(side=tk.LEFT)
@@ -167,7 +167,7 @@ class MainWindow(tk.Frame):
         # 设置按钮
         self.settings_btn = ttk.Button(
             control_buttons,
-            text=get_text("settings", "设置"),
+            text=get_text("settings", "設置"),
             style='Header.TButton',
             command=self._on_settings
         )
