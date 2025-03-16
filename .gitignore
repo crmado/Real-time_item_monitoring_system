@@ -16,3 +16,16 @@ testDate
 dist/*
 build/*
 *.spec
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pywz2
+*.pyz2
+*.pywz3
+*.pyz3
+*.pywz4
+*.pyz4
+

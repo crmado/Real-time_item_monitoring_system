@@ -15,10 +15,10 @@
         "last_source": null
     },
     "detection": {
-        "target_count": 2000,
+        "target_count": 400,
         "buffer_point": 200,
         "roi_height": 16,
-        "roi_default_position": 0.2,
+        "roi_default_position": 0.5,
         "min_object_area": 10,
         "max_object_area": 150,
         "track_tolerance_x": 64,
@@ -31,8 +31,8 @@
         "detect_shadows": true
     },
     "ui": {
-        "theme": "dark",
-        "font_size": "medium",
+        "theme": "light",
+        "font_size": "large",
         "show_performance": true,
         "video_quality": "high",
         "roi_line_color": "#00FF00",
