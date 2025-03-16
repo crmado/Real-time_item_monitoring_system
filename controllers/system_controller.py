@@ -142,10 +142,8 @@ class SystemController:
                 'refresh_preview': self.handle_refresh_preview
             })
         
-        # 綁定視頻面板事件
-        self.main_window.video_panel.set_callback('roi_drag_start', self.handle_roi_selection)
-        self.main_window.video_panel.set_callback('roi_drag', self.handle_roi_selection)
-        self.main_window.video_panel.set_callback('roi_drag_end', self.handle_roi_selection)
+        # 注意：ROI 拖拽事件的回調函數設置已移至 register_detection_callbacks 方法中
+        # 不再在這裡設置 ROI 拖拽事件的回調函數
         
         # 绑定照片面板事件
         photo_panel = self.main_window.photo_panel
@@ -208,6 +206,23 @@ class SystemController:
         self.detection_controller.set_callback(
             'analysis_error',
             self.handle_analysis_error
+        )
+
+        # 添加 ROI 拖拽相關的回調函數
+        logging.info("設置 ROI 拖拽回調函數")
+        self.main_window.video_panel.set_callback(
+            'roi_drag_start',
+            self.handle_roi_drag_start
+        )
+        
+        self.main_window.video_panel.set_callback(
+            'roi_drag',
+            self.handle_roi_drag
+        )
+        
+        self.main_window.video_panel.set_callback(
+            'roi_drag_end',
+            self.handle_roi_drag_end
         )
 
     def handle_test_camera(self):
@@ -607,19 +622,46 @@ class SystemController:
         # 更新主視窗和所有組件的語言
         self.main_window.on_language_changed(language_code)
 
-    def handle_roi_selection(self, event):
-        """處理ROI選擇事件"""
-        logging.info(f"系統控制器收到 ROI 選擇事件，位置: {event.y}")
-        print(f"系統控制器收到 ROI 選擇事件，位置: {event.y}")
+    def handle_roi_drag_start(self, event):
+        """處理 ROI 拖拽開始事件"""
+        logging.info(f"系統控制器收到 ROI 拖拽開始事件，位置: {event.y}")
+        print(f"系統控制器收到 ROI 拖拽開始事件，位置: {event.y}")
         
         if self.detection_controller:
-            # 直接調用 detection_controller 的方法處理 ROI 選擇
             self.detection_controller.start_roi_drag(event)
-            self.detection_controller.update_roi_position(event)
-            self.detection_controller.stop_roi_drag()
         else:
-            logging.error("檢測控制器未初始化，無法處理 ROI 選擇事件")
-            print("檢測控制器未初始化，無法處理 ROI 選擇事件")
+            logging.error("檢測控制器未初始化，無法處理 ROI 拖拽開始事件")
+            print("檢測控制器未初始化，無法處理 ROI 拖拽開始事件")
+
+    def handle_roi_drag(self, event):
+        """處理 ROI 拖拽事件"""
+        logging.info(f"系統控制器收到 ROI 拖拽事件，位置: {event.y}")
+        print(f"系統控制器收到 ROI 拖拽事件，位置: {event.y}")
+        
+        if self.detection_controller:
+            self.detection_controller.update_roi_position(event)
+        else:
+            logging.error("檢測控制器未初始化，無法處理 ROI 拖拽事件")
+            print("檢測控制器未初始化，無法處理 ROI 拖拽事件")
+
+    def handle_roi_drag_end(self, event):
+        """處理 ROI 拖拽結束事件"""
+        logging.info(f"系統控制器收到 ROI 拖拽結束事件，位置: {event.y}")
+        print(f"系統控制器收到 ROI 拖拽結束事件，位置: {event.y}")
+        
+        if self.detection_controller:
+            self.detection_controller.stop_roi_drag()
+            
+            # 保存 ROI 位置到配置
+            if hasattr(self.detection_controller, 'saved_roi_percentage'):
+                roi_position = self.detection_controller.saved_roi_percentage
+                if hasattr(self, 'config_manager') and self.config_manager:
+                    self.config_manager.set('detection.roi_default_position', roi_position)
+                    logging.info(f"已保存 ROI 位置到配置: {roi_position:.2f}")
+                    print(f"已保存 ROI 位置到配置: {roi_position:.2f}")
+        else:
+            logging.error("檢測控制器未初始化，無法處理 ROI 拖拽結束事件")
+            print("檢測控制器未初始化，無法處理 ROI 拖拽結束事件")
 
     def handle_theme_change(self, theme_name):
         """
@@ -744,12 +786,6 @@ class SystemController:
             # 開啟相機
             print(f"嘗試打開相機源: {source}")
             logging.info(f"嘗試打開相機源: {source}")
-            
-            # 檢查是否為虛擬相機或測試視頻
-            if source == "Virtual Camera" or source == "Test video":
-                logging.warning(f"嘗試開啟非實際相機: {source}")
-                self.show_error("請選擇實際可用的相機")
-                return
                 
             success = self.camera_manager.open_camera(source)
             
@@ -1297,12 +1333,16 @@ class SystemController:
         """設置視頻面板回調"""
         try:
             if hasattr(self.main_window, 'video_panel'):
-                # 設置 ROI 選擇回調
-                self.main_window.video_panel.set_callback('roi_selected', self.handle_roi_selection)
+                # 設置 ROI 拖拽相關的回調函數
+                self.main_window.video_panel.set_callback('roi_drag_start', self.handle_roi_drag_start)
+                self.main_window.video_panel.set_callback('roi_drag', self.handle_roi_drag)
+                self.main_window.video_panel.set_callback('roi_drag_end', self.handle_roi_drag_end)
                 
                 logging.info("視頻面板回調設置成功")
+                print("視頻面板回調設置成功")
         except Exception as e:
             logging.error(f"設置視頻面板回調時出錯: {str(e)}")
+            print(f"設置視頻面板回調時出錯: {str(e)}")
             
     def setup_photo_panel_callbacks(self):
         """設置照片面板回調"""

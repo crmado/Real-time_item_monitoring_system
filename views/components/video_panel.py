@@ -73,8 +73,16 @@ class VideoPanel(ttk.Frame):
         Args:
             event: 事件物件
         """
+        logging.info(f"滑鼠按下事件，位置: ({event.x}, {event.y})")
+        print(f"滑鼠按下事件，位置: ({event.x}, {event.y})")
+        
         if 'roi_drag_start' in self.callbacks:
+            logging.info(f"調用 roi_drag_start 回調函數，回調函數: {self.callbacks['roi_drag_start']}")
+            print(f"調用 roi_drag_start 回調函數，回調函數: {self.callbacks['roi_drag_start']}")
             self.callbacks['roi_drag_start'](event)
+        else:
+            logging.warning("roi_drag_start 回調函數未設置")
+            print("roi_drag_start 回調函數未設置")
 
     def _on_mouse_drag(self, event):
         """
@@ -83,8 +91,16 @@ class VideoPanel(ttk.Frame):
         Args:
             event: 事件物件
         """
+        logging.info(f"滑鼠拖動事件，位置: ({event.x}, {event.y})")
+        print(f"滑鼠拖動事件，位置: ({event.x}, {event.y})")
+        
         if 'roi_drag' in self.callbacks:
+            logging.info(f"調用 roi_drag 回調函數，回調函數: {self.callbacks['roi_drag']}")
+            print(f"調用 roi_drag 回調函數，回調函數: {self.callbacks['roi_drag']}")
             self.callbacks['roi_drag'](event)
+        else:
+            logging.warning("roi_drag 回調函數未設置")
+            print("roi_drag 回調函數未設置")
 
     def _on_mouse_up(self, event):
         """
@@ -93,8 +109,16 @@ class VideoPanel(ttk.Frame):
         Args:
             event: 事件物件
         """
+        logging.info(f"滑鼠釋放事件，位置: ({event.x}, {event.y})")
+        print(f"滑鼠釋放事件，位置: ({event.x}, {event.y})")
+        
         if 'roi_drag_end' in self.callbacks:
+            logging.info(f"調用 roi_drag_end 回調函數，回調函數: {self.callbacks['roi_drag_end']}")
+            print(f"調用 roi_drag_end 回調函數，回調函數: {self.callbacks['roi_drag_end']}")
             self.callbacks['roi_drag_end'](event)
+        else:
+            logging.warning("roi_drag_end 回調函數未設置")
+            print("roi_drag_end 回調函數未設置")
 
     def update_image(self, frame):
         """

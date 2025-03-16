@@ -378,6 +378,8 @@ class DetectionController:
         """
         # 如果傳入的是事件對象，獲取 y 坐標
         if hasattr(y_pos, 'y'):
+            logging.info(f"收到事件對象，y 坐標: {y_pos.y}")
+            print(f"收到事件對象，y 坐標: {y_pos.y}")
             y_pos = y_pos.y
             
         self.roi_y = y_pos
@@ -394,16 +396,26 @@ class DetectionController:
         """
         # 如果傳入的是事件對象，獲取 y 坐標
         if hasattr(y_pos, 'y'):
+            logging.info(f"收到事件對象，y 坐標: {y_pos.y}")
+            print(f"收到事件對象，y 坐標: {y_pos.y}")
             y_pos = y_pos.y
             
         if self.is_dragging_roi:
             self.roi_y = y_pos
-            logging.debug(f"更新ROI位置: {y_pos}")
+            logging.info(f"更新ROI位置: {y_pos}")
             print(f"更新ROI位置: {y_pos}")
+        else:
+            logging.warning("嘗試更新 ROI 位置，但未處於拖拽狀態")
+            print("嘗試更新 ROI 位置，但未處於拖拽狀態")
             
     def stop_roi_drag(self):
         """停止ROI拖拽"""
+        logging.info("停止 ROI 拖拽")
+        print("停止 ROI 拖拽")
+        
         if not self.is_dragging_roi:
+            logging.warning("嘗試停止 ROI 拖拽，但未處於拖拽狀態")
+            print("嘗試停止 ROI 拖拽，但未處於拖拽狀態")
             return
             
         self.is_dragging_roi = False
