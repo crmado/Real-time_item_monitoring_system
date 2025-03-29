@@ -13,15 +13,15 @@ detection:
   bg_history: 20000
   bg_threshold: 16
   binary_threshold: 30
-  buffer_point: 95
+  buffer_point: 180
   canny_threshold1: 50
   canny_threshold2: 110
   detect_shadows: true
   max_object_area: 150
   min_object_area: 10
-  roi_default_position: 0.3236111111111111
+  roi_default_position: 0.1625
   roi_height: 16
-  target_count: 1000
+  target_count: 200
   track_tolerance_x: 64
   track_tolerance_y: 48
 display:

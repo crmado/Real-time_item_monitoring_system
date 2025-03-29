@@ -45,7 +45,8 @@ class SettingsPanel(ttk.Frame):
         
         # 初始化回調函數字典
         self.callbacks = {
-            'settings_applied': None
+            'settings_applied': None,
+            'reset_count': None
         }
         
         # 創建UI元件
@@ -191,6 +192,14 @@ class SettingsPanel(ttk.Frame):
         )
         self.count_label.pack(side=tk.LEFT, padx=5)
         
+        # 添加重置計數按鈕
+        self.reset_count_button = ttk.Button(
+            count_frame,
+            text=get_text("reset_count", "重置計數"),
+            command=self._on_reset_count
+        )
+        self.reset_count_button.pack(side=tk.RIGHT, padx=5)
+        
         # 創建套用設定按鈕
         button_frame = ttk.Frame(settings_frame)
         button_frame.pack(fill=tk.X, pady=10)
@@ -210,6 +219,23 @@ class SettingsPanel(ttk.Frame):
     #==========================================================================
     # 第三部分：事件處理
     #==========================================================================
+    def _on_reset_count(self):
+        """當點擊重置計數按鈕時處理"""
+        # 將計數重置為0
+        self.update_count(0)
+        
+        # 如果有系統控制器，更新檢測控制器的計數
+        if 'reset_count' in self.callbacks and self.callbacks['reset_count']:
+            try:
+                self.callbacks['reset_count']()
+                logging.info("已調用重置計數回調")
+            except Exception as e:
+                logging.error(f"調用重置計數回調時出錯：{str(e)}")
+        else:
+            logging.warning("未註冊重置計數回調")
+            
+        logging.info("已重置計數為0")
+
     def _on_apply_settings(self):
         """當點擊套用設定按鈕時處理"""
         # 獲取設定值

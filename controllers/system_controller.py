@@ -152,77 +152,148 @@ class SystemController:
 
     def register_detection_callbacks(self):
         """註冊偵測控制器的回調函數"""
-        # 保留原有回調註冊
-        self.detection_controller.set_callback(
-            'monitoring_started',
-            lambda: self.main_window.control_panel.update_start_button_text(True)
-        )
-
-        self.detection_controller.set_callback(
-            'monitoring_stopped',
-            lambda: self.main_window.control_panel.update_start_button_text(False)
-        )
-
-        # 确保 settings_panel 已初始化
-        if hasattr(self.main_window, 'settings_panel') and self.main_window.settings_panel is not None:
+        if not self.detection_controller:
+            logging.error("無法註冊回調：檢測控制器未初始化")
+            return
+            
+        try:
+            # 保留原有回調註冊
             self.detection_controller.set_callback(
-                'count_updated',
-                self.main_window.settings_panel.update_count
+                'monitoring_started',
+                lambda: self.main_window.control_panel.update_start_button_text(True)
             )
 
-        self.detection_controller.set_callback(
-            'frame_processed',
-            self.main_window.video_panel.update_image
-        )
+            self.detection_controller.set_callback(
+                'monitoring_stopped',
+                lambda: self.main_window.control_panel.update_start_button_text(False)
+            )
 
-        self.detection_controller.set_callback(
-            'test_started',
-            lambda: self.main_window.control_panel.update_test_button_text(True)
-        )
+            # 確保 settings_panel 已初始化
+            if hasattr(self.main_window, 'settings_panel') and self.main_window.settings_panel is not None:
+                # 明確設置計數更新回調
+                logging.info("設置count_updated回調")
+                self.detection_controller.set_callback(
+                    'count_updated',
+                    self.handle_count_updated
+                )
+                
+                # 設置緩衝點和目標達成回調
+                self.detection_controller.set_callback(
+                    'buffer_reached',
+                    self.handle_buffer_reached
+                )
+                
+                self.detection_controller.set_callback(
+                    'target_reached',
+                    self.handle_target_reached
+                )
+            else:
+                logging.warning("未找到settings_panel，無法設置計數相關回調")
 
-        self.detection_controller.set_callback(
-            'test_stopped',
-            lambda: self.main_window.control_panel.update_test_button_text(False)
-        )
+            self.detection_controller.set_callback(
+                'frame_processed',
+                self.main_window.video_panel.update_image
+            )
 
-        # 新增拍照模式回調
-        self.detection_controller.set_callback(
-            'camera_preview_updated',
-            lambda frame: self.main_window.photo_panel and self.main_window.photo_panel.update_camera_preview(
-                frame)
-        )
+            self.detection_controller.set_callback(
+                'test_started',
+                lambda: self.main_window.control_panel.update_test_button_text(True)
+            )
 
-        self.detection_controller.set_callback(
-            'photo_captured',
-            lambda frame: self.main_window.photo_panel and self.main_window.photo_panel.update_photo_preview(
-                frame)
-        )
+            self.detection_controller.set_callback(
+                'test_stopped',
+                lambda: self.main_window.control_panel.update_test_button_text(False)
+            )
 
-        self.detection_controller.set_callback(
-            'photo_analyzed',
-            self.handle_analysis_results
-        )
+            # 新增拍照模式回調
+            self.detection_controller.set_callback(
+                'camera_preview_updated',
+                lambda frame: self.main_window.photo_panel and self.main_window.photo_panel.update_camera_preview(
+                    frame)
+            )
 
-        self.detection_controller.set_callback(
-            'analysis_error',
-            self.handle_analysis_error
-        )
-
-        # 添加 ROI 拖拽相關的回調函數
-        logging.info("設置 ROI 拖拽回調函數")
-        self.main_window.video_panel.set_callback(
-            'roi_drag_start',
-            self.handle_roi_drag_start
-        )
+            self.detection_controller.set_callback(
+                'photo_captured',
+                lambda frame: self.main_window.photo_panel and self.main_window.photo_panel.update_photo_preview(
+                    frame)
+            )
+            
+            logging.info("所有檢測控制器回調註冊完成")
+        except Exception as e:
+            logging.error(f"註冊檢測回調時發生錯誤: {str(e)}")
+    
+    # 添加計數更新處理方法
+    def handle_count_updated(self, count):
+        """處理計數更新
         
-        self.main_window.video_panel.set_callback(
-            'roi_drag',
-            self.handle_roi_drag
-        )
+        Args:
+            count: 更新後的計數值
+        """
+        try:
+            logging.info(f"處理計數更新: {count}")
+            
+            # 更新設定面板上的計數顯示
+            if hasattr(self.main_window, 'settings_panel'):
+                self.main_window.settings_panel.update_count(count)
+                logging.info(f"已更新設定面板計數: {count}")
+            else:
+                logging.warning("無法更新計數：找不到settings_panel")
+            
+            # 更新狀態欄
+            if hasattr(self.main_window, 'status_label'):
+                self.main_window.status_label.configure(text=f"{get_text('current_count', '目前數量')}: {count}")
+                logging.info(f"已更新狀態欄計數: {count}")
+            
+        except Exception as e:
+            logging.error(f"處理計數更新時出錯: {str(e)}")
+    
+    # 添加重置計數處理方法
+    def handle_reset_count(self):
+        """處理重置計數"""
+        try:
+            logging.info("處理重置計數")
+            
+            # 重置檢測控制器的計數
+            if hasattr(self, 'detection_controller') and self.detection_controller:
+                # 更新檢測控制器中的計數
+                self.detection_controller.current_count = 0
+                self.detection_controller.object_count = 0
+                self.detection_controller.tracked_objects = {}  # 將其設為空字典而不是空列表
+                
+                # 更新UI顯示
+                self.handle_count_updated(0)
+                
+                logging.info("已重置檢測控制器計數為0")
+            else:
+                logging.warning("無法重置計數：找不到檢測控制器")
+            
+        except Exception as e:
+            logging.error(f"重置計數時出錯: {str(e)}")
+    
+    # 添加緩衝點達成處理方法
+    def handle_buffer_reached(self, buffer_point):
+        """處理緩衝點達成
         
-        self.main_window.video_panel.set_callback(
-            'roi_drag_end',
-            self.handle_roi_drag_end
+        Args:
+            buffer_point: 緩衝點數值
+        """
+        logging.info(f"達到緩衝點: {buffer_point}")
+        messagebox.showwarning(
+            get_text("buffer_warning", "緩衝點警告"),
+            get_text("buffer_warning_msg", "已達緩衝點 ({})，即將達到預計數量！").format(buffer_point)
+        )
+    
+    # 添加目標達成處理方法
+    def handle_target_reached(self, target_count):
+        """處理目標數量達成
+        
+        Args:
+            target_count: 目標數量
+        """
+        logging.info(f"達到目標數量: {target_count}")
+        messagebox.showinfo(
+            get_text("target_reached", "目標達成"),
+            get_text("target_reached_msg", "已達預計數量 ({})！").format(target_count)
         )
 
     def handle_test_camera(self):
@@ -1262,8 +1333,11 @@ class SystemController:
         """設置設定面板回調"""
         try:
             if hasattr(self.main_window, 'settings_panel'):
-                # 設置套用設定回調
+                # 設置設定應用回調
                 self.main_window.settings_panel.set_callback('settings_applied', self.handle_apply_settings)
+                
+                # 設置重置計數回調
+                self.main_window.settings_panel.set_callback('reset_count', self.handle_reset_count)
                 
                 logging.info("設定面板回調設置成功")
         except Exception as e:

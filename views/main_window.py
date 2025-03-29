@@ -452,6 +452,10 @@ class MainWindow(tk.Frame):
         Args:
             message: 日誌訊息
         """
+        # 過濾掉"檢測到X個物體"的訊息，避免日誌區域過於雜亂
+        if "檢測到" in message and "個物體" in message:
+            return
+            
         # 獲取當前時間
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{current_time}] {message}\n"

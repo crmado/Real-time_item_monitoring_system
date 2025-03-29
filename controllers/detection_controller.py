@@ -10,6 +10,8 @@ import os
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from models.image_processor import ImageProcessor
+import time
+import threading
 
 
 class DetectionController:
@@ -37,14 +39,14 @@ class DetectionController:
         self.saved_roi_percentage = 0.5  # 默认在中间位置
         self.roi_height = 16  # ROI 檢測區域高度
         
-        # 计数相关
+        # 計數相關
         self.current_count = 0
         self.target_count = 1000
         self.buffer_point = 950
         
-        # 物體追蹤相關
+        # 物體追蹤相關 - 使用字典而非列表
         self.last_detected_objects = []
-        self.tracked_objects = []
+        self.tracked_objects = {}  # 使用字典形式儲存追蹤對象，格式 {id: {'x': x, 'y': y, 'count': count}}
         self.object_count = 0
         
         # 當前照片
@@ -60,6 +62,9 @@ class DetectionController:
         # 初始化 ROI 位置（確保有一個初始值）
         logging.info("初始化 ROI 位置")
         self._initialize_roi()
+        
+        # 新增計數物體ID集合，避免重複計數
+        self.counted_ids = set()
         
     def _initialize_roi(self):
         """初始化 ROI 位置"""
@@ -83,7 +88,7 @@ class DetectionController:
             
     def put_chinese_text(self, img, text, position, font_size=30, color=(0, 255, 0)):
         """
-        在圖像上添加中文文字
+        簡化版本的文字繪製 - 不使用PIL庫來提高效率
         
         Args:
             img: OpenCV 圖像
@@ -95,51 +100,23 @@ class DetectionController:
         Returns:
             添加文字後的圖像
         """
-        try:
-            # 將 OpenCV 圖像轉換為 PIL 圖像
-            img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            
-            # 創建繪圖對象
-            draw = ImageDraw.Draw(img_pil)
-            
-            # 嘗試加載字體
-            try:
-                # 嘗試加載系統字體
-                font_paths = [
-                    "/System/Library/Fonts/PingFang.ttc",  # macOS
-                    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",  # Linux
-                    "C:/Windows/Fonts/msyh.ttc",  # Windows
-                    "fonts/NotoSansCJK-Regular.ttc"  # 自帶字體
-                ]
-                
-                font = None
-                for path in font_paths:
-                    try:
-                        font = ImageFont.truetype(path, font_size)
-                        break
-                    except:
-                        continue
-                        
-                if font is None:
-                    # 如果無法加載任何字體，使用默認字體
-                    font = ImageFont.load_default()
-                    # logging.warning("無法加載中文字體，使用默認字體")
-            except:
-                # 如果加載字體失敗，使用默認字體
-                font = ImageFont.load_default()
-                logging.warning("加載字體失敗，使用默認字體")
-            
-            # 繪製文字
-            draw.text(position, text, font=font, fill=(color[2], color[1], color[0]))  # PIL 使用 RGB 順序
-            
-            # 將 PIL 圖像轉回 OpenCV 圖像
-            return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-            
-        except Exception as e:
-            logging.error(f"添加中文文字時出錯: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return img
+        # 直接使用OpenCV的putText繪製文字，避免轉換開銷
+        font_scale = font_size / 30.0  # 根據字體大小計算縮放比例
+        thickness = max(1, int(font_size / 15))  # 根據字體大小計算線條粗細
+        
+        # 避免修改原始圖像
+        result = img.copy()
+        cv2.putText(
+            result, 
+            text, 
+            position, 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            font_scale, 
+            color, 
+            thickness
+        )
+        
+        return result
             
     def start_detection(self):
         """啟動物體檢測"""
@@ -150,7 +127,7 @@ class DetectionController:
         # 重置計數
         self.current_count = 0
         self.object_count = 0
-        self.tracked_objects = []
+        self.tracked_objects = {}
         
         # 創建檢測日誌文件
         self._setup_detection_log()
@@ -293,7 +270,7 @@ class DetectionController:
 
     def process_frame(self, frame):
         """
-        處理視頻幀
+        處理視頻幀 - 優化版本
 
         Args:
             frame: 要處理的視頻幀
@@ -302,31 +279,21 @@ class DetectionController:
             處理後的視頻幀
         """
         if frame is None:
-            logging.warning("[警告] 處理幀為空")
-            if self.detection_logger:
-                self._log_detection("[警告]", "處理幀為空")
             return None
             
         # 如果 ROI 位置為空或需要更新，則初始化或更新 ROI 位置
         if self.roi_y is None or (hasattr(self, 'roi_needs_update') and self.roi_needs_update):
-            logging.info("[資訊] 更新 ROI 位置")
             height = frame.shape[0]
             self.roi_y = int(height * self.saved_roi_percentage)
-            logging.info(f"[資訊] 已更新 ROI 位置: {self.roi_y}, 幀高度: {height}")
-            if self.detection_logger:
-                self._log_detection("[資訊]", f"更新 ROI 位置: {self.roi_y}, 幀高度: {height}")
             if hasattr(self, 'roi_needs_update'):
                 self.roi_needs_update = False
             
-        # 複製一份幀進行處理
-        processed_frame = frame.copy()
-        
-        # 如果没有启动检测，直接返回带有未激活 ROI 線的幀
+        # 如果没有启动检测，只繪製基本ROI線
         if not self.is_detecting:
-            return self.draw_detection_line(processed_frame)
+            return self._draw_simple_roi_line(frame)
             
         try:
-            # 定義 ROI 區域
+            # 定義 ROI 區域，只處理這個區域
             roi_top = max(0, self.roi_y - self.roi_height // 2)
             roi_bottom = min(frame.shape[0], self.roi_y + self.roi_height // 2)
             roi = frame[roi_top:roi_bottom, :]
@@ -335,53 +302,68 @@ class DetectionController:
             processed_roi = self.image_processor.process_frame(roi)
             
             # 檢測物體
+            detected_objects = []
             if processed_roi is not None:
                 detected_objects = self.image_processor.detect_objects(processed_roi)
-                
-                if detected_objects and self.detection_logger:
-                    self._log_detection("[資訊]", f"檢測到 {len(detected_objects)} 個物體")
-                
                 # 更新物體追蹤和計數
                 self.update_object_tracking(detected_objects, self.roi_y)
-                
-                # 在幀上繪製檢測結果
-                if detected_objects:
-                    # 調整物體座標到原始幀
-                    for i, obj in enumerate(detected_objects):
-                        x, y, w, h, center = obj
-                        # 調整 y 座標
-                        y += roi_top
-                        center = (center[0], center[1] + roi_top)
-                        # 繪製物體框
-                        cv2.rectangle(processed_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                        # 繪製物體 ID
-                        cv2.putText(
-                            processed_frame,
-                            f"ID: {i}",
-                            (x, y - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (0, 255, 0),
-                            1
-                        )
             
-            # 繪製檢測線並添加計數信息
-            processed_frame = self.draw_detection_line(processed_frame)
+            # 直接在原始幀上繪製，減少複製操作
+            # 繪製ROI線
+            width = frame.shape[1]
+            cv2.line(frame, (0, self.roi_y), (width, self.roi_y), (0, 255, 0), 2)
+            
+            # 使用簡化的文字顯示，避免昂貴的中文渲染
+            cv2.putText(
+                frame, 
+                f"Count: {self.current_count}", 
+                (width - 200, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.8, 
+                (0, 255, 0), 
+                2
+            )
                 
-            return processed_frame
+            # 只有在有物體檢測到且數量不多時才繪製物體框
+            if detected_objects and len(detected_objects) < 20:  # 限制繪製的物體數量
+                for obj in detected_objects:
+                    x, y, w, h, center = obj
+                    # 調整 y 座標到原始幀
+                    y += roi_top
+                    # 只繪製矩形框，減少計算負擔
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+            return frame
 
         except Exception as e:
-            error_msg = f"處理視頻幀時出錯: {str(e)}"
-            logging.error(f"[錯誤] {error_msg}")
-            if self.detection_logger:
-                self._log_detection("[錯誤]", error_msg)
-            import traceback
-            traceback.print_exc()
-        return frame
+            logging.error(f"處理視頻幀時出錯: {str(e)}")
+            return frame
+            
+    def _draw_simple_roi_line(self, frame):
+        """簡化的ROI線繪製，用於未啟動檢測時"""
+        if frame is None or self.roi_y is None:
+            return frame
+            
+        width = frame.shape[1]
+        # 繪製紅色線表示未啟用
+        cv2.line(frame, (0, self.roi_y), (width, self.roi_y), (0, 0, 255), 2)
         
+        # 使用簡單文字代替中文
+        cv2.putText(
+            frame, 
+            "ROI Line (Inactive)", 
+            (width - 200, self.roi_y - 10), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            0.6, 
+            (0, 0, 255), 
+            1
+        )
+            
+        return frame
+
     def update_object_tracking(self, detected_objects, roi_y):
         """
-        更新物體追蹤和計數
+        更新物體追蹤和計數 - 參考提供代碼實現
         
         Args:
             detected_objects: 檢測到的物體列表
@@ -390,82 +372,83 @@ class DetectionController:
         try:
             # 如果沒有檢測到物體，直接返回
             if not detected_objects:
-                self.last_detected_objects = []
                 return
-                
-            # 如果是第一次檢測，初始化追蹤列表
-            if not self.last_detected_objects:
-                self.last_detected_objects = detected_objects
-                return
-                
-            # 比較當前檢測到的物體和上一次檢測到的物體
-            # 檢查是否有新物體穿過 ROI 線
+            
+            # 初始化新的軌跡字典
+            new_tracks = {}
+            
+            # 處理每個檢測到的物體
             for obj in detected_objects:
-                x, y, w, h, center = obj
+                x, y, w, h, centroid = obj
+                cx, cy = int(centroid[0]), int(centroid[1])
                 
-                # 檢查物體中心是否在 ROI 線附近
-                if abs(center[1] - roi_y) < 5:
-                    # 檢查是否是新物體（不在已追蹤列表中）
-                    is_new_object = True
-                    for tracked_obj in self.tracked_objects:
-                        tracked_x, tracked_y, tracked_w, tracked_h, _ = tracked_obj
-                        # 如果物體位置相近，認為是同一個物體
-                        if (abs(x - tracked_x) < 50 and abs(y - tracked_y) < 50):
-                            is_new_object = False
+                # 檢查是否匹配到現有軌跡
+                matched = False
+                
+                # 遍歷所有現有軌跡尋找匹配
+                for track_id, track in self.tracked_objects.items():
+                    if isinstance(track, dict):  # 確保track是字典
+                        track_x = track.get('x', 0)
+                        track_y = track.get('y', 0)
+                        
+                        # 使用參考代碼中的匹配邏輯：如果物體在ROI內，並且與軌跡的x座標相差不超過64像素，y座標相差不超過48像素
+                        if abs(cx - track_x) < 64 and abs(roi_y - track_y) < 48:
+                            # 更新現有軌跡
+                            new_tracks[track_id] = {
+                                'x': cx, 
+                                'y': roi_y, 
+                                'count': track.get('count', 0),
+                                'w': w,
+                                'h': h
+                            }
+                            matched = True
                             break
-                            
-                    if is_new_object:
-                        # 添加到已追蹤列表
-                        self.tracked_objects.append(obj)
-                        # 增加計數
-                        self.object_count += 1
-                        self.current_count = self.object_count
-                        logging.info(f"[資訊] 檢測到新物體，當前計數: {self.current_count}")
-                        print(f"檢測到新物體，當前計數: {self.current_count}")
+                
+                # 如果沒有匹配到軌跡，則建立新軌跡
+                if not matched:
+                    # 生成新的軌跡ID
+                    if isinstance(self.tracked_objects, dict) and self.tracked_objects:
+                        new_track_id = max(self.tracked_objects.keys()) + 1
+                    else:
+                        new_track_id = 0
                         
-                        # 記錄檢測日誌
-                        if self.detection_logger:
-                            self._log_detection("[資訊]", f"檢測到新物體，位置: ({x}, {y})，大小: {w}x{h}")
-                            self._log_detection("[資訊]", f"當前計數: {self.current_count}")
-                        
-                        # 觸發計數更新回調
-                        if 'count_updated' in self.callbacks and self.callbacks['count_updated']:
+                    # 建立新的軌跡記錄
+                    new_tracks[new_track_id] = {
+                        'x': cx, 
+                        'y': roi_y, 
+                        'count': 0,
+                        'w': w,
+                        'h': h
+                    }
+            
+            # 處理計數邏輯
+            for track_id, track in new_tracks.items():
+                # 如果物體的y座標等於ROI線的y座標，並且該物體還沒有被計數過，則計數加一
+                if track['count'] == 0 and track['y'] == roi_y:
+                    self.object_count += 1
+                    self.current_count = self.object_count
+                    track['count'] = 1
+                    
+                    # 確保回調函數被調用
+                    if 'count_updated' in self.callbacks and self.callbacks['count_updated']:
+                        try:
                             self.callbacks['count_updated'](self.current_count)
+                            logging.info(f"物體ID: {track_id} 已計數，當前總數: {self.current_count}")
+                        except Exception as e:
+                            logging.error(f"調用count_updated回調出錯: {str(e)}")
                             
-                        # 檢查是否達到緩衝點
-                        if self.current_count == self.buffer_point:
-                            logging.info(f"[資訊] 達到緩衝點: {self.buffer_point}")
-                            print(f"達到緩衝點: {self.buffer_point}")
-                            
-                            # 記錄檢測日誌
-                            if self.detection_logger:
-                                self._log_detection("[資訊]", f"達到緩衝點: {self.buffer_point}")
-                            
-                            # 觸發緩衝點回調
-                            if 'buffer_reached' in self.callbacks and self.callbacks['buffer_reached']:
-                                self.callbacks['buffer_reached'](self.buffer_point)
-                                
-                        # 檢查是否達到目標計數
-                        if self.current_count == self.target_count:
-                            logging.info(f"[資訊] 達到目標計數: {self.target_count}")
-                            print(f"達到目標計數: {self.target_count}")
-                            
-                            # 記錄檢測日誌
-                            if self.detection_logger:
-                                self._log_detection("[資訊]", f"達到目標計數: {self.target_count}")
-                            
-                            # 觸發目標計數回調
-                            if 'target_reached' in self.callbacks and self.callbacks['target_reached']:
-                                self.callbacks['target_reached'](self.target_count)
-                                
-            # 更新上一次檢測到的物體
-            self.last_detected_objects = detected_objects
+                    # 檢查是否達到緩衝點或目標計數
+                    if self.current_count == self.buffer_point and 'buffer_reached' in self.callbacks and self.callbacks['buffer_reached']:
+                        self.callbacks['buffer_reached'](self.buffer_point)
+                        
+                    if self.current_count == self.target_count and 'target_reached' in self.callbacks and self.callbacks['target_reached']:
+                        self.callbacks['target_reached'](self.target_count)
+            
+            # 更新物體追蹤記錄
+            self.tracked_objects = new_tracks
             
         except Exception as e:
-            error_msg = f"更新物體追蹤時出錯: {str(e)}"
-            logging.error(f"[錯誤] {error_msg}")
-            if self.detection_logger:
-                self._log_detection("[錯誤]", error_msg)
+            logging.error(f"更新物體追蹤時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 

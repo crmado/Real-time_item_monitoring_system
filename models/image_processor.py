@@ -17,19 +17,19 @@ class ImageProcessor:
     # ==================================================================
     def __init__(self):
         """初始化影像處理器"""
-        # 優化：可配置的背景減除器參數
+        # 使用參考代碼的參數設置背景減除器
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=20000,
             varThreshold=16,
             detectShadows=True
         )
 
-        # 預先定義常用的核心以提高效能
+        # 參考代碼中使用的核心
         self.gaussian_kernel = (5, 5)
         self.dilate_kernel = np.ones((3, 3), np.uint8)
         self.close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 
-        # 閾值參數
+        # 參考代碼中使用的閾值參數
         self.canny_threshold1 = 50
         self.canny_threshold2 = 110
         self.binary_threshold = 30
@@ -37,16 +37,18 @@ class ImageProcessor:
         # 建立執行緒池以支援平行處理
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
 
-        # 物件檢測參數
+        # 使用參考代碼中的物體檢測參數
         self.min_object_area = 10
         self.max_object_area = 150
+        
+        logging.info("初始化影像處理器完成，使用參考代碼的檢測參數")
 
     # ==================================================================
     # 第二部分：影像處理
     # ==================================================================
     def process_frame(self, frame):
         """
-        處理單幀影像 - 優化版本
+        依照參考代碼處理單幀影像
 
         Args:
             frame: 輸入的影像幀
@@ -57,32 +59,37 @@ class ImageProcessor:
         if frame is None or frame.size == 0:
             return None
 
-        # 使用背景減除器
-        fg_mask = self.bg_subtractor.apply(frame)
-
-        # 影像模糊化 - 使用預先定義的核心
-        blurred = cv2.GaussianBlur(frame, self.gaussian_kernel, 0)
-
-        # 邊緣檢測 - 使用預先定義的閾值
-        edges = cv2.Canny(blurred, self.canny_threshold1, self.canny_threshold2)
-
-        # 使用遮罩 - 使用numpy向量化操作
-        result = cv2.bitwise_and(edges, edges, mask=fg_mask)
-
-        # 二值化 - 使用預先定義的閾值
-        _, thresh = cv2.threshold(result, self.binary_threshold, 255, cv2.THRESH_BINARY)
-
-        # 膨脹操作 - 使用預先定義的核心
-        dilated = cv2.dilate(thresh, self.dilate_kernel, iterations=1)
-
-        # 閉合操作 - 使用預先定義的核心
-        closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, self.close_kernel)
-
-        return closed
-
+        try:
+            # 背景減除
+            fg_mask = self.bg_subtractor.apply(frame)
+            
+            # 高斯模糊去噪
+            blurred = cv2.GaussianBlur(frame, self.gaussian_kernel, 0)
+            
+            # Canny 邊緣檢測
+            edges = cv2.Canny(blurred, self.canny_threshold1, self.canny_threshold2)
+            
+            # 使用前景遮罩過濾邊緣
+            result = cv2.bitwise_and(edges, edges, mask=fg_mask)
+            
+            # 二值化處理
+            _, thresh = cv2.threshold(result, self.binary_threshold, 255, cv2.THRESH_BINARY)
+            
+            # 膨脹操作填充空洞
+            dilated = cv2.dilate(thresh, self.dilate_kernel, iterations=1)
+            
+            # 閉合操作連接物體
+            closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, self.close_kernel)
+            
+            return closed
+            
+        except Exception as e:
+            logging.error(f"處理幀時發生錯誤: {str(e)}")
+            return None
+            
     def detect_objects(self, processed, min_area=None, max_area=None):
         """
-        檢測物件 - 優化版本
+        依照參考代碼檢測物件
 
         Args:
             processed: 處理過的影像
@@ -95,33 +102,32 @@ class ImageProcessor:
         if processed is None or processed.size == 0:
             return []
 
-        # 使用指定的參數或類別預設值
+        # 使用參考代碼的面積參數
         min_area = min_area if min_area is not None else self.min_object_area
         max_area = max_area if max_area is not None else self.max_object_area
 
         try:
-            # 使用連通區域分析
+            # 使用連通區域分析（參考代碼使用的連通度為4）
             num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
                 processed,
                 connectivity=4
             )
 
-            # 使用列表推導式優化物件過濾
-            valid_objects = [
-                (
-                    stats[i, cv2.CC_STAT_LEFT],
-                    stats[i, cv2.CC_STAT_TOP],
-                    stats[i, cv2.CC_STAT_WIDTH],
-                    stats[i, cv2.CC_STAT_HEIGHT],
-                    centroids[i]
-                )
-                for i in range(1, num_labels)
-                if min_area < stats[i, cv2.CC_STAT_AREA] < max_area
-            ]
-
+            # 按照參考代碼過濾物體
+            valid_objects = []
+            for i in range(1, num_labels):
+                area = stats[i, cv2.CC_STAT_AREA]
+                if min_area < area < max_area:
+                    x = stats[i, cv2.CC_STAT_LEFT]
+                    y = stats[i, cv2.CC_STAT_TOP]
+                    w = stats[i, cv2.CC_STAT_WIDTH]
+                    h = stats[i, cv2.CC_STAT_HEIGHT]
+                    centroid = centroids[i]
+                    valid_objects.append((x, y, w, h, centroid))
+            
             return valid_objects
+            
         except Exception as e:
-            import logging
             logging.error(f"物件檢測時發生錯誤：{str(e)}")
             return []
 

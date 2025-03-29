@@ -68,7 +68,9 @@ class CameraManager:
         
         logging.info("[資訊] 開始檢測可用的視訊來源...")
         
-        # 移除測試視頻選項和虛擬相機選項，只保留實際可用的相機
+        # 添加測試視頻選項
+        sources.append("Test video")
+        logging.info("[資訊] 已添加測試視頻選項")
         
         # 檢測內置攝像頭 - 不再使用安全模式限制
         # 在 macOS 上，檢查內建相機（索引 0）
@@ -126,7 +128,7 @@ class CameraManager:
             logging.warning(f"[警告] Basler 相機檢測失敗: {str(e)}")
 
         # 如果沒有檢測到任何相機，添加一個提示選項
-        if len(sources) == 0:
+        if len(sources) == 1:  # 只有測試視頻
             sources.append("未檢測到可用相機")
             logging.info("[資訊] 未檢測到任何相機")
             
@@ -233,11 +235,30 @@ class CameraManager:
                 
             ret, frame = self.camera.read()
             
+            # 特殊處理測試視頻的循環播放
             if not ret or frame is None:
-                logging.error("讀取幀失敗")
-                self.is_virtual = True
-                self.current_frame = self.virtual_frame.copy()
-                return True, self.current_frame
+                # 檢查是否是測試視頻並且已經播放到結尾
+                current_pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
+                total_frames = self.camera.get(cv2.CAP_PROP_FRAME_COUNT)
+                
+                # 如果是測試視頻並且到達了結尾，重置到開頭
+                if total_frames > 0 and current_pos >= total_frames - 1:
+                    logging.info("[資訊] 測試視頻播放完畢，重新從頭開始")
+                    self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = self.camera.read()
+                    
+                    # 如果重置後仍然無法讀取，則切換到虛擬相機
+                    if not ret or frame is None:
+                        logging.error("[錯誤] 重置測試視頻後仍無法讀取幀")
+                        self.is_virtual = True
+                        self.current_frame = self.virtual_frame.copy()
+                        return True, self.current_frame
+                else:
+                    # 其他情況下的讀取失敗，使用虛擬相機
+                    logging.error("讀取幀失敗")
+                    self.is_virtual = True
+                    self.current_frame = self.virtual_frame.copy()
+                    return True, self.current_frame
             
             self.current_frame = frame
             return True, frame
@@ -275,23 +296,61 @@ class CameraManager:
     def _open_test_video(self):
         """開啟測試視頻"""
         try:
-            video_path = r"testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
+            # 預設測試視頻路徑
+            video_path = "testDate/colorConversion_output_2024-10-26_14-28-56_video_V6_200_206fps.mp4"
+            
+            # 檢查測試視頻是否存在
             if not os.path.exists(video_path):
-                backup_paths = ["testDate/test_video.mp4", "video/sample.mp4"]
-                for path in backup_paths:
-                    if os.path.exists(path):
-                        video_path = path
-                        break
-                else:
-                    logging.error("未找到測試影片")
-                    return False
+                logging.warning(f"[警告] 預設測試視頻不存在: {video_path}")
+                # 嘗試查找測試目錄中的其他視頻文件
+                test_dir = "testDate"
+                if os.path.exists(test_dir) and os.path.isdir(test_dir):
+                    for file in os.listdir(test_dir):
+                        if file.endswith(('.mp4', '.avi', '.mov')):
+                            video_path = os.path.join(test_dir, file)
+                            logging.info(f"[資訊] 找到其他測試視頻: {video_path}")
+                            break
+                
+                # 如果仍然找不到，嘗試備用位置
+                if not os.path.exists(video_path):
+                    backup_paths = ["video/sample.mp4", "resources/test_video.mp4"]
+                    for path in backup_paths:
+                        if os.path.exists(path):
+                            video_path = path
+                            logging.info(f"[資訊] 使用備用測試視頻: {video_path}")
+                            break
+                    else:
+                        logging.error("[錯誤] 找不到任何測試視頻")
+                        # 如果所有嘗試都失敗，使用虛擬相機
+                        return self._open_virtual_camera()
 
-            logging.info(f"使用測試視頻: {video_path}")
+            logging.info(f"[資訊] 使用測試視頻: {video_path}")
             self.camera = cv2.VideoCapture(video_path)
-            return self.camera.isOpened()
+            
+            # 確認視頻是否成功打開
+            if not self.camera.isOpened():
+                logging.error(f"[錯誤] 無法打開測試視頻: {video_path}")
+                return self._open_virtual_camera()
+                
+            # 測試讀取第一幀
+            ret, frame = self.camera.read()
+            if not ret or frame is None:
+                logging.error("[錯誤] 無法從測試視頻讀取幀")
+                return self._open_virtual_camera()
+                
+            # 設定循環播放
+            total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
+            logging.info(f"[資訊] 測試視頻總幀數: {total_frames}")
+            
+            logging.info("[資訊] 成功打開測試視頻")
+            return True
+            
         except Exception as e:
-            logging.error(f"開啟測試視頻時發生錯誤: {str(e)}")
-            return False
+            logging.error(f"[錯誤] 開啟測試視頻時發生錯誤: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 如果發生任何錯誤，回退到虛擬相機
+            return self._open_virtual_camera()
 
     def _open_usb_camera(self, source):
         """開啟 USB 相機"""
