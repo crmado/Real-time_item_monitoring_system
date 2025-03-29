@@ -173,13 +173,38 @@ class MainWindow(tk.Frame):
         )
         self.settings_btn.pack(side=tk.RIGHT, padx=5)
 
-        # 创建内容区域
-        self.content = ttk.Frame(self.main_frame, style='Content.TFrame')
-        self.content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # 创建可调整的上下分隔面板
+        self.paned_window = ttk.PanedWindow(self.main_frame, orient=tk.VERTICAL)
+        self.paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # 上半部分为内容区域
+        self.content = ttk.Frame(self.paned_window, style='Content.TFrame')
+        self.paned_window.add(self.content, weight=70)  # 70%的空间
+        
+        # 下半部分为日志区域
+        self.log_container = ttk.Frame(self.paned_window, style='Content.TFrame')
+        self.paned_window.add(self.log_container, weight=30)  # 30%的空间
+        
+        # 設置分隔線初始位置 (大約在視窗70%的位置)
+        def set_sash_position():
+            # 在UI完全加載後設置分隔線位置
+            window_height = self.winfo_height()
+            if window_height > 0:
+                sash_pos = int(window_height * 0.7)
+                try:
+                    self.paned_window.sashpos(0, sash_pos)
+                except:
+                    pass  # 忽略可能的錯誤
+        
+        # 在UI完全加載後設置分隔線位置
+        self.after(100, set_sash_position)
 
-        # 使用网格布局
-        self.content.columnconfigure(0, weight=1)  # 左侧控制面板
-        self.content.columnconfigure(1, weight=4)  # 右侧视频/照片面板
+        # 修改为固定比例布局
+        # 左側控制面板：中間視頻面板：右側設置面板 = 2.5 : 7 : 2.5
+        self.content.columnconfigure(0, weight=25)  # 左侧控制面板 (25%)
+        self.content.columnconfigure(1, weight=70)  # 中间视频/照片面板 (70%)
+        self.content.columnconfigure(2, weight=25)  # 右侧设置面板 (25%)
+        self.content.rowconfigure(0, weight=1)      # 行高度比例
 
         # 创建左侧控制面板
         self.control_panel = ControlPanel(self.content)
@@ -203,17 +228,17 @@ class MainWindow(tk.Frame):
         self.analysis_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
         self.analysis_panel.grid_remove()  # 初始隐藏
 
-        # 創建日誌顯示區域
+        # 創建日誌顯示區域 (在日志容器中)
         self.create_log_area()
 
-        # 创建底部状态栏
+        # 創建底部狀態欄
         self.status_bar = ttk.Frame(self.main_frame, style='Footer.TFrame')
         self.status_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=0, pady=0)
 
-        # 状态信息
+        # 狀態資訊  
         self.status_label = ttk.Label(
             self.status_bar,
-            text=get_text("status_ready", "就绪"),
+            text=get_text("status_ready", "就緒"),
             style='Footer.TLabel'
         )
         self.status_label.pack(side=tk.LEFT, padx=10, pady=5)
@@ -231,22 +256,18 @@ class MainWindow(tk.Frame):
 
     def create_log_area(self):
         """創建日誌顯示區域"""
-        # 創建日誌框架
-        self.log_frame = ttk.Frame(self.main_frame)
-        self.log_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+        # 使用log_container作為父元素
+        # 創建日誌標題和控制按鈕的框架
+        log_header = ttk.Frame(self.log_container)
+        log_header.pack(fill=tk.X, side=tk.TOP, padx=5, pady=2)
         
         # 創建日誌標題
-        log_title = ttk.Label(self.log_frame, text=get_text("log_title", "系統日誌"))
-        log_title.pack(side=tk.TOP, anchor=tk.W, padx=5, pady=2)
-        
-        # 創建日誌文本區域
-        self.log_text = scrolledtext.ScrolledText(self.log_frame, height=6, wrap=tk.WORD)
-        self.log_text.pack(fill=tk.X, expand=True, padx=5, pady=2)
-        self.log_text.config(state=tk.DISABLED)  # 設為只讀
+        log_title = ttk.Label(log_header, text=get_text("log_title", "系統日誌"))
+        log_title.pack(side=tk.LEFT, padx=5, pady=2)
         
         # 創建日誌控制按鈕框架
-        log_buttons = ttk.Frame(self.log_frame)
-        log_buttons.pack(fill=tk.X, side=tk.BOTTOM, padx=5, pady=2)
+        log_buttons = ttk.Frame(log_header)
+        log_buttons.pack(side=tk.RIGHT, padx=5, pady=2)
         
         # 清除日誌按鈕
         clear_log_btn = ttk.Button(
@@ -264,6 +285,11 @@ class MainWindow(tk.Frame):
             command=self.toggle_log_visibility
         )
         self.toggle_log_btn.pack(side=tk.RIGHT, padx=5)
+        
+        # 創建日誌文本區域 - 使用fill=BOTH和expand=True填充整個容器
+        self.log_text = scrolledtext.ScrolledText(self.log_container, height=15, wrap=tk.WORD)
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        self.log_text.config(state=tk.DISABLED)  # 設為只讀
 
     def create_settings_panel(self):
         """創建設定面板"""
@@ -442,14 +468,30 @@ class MainWindow(tk.Frame):
         """切換日誌顯示區域的可見性"""
         if self.log_visible.get():
             # 隱藏日誌
-            self.log_frame.pack_forget()
+            self.paned_window.forget(self.log_container)
             self.log_visible.set(False)
             self.toggle_log_btn.configure(text=get_text("show_log", "顯示日誌"))
+            
+            # 在底部重新添加顯示按鈕
+            self.toggle_log_frame = ttk.Frame(self.main_frame)
+            self.toggle_log_frame.pack(fill=tk.X, side=tk.BOTTOM, before=self.status_bar)
+            self.show_log_btn = ttk.Button(
+                self.toggle_log_frame, 
+                text=get_text("show_log", "顯示日誌"),
+                command=self.toggle_log_visibility
+            )
+            self.show_log_btn.pack(side=tk.RIGHT, padx=5, pady=2)
         else:
             # 顯示日誌
-            self.log_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=5)
+            # 移除臨時的顯示按鈕框架
+            if hasattr(self, 'toggle_log_frame'):
+                self.toggle_log_frame.destroy()
+            
+            # 將日誌區域添加回PanedWindow
+            self.paned_window.add(self.log_container, weight=30)
             self.log_visible.set(True)
             self.toggle_log_btn.configure(text=get_text("hide_log", "隱藏日誌"))
+            
             # 更新一下佈局
             self.root.update_idletasks()
 
