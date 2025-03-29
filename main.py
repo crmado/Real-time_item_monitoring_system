@@ -138,30 +138,6 @@ def main():
         logging.info(f"{LOG_INFO}設置主窗口的系統控制器...")
         main_window.set_system_controller(system_controller)
         
-        # 更新相機源列表
-        logging.info(f"{LOG_INFO}更新相機源列表...")
-        available_sources = system_controller.camera_manager.get_available_sources()
-        logging.info(f"{LOG_INFO}可用相機源: {available_sources}")
-        main_window.control_panel.set_camera_sources(available_sources)
-        
-        # 默認選擇內置相機
-        default_camera = None
-        if "Built-in Camera" in available_sources:
-            default_camera = "Built-in Camera"
-        elif "USB Camera 0" in available_sources:
-            default_camera = "USB Camera 0"
-        elif available_sources:
-            default_camera = available_sources[0]
-            
-        if default_camera:
-            logging.info(f"{LOG_INFO}默認選擇相機: {default_camera}")
-            main_window.control_panel.set_camera_source(default_camera)
-            # 自動打開相機
-            logging.info(f"{LOG_INFO}自動開啟相機: {default_camera}")
-            system_controller.handle_camera_open(default_camera)
-        else:
-            logging.info(f"{LOG_INFO}沒有可用的相機源")
-        
         # 啟動UI更新
         logging.info(f"{LOG_INFO}啟動UI更新...")
         system_controller.start_ui_update()

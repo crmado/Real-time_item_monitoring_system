@@ -8,6 +8,8 @@ from tkinter import ttk, scrolledtext
 import logging
 import datetime
 import os
+import threading
+import time
 
 import cv2
 import numpy as np
@@ -48,10 +50,8 @@ class MainWindow(tk.Frame):
         self.root = root
         self.system_controller = system_controller
         
-        # 设置窗口属性
-        self.root.title(get_text("app_title", "即時物品監測系統"))
-        self.root.geometry("1280x720")
-        self.root.minsize(800, 600)
+        # 根據螢幕大小設定視窗屬性
+        self.set_window_size_by_screen()
         
         # 初始化主题管理器
         self.theme_manager = ThemeManager(root)
@@ -63,6 +63,9 @@ class MainWindow(tk.Frame):
         # 将自身放置在根窗口中
         self.pack(fill=tk.BOTH, expand=True)
         
+        # 绑定窗口大小变化事件
+        self.root.bind("<Configure>", self.on_window_resize)
+        
         # 创建组件
         self.create_widgets()
         
@@ -72,6 +75,10 @@ class MainWindow(tk.Frame):
         # 如果提供了系统控制器，则初始化
         if system_controller:
             system_controller.initialize(self)
+        
+        # 延遲加載相機，避免啟動時UI卡頓
+        # 使用after將相機初始化延遲到主視窗完全顯示後
+        self.root.after(100, self.delayed_camera_initialization)
 
     def get_components(self):
         """
@@ -557,3 +564,150 @@ class MainWindow(tk.Frame):
                 messagebox.showinfo("设置", "设置功能尚未实现")
         except Exception as e:
             logging.error(f"打开设置对话框时出错: {str(e)}")
+
+    def show_splash_screen(self):
+        """顯示啟動畫面"""
+        # 創建啟動視窗
+        self.splash = tk.Toplevel(self.root)
+        self.splash.title("")
+        self.splash.overrideredirect(True)  # 無邊框窗口
+        
+        # 計算啟動畫面位置（居中）
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        splash_width = 400
+        splash_height = 300
+        position_x = int((screen_width - splash_width) / 2)
+        position_y = int((screen_height - splash_height) / 2)
+        
+        # 設置啟動畫面大小和位置
+        self.splash.geometry(f"{splash_width}x{splash_height}+{position_x}+{position_y}")
+        
+        # 設置啟動畫面內容
+        splash_frame = ttk.Frame(self.splash)
+        splash_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 添加標題
+        title_label = ttk.Label(
+            splash_frame,
+            text=get_text("app_title", "即時物品監測系統"),
+            font=("Arial", 18, "bold")
+        )
+        title_label.pack(pady=(40, 20))
+        
+        # 添加版本信息
+        version_label = ttk.Label(
+            splash_frame,
+            text=f"v{VERSION}",
+            font=("Arial", 12)
+        )
+        version_label.pack(pady=10)
+        
+        # 添加加載進度條
+        self.splash_progress = ttk.Progressbar(
+            splash_frame, 
+            length=300, 
+            mode='indeterminate'
+        )
+        self.splash_progress.pack(pady=20)
+        self.splash_progress.start(10)
+        
+        # 添加加載狀態文本
+        self.splash_status = ttk.Label(
+            splash_frame,
+            text=get_text("initializing", "正在初始化..."),
+            font=("Arial", 10)
+        )
+        self.splash_status.pack(pady=10)
+        
+        # 確保啟動畫面顯示在最前面
+        self.splash.attributes('-topmost', True)
+        self.splash.update()
+
+    def close_splash_screen(self):
+        """關閉啟動畫面"""
+        if hasattr(self, 'splash') and self.splash is not None:
+            self.splash_progress.stop()
+            self.splash.destroy()
+            self.splash = None
+
+    def update_splash_status(self, status):
+        """更新啟動畫面狀態文本"""
+        if hasattr(self, 'splash_status') and self.splash_status is not None:
+            self.splash_status.config(text=status)
+            self.splash.update()
+
+    def delayed_camera_initialization(self):
+        """延遲初始化相機，避免啟動時UI卡頓"""
+        # 檢查是否有系統控制器
+        if not hasattr(self, 'system_controller') or self.system_controller is None:
+            logging.error("系統控制器未初始化，無法加載相機")
+            return
+            
+        # 在單獨的線程中初始化相機
+        def init_camera():
+            try:
+                # 獲取可用相機源
+                if hasattr(self.system_controller, 'camera_manager'):
+                    # 更新UI訊息
+                    self.log_message("正在檢測相機...")
+                    
+                    # 獲取相機列表
+                    available_sources = self.system_controller.camera_manager.get_available_sources()
+                    logging.info(f"可用相機源: {available_sources}")
+                    
+                    # 在主線程中更新UI
+                    self.root.after(0, lambda: self.control_panel.set_camera_sources(available_sources))
+                    
+                    # 選擇默認相機但不立即開啟
+                    default_camera = None
+                    if "Built-in Camera" in available_sources:
+                        default_camera = "Built-in Camera"
+                    elif "USB Camera 0" in available_sources:
+                        default_camera = "USB Camera 0"
+                    elif available_sources:
+                        default_camera = available_sources[0]
+                    
+                    if default_camera:
+                        logging.info(f"默認選擇相機: {default_camera}")
+                        # 在主線程中設置默認相機
+                        self.root.after(0, lambda: self.control_panel.set_camera_source(default_camera))
+                    else:
+                        self.log_message("未檢測到相機")
+            except Exception as e:
+                logging.error(f"初始化相機時發生錯誤: {str(e)}")
+                self.log_message(f"初始化相機時發生錯誤: {str(e)}")
+        
+        # 使用線程執行初始化
+        threading.Thread(target=init_camera, daemon=True).start()
+
+    def on_window_resize(self, event):
+        """處理窗口大小變化事件"""
+        # 只處理來自根窗口的事件
+        if event.widget == self.root:
+            # 調整分隔線位置
+            if hasattr(self, 'paned_window'):
+                # 設置分隔線位置為窗口高度的70%
+                window_height = self.winfo_height()
+                if window_height > 0:
+                    try:
+                        self.paned_window.sashpos(0, int(window_height * 0.7))
+                    except:
+                        pass  # 忽略可能的錯誤
+
+    def set_window_size_by_screen(self):
+        """設定視窗基本屬性，使用固定的常見視窗大小"""
+        # 使用固定的視窗大小（常見的HD尺寸）
+        window_width = 1280
+        window_height = 720
+        
+        # 固定的最小視窗大小
+        min_width = 1024
+        min_height = 768
+        
+        # 應用設定
+        self.root.title(get_text("app_title", "即時物品監測系統"))
+        self.root.geometry(f"{window_width}x{window_height}")
+        self.root.minsize(min_width, min_height)
+        
+        logging.info(f"設定視窗大小: {window_width}x{window_height}, 最小大小: {min_width}x{min_height}")
