@@ -10,6 +10,7 @@ import time
 from tkinter import messagebox, ttk
 import tkinter as tk
 import json
+import threading
 
 from utils.language import get_text, change_language
 from models.camera_manager import CameraManager
@@ -489,73 +490,95 @@ class SystemController:
         self.camera_manager.release_all_cameras()
         
     def update_video_frame(self):
-        """更新視頻幀"""
+        """
+        更新視頻幀 - 使用多線程以獲得最大處理速度
+        """
         if not self.is_running or not self.monitoring_active:
             return
             
         try:
-            # 讀取一幀
-            ret, frame = self.camera_manager.read_frame()
-            if ret and frame is not None:
-                logging.debug(f"[除錯] 成功讀取視頻幀，尺寸: {frame.shape}")
+            # 設置最小的更新間隔
+            update_interval = 0  # 使用0毫秒間隔，立即執行下一幀處理
                 
-                # 如果有檢測控制器，進行物體檢測
-                if self.detection_controller:
-                    processed_frame = self.detection_controller.process_frame(frame)
-                    if processed_frame is not None:
-                        self.main_window.video_panel.update_image(processed_frame)
-                        logging.debug("[除錯] 已更新視頻面板顯示")
-                    else:
-                        logging.warning("[警告] 處理後的幀為空，無法更新視頻面板")
-                        # 直接顯示原始幀
-                        self.main_window.video_panel.update_image(frame)
-                else:
-                    # 直接顯示原始幀
-                    self.main_window.video_panel.update_image(frame)
-                    print("無檢測控制器，直接顯示原始幀")
+            # 啟動讀取和處理線程
+            if not hasattr(self, '_processing_thread_running') or not self._processing_thread_running:
+                self._processing_thread_running = True
+                threading.Thread(target=self._process_frames_in_thread, daemon=True).start()
                 
-                # 每 100 幀輸出一次日誌
-                if hasattr(self, 'frame_count'):
-                    self.frame_count += 1
-                    if self.frame_count % 100 == 0:
-                        logging.debug(f"已處理 {self.frame_count} 幀，幀尺寸: {frame.shape}")
-                else:
-                    self.frame_count = 1
-                    logging.info(f"開始處理視頻幀，首幀尺寸: {frame.shape}")
-            else:
-                logging.warning("讀取幀失敗或幀為空")
-                print("讀取幀失敗或幀為空")
-                
-            # 繼續更新
-            self.main_window.root.after(15, self.update_video_frame)
+            # 立即安排下一次更新
+            self.main_window.root.after(update_interval, self.update_video_frame)
             
         except Exception as e:
             logging.error(f"更新視頻幀時出錯: {str(e)}")
-            print(f"更新視頻幀時出錯: {str(e)}")
             self.is_running = False
             self.monitoring_active = False
+            self._processing_thread_running = False
             
+    def _process_frames_in_thread(self):
+        """在單獨的線程中處理視頻幀"""
+        try:
+            # 讀取一幀
+            ret, frame = self.camera_manager.read_frame()
+            
+            if ret and frame is not None:
+                # 檢測模式下處理幀
+                if self.detection_controller:
+                    processed_frame = self.detection_controller.process_frame(frame)
+                    if processed_frame is not None:
+                        # 更新視頻面板顯示，使用主線程更新UI
+                        self.main_window.root.after(0, 
+                            lambda: self.main_window.video_panel.update_image(processed_frame))
+                    else:
+                        # 如果處理失敗，顯示原始幀
+                        self.main_window.root.after(0, 
+                            lambda: self.main_window.video_panel.update_image(frame))
+                else:
+                    # 僅顯示模式下直接顯示幀
+                    self.main_window.root.after(0, 
+                        lambda: self.main_window.video_panel.update_image(frame))
+        except Exception as e:
+            logging.error(f"線程中處理幀時出錯: {str(e)}")
+        finally:
+            self._processing_thread_running = False
+
     def update_photo_preview(self):
-        """更新照片預覽"""
+        """更新照片預覽 - 使用多線程處理以獲得最大速度"""
         if not self.is_running or not self.photo_mode_active:
             return
             
         try:
-            # 讀取一幀
-            ret, frame = self.camera_manager.read_frame()
-            if ret and frame is not None:
-                # 更新照片面板的相機預覽
-                self.main_window.photo_panel.update_camera_preview(frame)
+            # 設置更新間隔為0，立即更新
+            update_interval = 0
+            
+            # 啟動照片處理線程
+            if not hasattr(self, '_photo_processing_thread_running') or not self._photo_processing_thread_running:
+                self._photo_processing_thread_running = True
+                threading.Thread(target=self._process_photo_in_thread, daemon=True).start()
                 
-            # 繼續更新
-            self.main_window.root.after(15, self.update_photo_preview)
+            # 立即安排下一次更新
+            self.main_window.root.after(update_interval, self.update_photo_preview)
             
         except Exception as e:
             logging.error(f"更新照片預覽時出錯: {str(e)}")
             self.is_running = False
             self.photo_mode_active = False
             self.main_window.control_panel.update_button_states(False)
+            self._photo_processing_thread_running = False
             
+    def _process_photo_in_thread(self):
+        """在單獨的線程中處理照片預覽"""
+        try:
+            # 讀取一幀
+            ret, frame = self.camera_manager.read_frame()
+            if ret and frame is not None:
+                # 更新照片面板的相機預覽，使用主線程更新UI
+                self.main_window.root.after(0, 
+                    lambda: self.main_window.photo_panel.update_camera_preview(frame))
+        except Exception as e:
+            logging.error(f"線程中處理照片預覽時出錯: {str(e)}")
+        finally:
+            self._photo_processing_thread_running = False
+
     def handle_photo_capture(self):
         """處理拍照事件"""
         if not self.is_running or not self.photo_mode_active:

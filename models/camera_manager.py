@@ -33,10 +33,19 @@ class CameraManager:
         self.basler_camera = None
         self.pylon_camera = None
         self.preview_timer = None
-        self.is_virtual = True  # 默認使用虛擬相機
+        self.is_virtual = False
         self.virtual_frame = None
         self.TEST_MODE = True  # 始終啟用測試模式
-        self.current_frame = None  # 添加 current_frame 屬性
+        self.current_frame = None
+        
+        # 測試視頻相關變數
+        self.is_test_video = False
+        self.video_fps = 30.0  # 默認幀率
+        self.frame_interval_ms = 33  # 默認幀間隔（毫秒）
+        self.last_frame_time = 0  # 上一幀的時間戳
+        
+        # 直接存取的測試相機物件
+        self.test_camera_obj = None
         
         # 初始化虛擬相機
         self._init_virtual_camera()
@@ -192,7 +201,7 @@ class CameraManager:
             
     def read_frame(self):
         """
-        讀取一幀圖像
+        讀取一幀圖像，對於測試視頻以最大速度讀取
         
         Returns:
             tuple: (成功標誌, 幀數據)
@@ -204,6 +213,36 @@ class CameraManager:
                     self._init_virtual_camera()
                 self.current_frame = self.virtual_frame.copy()
                 return True, self.current_frame
+            
+            # 如果是測試視頻，以最大速度讀取，不限制幀率
+            if self.is_test_video and hasattr(self, 'camera') and self.camera is not None:
+                # 直接讀取新幀，不考慮幀率限制
+                ret, frame = self.camera.read()
+                
+                # 處理循環播放
+                if not ret or frame is None:
+                    # 檢查是否到達視頻結尾
+                    current_pos = self.camera.get(cv2.CAP_PROP_POS_FRAMES)
+                    total_frames = self.camera.get(cv2.CAP_PROP_FRAME_COUNT)
+                    
+                    if total_frames > 0 and current_pos >= total_frames - 1:
+                        logging.info("[資訊] 測試視頻播放完畢，重新從頭開始")
+                        self.camera.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = self.camera.read()
+                        
+                        if not ret or frame is None:
+                            logging.error("[錯誤] 重置測試視頻後仍無法讀取幀")
+                            self.is_virtual = True
+                            self.current_frame = self.virtual_frame.copy()
+                            return True, self.current_frame
+                    else:
+                        logging.error("讀取幀失敗")
+                        self.is_virtual = True
+                        self.current_frame = self.virtual_frame.copy()
+                        return True, self.current_frame
+                
+                self.current_frame = frame
+                return True, frame
             
             # 检查是否有 Basler 相机
             if hasattr(self, 'pylon_camera') and self.pylon_camera is not None and self.pylon_camera.IsGrabbing():
@@ -332,6 +371,16 @@ class CameraManager:
                 logging.error(f"[錯誤] 無法打開測試視頻: {video_path}")
                 return self._open_virtual_camera()
                 
+            # 獲取視頻的fps
+            self.video_fps = self.camera.get(cv2.CAP_PROP_FPS)
+            if self.video_fps <= 0 or self.video_fps > 1000:  # 無效的fps值
+                self.video_fps = 30.0  # 使用默認值
+            
+            # 計算幀間隔時間（毫秒）
+            self.frame_interval_ms = int(1000 / self.video_fps)
+            
+            logging.info(f"[資訊] 測試視頻幀率: {self.video_fps} FPS，幀間隔: {self.frame_interval_ms} ms")
+                
             # 測試讀取第一幀
             ret, frame = self.camera.read()
             if not ret or frame is None:
@@ -341,6 +390,9 @@ class CameraManager:
             # 設定循環播放
             total_frames = int(self.camera.get(cv2.CAP_PROP_FRAME_COUNT))
             logging.info(f"[資訊] 測試視頻總幀數: {total_frames}")
+            
+            # 標記為測試視頻
+            self.is_test_video = True
             
             logging.info("[資訊] 成功打開測試視頻")
             return True

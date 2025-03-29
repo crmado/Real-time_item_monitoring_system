@@ -17,39 +17,39 @@ class ImageProcessor:
     # ==================================================================
     def __init__(self):
         """初始化影像處理器"""
-        # 使用參考代碼的參數設置背景減除器
+        # 優化背景減除器參數，減少歷史幀數以提高效能
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-            history=20000,
+            history=100,  # 減少歷史幀數以加快處理
             varThreshold=16,
-            detectShadows=True
+            detectShadows=False  # 關閉陰影檢測以提高速度
         )
 
-        # 參考代碼中使用的核心
-        self.gaussian_kernel = (5, 5)
-        self.dilate_kernel = np.ones((3, 3), np.uint8)
-        self.close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # 簡化核心大小以加快處理速度
+        self.gaussian_kernel = (3, 3)  # 減小高斯核尺寸
+        self.dilate_kernel = np.ones((2, 2), np.uint8)  # 減小膨脹核尺寸
+        self.close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))  # 使用更簡單的形狀
 
-        # 參考代碼中使用的閾值參數
-        self.canny_threshold1 = 50
-        self.canny_threshold2 = 110
-        self.binary_threshold = 30
+        # 調整閾值參數以更寬鬆地檢測物體
+        self.canny_threshold1 = 30  # 降低邊緣檢測閾值
+        self.canny_threshold2 = 90
+        self.binary_threshold = 20  # 降低二值化閾值
 
-        # 建立執行緒池以支援平行處理
-        self.thread_pool = ThreadPoolExecutor(max_workers=4)
+        # 增加線程池大小以提高平行處理能力
+        self.thread_pool = ThreadPoolExecutor(max_workers=8)
 
-        # 使用參考代碼中的物體檢測參數
-        self.min_object_area = 10
-        self.max_object_area = 150
+        # 調整物體檢測參數，放寬條件
+        self.min_object_area = 5  # 減少最小面積以檢測更多物體
+        self.max_object_area = 500  # 增加最大面積以檢測更大物體
         
-        logging.info("初始化影像處理器完成，使用參考代碼的檢測參數")
+        logging.info("初始化影像處理器完成，使用優化的高性能參數配置")
 
     # ==================================================================
     # 第二部分：影像處理
     # ==================================================================
     def process_frame(self, frame):
         """
-        依照參考代碼處理單幀影像
-
+        參照用戶提供的程式碼處理單幀影像
+        
         Args:
             frame: 輸入的影像幀
 
@@ -63,23 +63,25 @@ class ImageProcessor:
             # 背景減除
             fg_mask = self.bg_subtractor.apply(frame)
             
-            # 高斯模糊去噪
-            blurred = cv2.GaussianBlur(frame, self.gaussian_kernel, 0)
+            # 高斯模糊去噪 - 使用5x5的核心
+            blurred = cv2.GaussianBlur(frame, (5, 5), 0)
             
-            # Canny 邊緣檢測
-            edges = cv2.Canny(blurred, self.canny_threshold1, self.canny_threshold2)
+            # Canny 邊緣檢測 - 使用參考程式碼的參數
+            edges = cv2.Canny(blurred, 50, 110)
             
             # 使用前景遮罩過濾邊緣
             result = cv2.bitwise_and(edges, edges, mask=fg_mask)
             
-            # 二值化處理
-            _, thresh = cv2.threshold(result, self.binary_threshold, 255, cv2.THRESH_BINARY)
+            # 二值化處理 - 使用參考程式碼的參數
+            _, thresh = cv2.threshold(result, 30, 255, cv2.THRESH_BINARY)
             
-            # 膨脹操作填充空洞
-            dilated = cv2.dilate(thresh, self.dilate_kernel, iterations=1)
+            # 膨脹操作填充空洞 - 使用3x3核心
+            kernel = np.ones((3, 3), np.uint8)
+            dilated = cv2.dilate(thresh, kernel, iterations=1)
             
-            # 閉合操作連接物體
-            closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, self.close_kernel)
+            # 使用橢圓形核心進行閉合操作
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, kernel)
             
             return closed
             
@@ -89,7 +91,7 @@ class ImageProcessor:
             
     def detect_objects(self, processed, min_area=None, max_area=None):
         """
-        依照參考代碼檢測物件
+        參照用戶提供的程式碼檢測物件
 
         Args:
             processed: 處理過的影像
@@ -103,8 +105,8 @@ class ImageProcessor:
             return []
 
         # 使用參考代碼的面積參數
-        min_area = min_area if min_area is not None else self.min_object_area
-        max_area = max_area if max_area is not None else self.max_object_area
+        min_area = min_area if min_area is not None else 10
+        max_area = max_area if max_area is not None else 150
 
         try:
             # 使用連通區域分析（參考代碼使用的連通度為4）
@@ -113,7 +115,7 @@ class ImageProcessor:
                 connectivity=4
             )
 
-            # 按照參考代碼過濾物體
+            # 過濾物體
             valid_objects = []
             for i in range(1, num_labels):
                 area = stats[i, cv2.CC_STAT_AREA]
@@ -173,13 +175,14 @@ class ImageProcessor:
         objects = self.detect_objects(processed)
         return (line_y, objects)
 
-    def draw_detection_results(self, frame, objects):
+    def draw_detection_results(self, frame, objects, max_boxes=3):
         """
-        在影像上繪製檢測結果
+        在影像上繪製檢測結果 - 限制顯示框數量
 
         Args:
             frame: 原始影像
             objects: 檢測到的物件列表
+            max_boxes: 最大顯示框數量，默認為3
 
         Returns:
             frame: 繪製結果後的影像
@@ -190,9 +193,23 @@ class ImageProcessor:
         # 創建結果影像的副本，避免修改原始資料
         result_frame = frame.copy()
 
+        # 如果對象數量超過限制，只選擇最大的幾個框
+        if len(objects) > max_boxes:
+            # 根據物件面積排序（寬x高）
+            sorted_objects = sorted(objects, key=lambda obj: obj[2] * obj[3], reverse=True)
+            # 只取最大的幾個
+            objects_to_draw = sorted_objects[:max_boxes]
+        else:
+            objects_to_draw = objects
+
         # 繪製檢測框
-        for x, y, w, h, _ in objects:
-            cv2.rectangle(result_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        for x, y, w, h, _ in objects_to_draw:
+            cv2.rectangle(result_frame, (x, y), (x + w, y + h), (0, 255, 0), 1)
+            
+            # 添加物件索引標籤
+            object_idx = objects_to_draw.index((x, y, w, h, _)) + 1
+            cv2.putText(result_frame, f"#{object_idx}", 
+                       (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
         return result_frame
 

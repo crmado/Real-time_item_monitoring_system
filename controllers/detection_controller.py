@@ -217,7 +217,7 @@ class DetectionController:
         
     def draw_detection_line(self, frame):
         """
-        在幀上繪製檢測線和計數信息
+        在幀上繪製檢測線和計數信息 - 使用英文顯示
         
         Args:
             frame: 要繪製的視頻幀
@@ -240,24 +240,28 @@ class DetectionController:
                 line_color = (0, 255, 0) if self.is_detecting else (0, 0, 255)  # 綠色表示啟用，紅色表示未啟用
                 cv2.line(result_frame, (0, self.roi_y), (width, self.roi_y), line_color, 2)
                 
-                # 在檢測線右側添加中文標籤
-                status_text = "啟用" if self.is_detecting else "未啟用"
-                result_frame = self.put_chinese_text(
+                # 在檢測線右側添加英文標籤
+                status_text = "Active" if self.is_detecting else "Inactive"
+                cv2.putText(
                     result_frame,
-                    f"檢測線 ({status_text})",
-                    (width - 200, self.roi_y - 25),
-                    font_size=20,
-                    color=line_color
+                    f"Detection Line ({status_text})",
+                    (width - 260, self.roi_y - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    line_color,
+                    1
                 )
                 
                 # 如果在測試模式，顯示提示
                 if self.is_testing:
-                    result_frame = self.put_chinese_text(
+                    cv2.putText(
                         result_frame,
-                        "測試模式",
+                        "Test Mode",
                         (width - 150, 30),
-                        font_size=24,
-                        color=(0, 165, 255)
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 165, 255),
+                        2
                     )
                     
             return result_frame
@@ -270,85 +274,105 @@ class DetectionController:
 
     def process_frame(self, frame):
         """
-        處理視頻幀 - 優化版本
-
+        參照用戶提供的範例處理一個幀的圖像，減少框顯示
+        
         Args:
-            frame: 要處理的視頻幀
-
+            frame: 輸入幀
+            
         Returns:
-            處理後的視頻幀
+            processed_frame: 處理後的幀
         """
         if frame is None:
+            logging.error("傳入的幀為空")
             return None
             
-        # 如果 ROI 位置為空或需要更新，則初始化或更新 ROI 位置
-        if self.roi_y is None or (hasattr(self, 'roi_needs_update') and self.roi_needs_update):
-            height = frame.shape[0]
-            self.roi_y = int(height * self.saved_roi_percentage)
-            if hasattr(self, 'roi_needs_update'):
-                self.roi_needs_update = False
-            
-        # 如果没有启动检测，只繪製基本ROI線
-        if not self.is_detecting:
-            return self._draw_simple_roi_line(frame)
-            
         try:
-            # 定義 ROI 區域，只處理這個區域
-            roi_top = max(0, self.roi_y - self.roi_height // 2)
-            roi_bottom = min(frame.shape[0], self.roi_y + self.roi_height // 2)
-            roi = frame[roi_top:roi_bottom, :]
+            # 創建一個幀的副本
+            frame_with_detections = frame.copy()
             
-            # 使用圖像處理器處理 ROI 區域
-            processed_roi = self.image_processor.process_frame(roi)
+            # 檢查是否需要更新ROI位置
+            if hasattr(self, 'roi_needs_update') and self.roi_needs_update and self.saved_roi_percentage is not None:
+                height = frame.shape[0]
+                self.roi_y = int(height * self.saved_roi_percentage)
+                self.roi_needs_update = False
+                logging.info(f"已更新ROI位置: {self.roi_y}")
             
-            # 檢測物體
-            detected_objects = []
-            if processed_roi is not None:
-                detected_objects = self.image_processor.detect_objects(processed_roi)
-                # 更新物體追蹤和計數
-                self.update_object_tracking(detected_objects, self.roi_y)
+            # 如果 ROI 為空，設置為幀高度的一半
+            if self.roi_y is None:
+                height = frame.shape[0]
+                self.roi_y = int(height * 0.5)
             
-            # 直接在原始幀上繪製，減少複製操作
-            # 繪製ROI線
-            width = frame.shape[1]
-            cv2.line(frame, (0, self.roi_y), (width, self.roi_y), (0, 255, 0), 2)
+            height, width = frame.shape[:2]
             
-            # 使用簡化的文字顯示，避免昂貴的中文渲染
-            cv2.putText(
-                frame, 
-                f"Count: {self.current_count}", 
-                (width - 200, 30), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                0.8, 
-                (0, 255, 0), 
-                2
-            )
+            # 如果啟用了檢測
+            if self.is_detecting:
+                # 定義ROI區域
+                roi_top = self.roi_y
+                roi_height = 16  # ROI 高度
+                roi = frame[roi_top:roi_top+roi_height, :]
                 
-            # 只有在有物體檢測到且數量不多時才繪製物體框
-            if detected_objects and len(detected_objects) < 20:  # 限制繪製的物體數量
-                for obj in detected_objects:
-                    x, y, w, h, center = obj
-                    # 調整 y 座標到原始幀
-                    y += roi_top
-                    # 只繪製矩形框，減少計算負擔
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                # 處理ROI區域並檢測物體
+                processed_roi = self.image_processor.process_frame(roi)
+                
+                if processed_roi is not None:
+                    detected_objects = self.image_processor.detect_objects(processed_roi)
+                    
+                    # 如果檢測到物體，更新追蹤
+                    if detected_objects:
+                        self.update_object_tracking(detected_objects, self.roi_y)
+                        
+                        # 只繪製少量物體框，最多2個
+                        if len(detected_objects) > 0:
+                            # 排序物體，選擇最大的2個
+                            sorted_objects = sorted(detected_objects, key=lambda obj: obj[2] * obj[3], reverse=True)
+                            for i, (x, y, w, h, _) in enumerate(sorted_objects[:2]):
+                                # 調整 y 座標到原始幀
+                                y_adjusted = y + roi_top
+                                cv2.rectangle(frame_with_detections, 
+                                             (x, y_adjusted), 
+                                             (x + w, y_adjusted + h), 
+                                             (0, 0, 255), 1)
             
-            return frame
-
+            # 繪製穿越線
+            cv2.line(frame_with_detections, (0, self.roi_y), (width, self.roi_y), 
+                    (0, 255, 0) if self.is_detecting else (0, 0, 255), 2)
+            
+            # 添加計數信息 (在右上角)
+            count_text = f"Count: {self.current_count}/{self.target_count}"
+            cv2.putText(frame_with_detections, count_text, 
+                       (width - 230, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            
+            # 如果在測試模式，顯示提示
+            if self.is_testing:
+                cv2.putText(frame_with_detections, "Test Mode", 
+                           (width - 150, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+            
+            # 如果達到緩衝點或目標，添加警告
+            if self.current_count >= self.buffer_point:
+                warning_text = "Near Target!" if self.current_count < self.target_count else "Target Reached!"
+                cv2.putText(frame_with_detections, warning_text, 
+                           (width - 230, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            
+            return frame_with_detections
+            
         except Exception as e:
-            logging.error(f"處理視頻幀時出錯: {str(e)}")
-            return frame
-            
+            logging.error(f"處理幀時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return frame  # 返回原始幀
+
     def _draw_simple_roi_line(self, frame):
         """簡化的ROI線繪製，用於未啟動檢測時"""
         if frame is None or self.roi_y is None:
             return frame
             
-        width = frame.shape[1]
+        # 獲取幀的寬度
+        height, width = frame.shape[:2]
+        
         # 繪製紅色線表示未啟用
         cv2.line(frame, (0, self.roi_y), (width, self.roi_y), (0, 0, 255), 2)
         
-        # 使用簡單文字代替中文
+        # 添加英文標籤
         cv2.putText(
             frame, 
             "ROI Line (Inactive)", 
@@ -361,9 +385,49 @@ class DetectionController:
             
         return frame
 
+    def _draw_roi_line(self, frame, roi_y):
+        """
+        在影像上繪製ROI線 - 使用英文標籤
+        
+        Args:
+            frame: 要繪製的影像幀
+            roi_y: ROI線的y坐標
+            
+        Returns:
+            繪製ROI線後的影像
+        """
+        if frame is None or roi_y is None:
+            return frame
+            
+        try:
+            # 取得影像寬度
+            height, width = frame.shape[:2]
+            
+            # 繪製ROI線 - 使用綠色表示啟用狀態
+            line_color = (0, 255, 0) if self.is_detecting else (0, 0, 255)
+            cv2.line(frame, (0, roi_y), (width, roi_y), line_color, 2)
+            
+            # 添加英文標籤文字
+            label_text = "ROI Line (Active)" if self.is_detecting else "ROI Line (Inactive)"
+            cv2.putText(
+                frame, 
+                label_text, 
+                (width - 200, roi_y - 10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.6, 
+                line_color, 
+                1
+            )
+            
+            return frame
+            
+        except Exception as e:
+            logging.error(f"繪製ROI線時出錯: {str(e)}")
+            return frame
+
     def update_object_tracking(self, detected_objects, roi_y):
         """
-        更新物體追蹤和計數 - 參考提供代碼實現
+        依照用戶提供的參考程式碼更新物體追蹤和計數
         
         Args:
             detected_objects: 檢測到的物體列表
@@ -373,7 +437,7 @@ class DetectionController:
             # 如果沒有檢測到物體，直接返回
             if not detected_objects:
                 return
-            
+                
             # 初始化新的軌跡字典
             new_tracks = {}
             
@@ -387,24 +451,18 @@ class DetectionController:
                 
                 # 遍歷所有現有軌跡尋找匹配
                 for track_id, track in self.tracked_objects.items():
-                    if isinstance(track, dict):  # 確保track是字典
-                        track_x = track.get('x', 0)
-                        track_y = track.get('y', 0)
-                        
-                        # 使用參考代碼中的匹配邏輯：如果物體在ROI內，並且與軌跡的x座標相差不超過64像素，y座標相差不超過48像素
-                        if abs(cx - track_x) < 64 and abs(roi_y - track_y) < 48:
-                            # 更新現有軌跡
-                            new_tracks[track_id] = {
-                                'x': cx, 
-                                'y': roi_y, 
-                                'count': track.get('count', 0),
-                                'w': w,
-                                'h': h
-                            }
-                            matched = True
-                            break
+                    # 如果物體在ROI內，並且與軌跡的x座標相差不超過64像素，y座標相差不超過48像素，則視為同一個物體
+                    if abs(cx - track.get('x', 0)) < 64 and abs(roi_y - track.get('y', 0)) < 48:
+                        # 更新現有軌跡
+                        new_tracks[track_id] = {
+                            'x': cx, 
+                            'y': roi_y, 
+                            'count': track.get('count', 0)
+                        }
+                        matched = True
+                        break
                 
-                # 如果沒有匹配到軌跡，則建立新軌跡
+                # 如果沒有匹配到軌跡，則建立新軌跡（視為新的物體）
                 if not matched:
                     # 生成新的軌跡ID
                     if isinstance(self.tracked_objects, dict) and self.tracked_objects:
@@ -416,9 +474,7 @@ class DetectionController:
                     new_tracks[new_track_id] = {
                         'x': cx, 
                         'y': roi_y, 
-                        'count': 0,
-                        'w': w,
-                        'h': h
+                        'count': 0
                     }
             
             # 處理計數邏輯
@@ -439,10 +495,16 @@ class DetectionController:
                             
                     # 檢查是否達到緩衝點或目標計數
                     if self.current_count == self.buffer_point and 'buffer_reached' in self.callbacks and self.callbacks['buffer_reached']:
-                        self.callbacks['buffer_reached'](self.buffer_point)
+                        try:
+                            self.callbacks['buffer_reached'](self.buffer_point)
+                        except Exception as e:
+                            logging.error(f"調用buffer_reached回調出錯: {str(e)}")
                         
                     if self.current_count == self.target_count and 'target_reached' in self.callbacks and self.callbacks['target_reached']:
-                        self.callbacks['target_reached'](self.target_count)
+                        try:
+                            self.callbacks['target_reached'](self.target_count)
+                        except Exception as e:
+                            logging.error(f"調用target_reached回調出錯: {str(e)}")
             
             # 更新物體追蹤記錄
             self.tracked_objects = new_tracks
