@@ -19,7 +19,7 @@ detection:
   detect_shadows: true
   max_object_area: 150
   min_object_area: 10
-  roi_default_position: 0.19166666666666668
+  roi_default_position: 0.32708333333333334
   roi_height: 16
   target_count: 200
   track_tolerance_x: 64

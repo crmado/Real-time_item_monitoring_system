@@ -34,10 +34,10 @@ class DetectionController:
         self.is_dragging_roi = False
         self.is_testing = False  # 添加测试模式标志
         
-        # ROI设置
+        # ROI设置 - 按照參考代碼設置默認ROI位置
         self.roi_y = None
-        self.saved_roi_percentage = 0.5  # 默认在中间位置
-        self.roi_height = 16  # ROI 檢測區域高度
+        self.saved_roi_percentage = 0.2  # 默認在高度20%位置，與參考代碼一致
+        self.roi_height = 16  # ROI 檢測區域高度，與參考代碼一致
         
         # 計數相關
         self.current_count = 0
@@ -67,23 +67,27 @@ class DetectionController:
         self.counted_ids = set()
         
     def _initialize_roi(self):
-        """初始化 ROI 位置"""
+        """初始化 ROI 位置 - 按照參考代碼設為高度的20%"""
         try:
             # 如果相機已經打開並有幀，使用幀高度計算 ROI 位置
             if hasattr(self.camera_manager, 'current_frame') and self.camera_manager.current_frame is not None:
                 height = self.camera_manager.current_frame.shape[0]
+                # 設置ROI為高度的20%，與參考代碼一致
+                self.saved_roi_percentage = 0.2
                 self.roi_y = int(height * self.saved_roi_percentage)
                 logging.info(f"根據當前幀初始化 ROI 位置: {self.roi_y}, 幀高度: {height}")
             else:
-                # 否則設置一個默認值（例如 240），後續會在有幀時更新
-                self.roi_y = 240
-                logging.info(f"設置默認 ROI 位置: {self.roi_y}")
+                # 預設值也設為一個合理的20%估計值
+                self.saved_roi_percentage = 0.2
+                self.roi_y = 120  # 假設高度為600的20%
+                logging.info(f"設置默認 ROI 位置: {self.roi_y} (預設畫面高度20%)")
                 
                 # 在第一次處理幀時更新 ROI 位置
                 self.roi_needs_update = True
         except Exception as e:
             logging.error(f"初始化 ROI 位置時出錯: {str(e)}")
-            self.roi_y = 240  # 設置一個安全的默認值
+            self.saved_roi_percentage = 0.2
+            self.roi_y = 120  # 設置一個安全的默認值
             self.roi_needs_update = True
             
     def put_chinese_text(self, img, text, position, font_size=30, color=(0, 255, 0)):
@@ -274,7 +278,7 @@ class DetectionController:
 
     def process_frame(self, frame):
         """
-        參照用戶提供的範例處理一個幀的圖像，減少框顯示
+        完全按照參考代碼處理一個幀的圖像
         
         Args:
             frame: 輸入幀
@@ -297,21 +301,21 @@ class DetectionController:
                 self.roi_needs_update = False
                 logging.info(f"已更新ROI位置: {self.roi_y}")
             
-            # 如果 ROI 為空，設置為幀高度的一半
+            # 如果 ROI 為空，按照參考代碼設置為幀高度的20%
             if self.roi_y is None:
                 height = frame.shape[0]
-                self.roi_y = int(height * 0.5)
+                self.roi_y = int(height * 0.2)  # 參考代碼使用0.2
             
             height, width = frame.shape[:2]
             
             # 如果啟用了檢測
             if self.is_detecting:
-                # 定義ROI區域
+                # 按照參考代碼設置ROI高度為16像素
+                roi_height = 16  # 完全按照參考代碼
                 roi_top = self.roi_y
-                roi_height = 16  # ROI 高度
                 roi = frame[roi_top:roi_top+roi_height, :]
                 
-                # 處理ROI區域並檢測物體
+                # 處理ROI區域
                 processed_roi = self.image_processor.process_frame(roi)
                 
                 if processed_roi is not None:
@@ -319,39 +323,33 @@ class DetectionController:
                     
                     # 如果檢測到物體，更新追蹤
                     if detected_objects:
+                        logging.info(f"檢測到 {len(detected_objects)} 個物體")
                         self.update_object_tracking(detected_objects, self.roi_y)
                         
-                        # 只繪製少量物體框，最多2個
-                        if len(detected_objects) > 0:
-                            # 排序物體，選擇最大的2個
-                            sorted_objects = sorted(detected_objects, key=lambda obj: obj[2] * obj[3], reverse=True)
-                            for i, (x, y, w, h, _) in enumerate(sorted_objects[:2]):
-                                # 調整 y 座標到原始幀
-                                y_adjusted = y + roi_top
-                                cv2.rectangle(frame_with_detections, 
-                                             (x, y_adjusted), 
-                                             (x + w, y_adjusted + h), 
-                                             (0, 0, 255), 1)
+                        # 繪製物體框 - 按照參考代碼中相同的方式
+                        for (x, y, w, h, _) in detected_objects:
+                            # 繪製在ROI區域內的物體框
+                            cv2.rectangle(
+                                frame_with_detections[roi_top:roi_top+roi_height, :], 
+                                (x, y), 
+                                (x + w, y + h), 
+                                (0, 0, 255), 
+                                2
+                            )
             
-            # 繪製穿越線
-            cv2.line(frame_with_detections, (0, self.roi_y), (width, self.roi_y), 
-                    (0, 255, 0) if self.is_detecting else (0, 0, 255), 2)
+            # 繪製ROI線 - 按照參考代碼使用綠色
+            cv2.line(frame_with_detections, (0, self.roi_y), (width, self.roi_y), (0, 255, 0), 2)
             
-            # 添加計數信息 (在右上角)
-            count_text = f"Count: {self.current_count}/{self.target_count}"
-            cv2.putText(frame_with_detections, count_text, 
-                       (width - 230, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            
-            # 如果在測試模式，顯示提示
-            if self.is_testing:
-                cv2.putText(frame_with_detections, "Test Mode", 
-                           (width - 150, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
-            
-            # 如果達到緩衝點或目標，添加警告
-            if self.current_count >= self.buffer_point:
-                warning_text = "Near Target!" if self.current_count < self.target_count else "Target Reached!"
-                cv2.putText(frame_with_detections, warning_text, 
-                           (width - 230, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            # 添加計數信息
+            cv2.putText(
+                frame_with_detections, 
+                f"Count: {self.current_count}", 
+                (10, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                1, 
+                (0, 255, 0), 
+                2
+            )
             
             return frame_with_detections
             
@@ -427,7 +425,7 @@ class DetectionController:
 
     def update_object_tracking(self, detected_objects, roi_y):
         """
-        依照用戶提供的參考程式碼更新物體追蹤和計數
+        完全按照參考代碼更新物體追蹤和計數
         
         Args:
             detected_objects: 檢測到的物體列表
@@ -441,7 +439,7 @@ class DetectionController:
             # 初始化新的軌跡字典
             new_tracks = {}
             
-            # 處理每個檢測到的物體
+            # 處理每個檢測到的物體 - 完全按照參考代碼
             for obj in detected_objects:
                 x, y, w, h, centroid = obj
                 cx, cy = int(centroid[0]), int(centroid[1])
@@ -449,9 +447,9 @@ class DetectionController:
                 # 檢查是否匹配到現有軌跡
                 matched = False
                 
-                # 遍歷所有現有軌跡尋找匹配
+                # 遍歷所有現有軌跡尋找匹配 - 使用參考代碼的匹配邏輯
                 for track_id, track in self.tracked_objects.items():
-                    # 如果物體在ROI內，並且與軌跡的x座標相差不超過64像素，y座標相差不超過48像素，則視為同一個物體
+                    # 完全按照參考代碼: x座標相差不超過64像素，y座標相差不超過48像素
                     if abs(cx - track.get('x', 0)) < 64 and abs(roi_y - track.get('y', 0)) < 48:
                         # 更新現有軌跡
                         new_tracks[track_id] = {
@@ -464,11 +462,8 @@ class DetectionController:
                 
                 # 如果沒有匹配到軌跡，則建立新軌跡（視為新的物體）
                 if not matched:
-                    # 生成新的軌跡ID
-                    if isinstance(self.tracked_objects, dict) and self.tracked_objects:
-                        new_track_id = max(self.tracked_objects.keys()) + 1
-                    else:
-                        new_track_id = 0
+                    # 生成新的軌跡ID - 按照參考代碼的邏輯
+                    new_track_id = max(self.tracked_objects.keys()) + 1 if self.tracked_objects else 0
                         
                     # 建立新的軌跡記錄
                     new_tracks[new_track_id] = {
@@ -477,19 +472,21 @@ class DetectionController:
                         'count': 0
                     }
             
-            # 處理計數邏輯
+            # 處理計數邏輯 - 完全按照參考代碼的嚴格條件
             for track_id, track in new_tracks.items():
-                # 如果物體的y座標等於ROI線的y座標，並且該物體還沒有被計數過，則計數加一
+                # 與參考代碼完全相同的判斷: 物體的y座標必須恰好等於ROI線的y座標
                 if track['count'] == 0 and track['y'] == roi_y:
                     self.object_count += 1
                     self.current_count = self.object_count
                     track['count'] = 1
                     
+                    # 記錄檢測日誌
+                    logging.info(f"物體ID: {track_id} 已計數，當前總數: {self.current_count}")
+                    
                     # 確保回調函數被調用
                     if 'count_updated' in self.callbacks and self.callbacks['count_updated']:
                         try:
                             self.callbacks['count_updated'](self.current_count)
-                            logging.info(f"物體ID: {track_id} 已計數，當前總數: {self.current_count}")
                         except Exception as e:
                             logging.error(f"調用count_updated回調出錯: {str(e)}")
                             
@@ -506,7 +503,7 @@ class DetectionController:
                         except Exception as e:
                             logging.error(f"調用target_reached回調出錯: {str(e)}")
             
-            # 更新物體追蹤記錄
+            # 完全按照參考代碼：直接用新軌跡替換舊軌跡，不保留歷史軌跡
             self.tracked_objects = new_tracks
             
         except Exception as e:

@@ -16,39 +16,39 @@ class ImageProcessor:
     # 第一部分：初始化
     # ==================================================================
     def __init__(self):
-        """初始化影像處理器"""
-        # 優化背景減除器參數，減少歷史幀數以提高效能
+        """初始化影像處理器 - 完全按照參考代碼設置參數"""
+        # 背景減除器參數完全按照參考代碼設置
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-            history=100,  # 減少歷史幀數以加快處理
-            varThreshold=16,
-            detectShadows=False  # 關閉陰影檢測以提高速度
+            history=20000,           # 使用20000幀歷史，與參考代碼一致
+            varThreshold=16,         # 閾值設為16，與參考代碼一致
+            detectShadows=True       # 啟用陰影檢測，與參考代碼一致
         )
 
-        # 簡化核心大小以加快處理速度
-        self.gaussian_kernel = (3, 3)  # 減小高斯核尺寸
-        self.dilate_kernel = np.ones((2, 2), np.uint8)  # 減小膨脹核尺寸
-        self.close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))  # 使用更簡單的形狀
+        # 按照參考代碼設置核心參數
+        self.gaussian_kernel = (5, 5)  # 高斯核為5x5
+        self.dilate_kernel = np.ones((3, 3), np.uint8)  # 膨脹核為3x3
+        self.close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  # 閉合核為5x5橢圓
 
-        # 調整閾值參數以更寬鬆地檢測物體
-        self.canny_threshold1 = 30  # 降低邊緣檢測閾值
-        self.canny_threshold2 = 90
-        self.binary_threshold = 20  # 降低二值化閾值
+        # 按照參考代碼設置閾值參數
+        self.canny_threshold1 = 50   # Canny低閾值為50
+        self.canny_threshold2 = 110  # Canny高閾值為110
+        self.binary_threshold = 30   # 二值化閾值為30
 
-        # 增加線程池大小以提高平行處理能力
+        # 保留線程池以提高處理能力
         self.thread_pool = ThreadPoolExecutor(max_workers=8)
 
-        # 調整物體檢測參數，放寬條件
-        self.min_object_area = 5  # 減少最小面積以檢測更多物體
-        self.max_object_area = 500  # 增加最大面積以檢測更大物體
+        # 物體檢測參數完全按照參考代碼設置
+        self.min_object_area = 10    # 最小物體面積為10
+        self.max_object_area = 150   # 最大物體面積為150
         
-        logging.info("初始化影像處理器完成，使用優化的高性能參數配置")
+        logging.info("初始化影像處理器完成，使用參考代碼的精確參數配置")
 
     # ==================================================================
     # 第二部分：影像處理
     # ==================================================================
     def process_frame(self, frame):
         """
-        參照用戶提供的程式碼處理單幀影像
+        完全按照參考代碼處理單幀影像
         
         Args:
             frame: 輸入的影像幀
@@ -60,26 +60,26 @@ class ImageProcessor:
             return None
 
         try:
-            # 背景減除
+            # 1. 背景減除
             fg_mask = self.bg_subtractor.apply(frame)
             
-            # 高斯模糊去噪 - 使用5x5的核心
+            # 2. 高斯模糊去噪 - 使用5x5的高斯核
             blurred = cv2.GaussianBlur(frame, (5, 5), 0)
             
-            # Canny 邊緣檢測 - 使用參考程式碼的參數
+            # 3. Canny 邊緣檢測 - 使用50/110閾值
             edges = cv2.Canny(blurred, 50, 110)
             
-            # 使用前景遮罩過濾邊緣
+            # 4. 使用前景遮罩過濾邊緣
             result = cv2.bitwise_and(edges, edges, mask=fg_mask)
             
-            # 二值化處理 - 使用參考程式碼的參數
+            # 5. 二值化處理 - 使用30閾值
             _, thresh = cv2.threshold(result, 30, 255, cv2.THRESH_BINARY)
             
-            # 膨脹操作填充空洞 - 使用3x3核心
+            # 6. 膨脹操作填充空洞 - 使用3x3核心
             kernel = np.ones((3, 3), np.uint8)
             dilated = cv2.dilate(thresh, kernel, iterations=1)
             
-            # 使用橢圓形核心進行閉合操作
+            # 7. 使用橢圓形5x5核心進行閉合操作
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, kernel)
             
@@ -91,7 +91,7 @@ class ImageProcessor:
             
     def detect_objects(self, processed, min_area=None, max_area=None):
         """
-        參照用戶提供的程式碼檢測物件
+        完全按照參考代碼檢測物件
 
         Args:
             processed: 處理過的影像
@@ -105,20 +105,21 @@ class ImageProcessor:
             return []
 
         # 使用參考代碼的面積參數
-        min_area = min_area if min_area is not None else 10
-        max_area = max_area if max_area is not None else 150
+        min_area = min_area if min_area is not None else 10  # 默認值10
+        max_area = max_area if max_area is not None else 150 # 默認值150
 
         try:
-            # 使用連通區域分析（參考代碼使用的連通度為4）
+            # 使用連通區域分析 - 連通度為4，與參考代碼一致
             num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
                 processed,
-                connectivity=4
+                connectivity=4  # 只考慮上下左右連通，不考慮對角線
             )
 
-            # 過濾物體
+            # 完全按照參考代碼過濾物體
             valid_objects = []
-            for i in range(1, num_labels):
+            for i in range(1, num_labels):  # 從1開始，忽略背景(0)
                 area = stats[i, cv2.CC_STAT_AREA]
+                # 按面積過濾物體
                 if min_area < area < max_area:
                     x = stats[i, cv2.CC_STAT_LEFT]
                     y = stats[i, cv2.CC_STAT_TOP]
