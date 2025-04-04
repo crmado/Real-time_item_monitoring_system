@@ -2,8 +2,8 @@
 YOLO 檢測方法
 使用 YOLO (You Only Look Once) 深度學習模型進行物體檢測
 """
-import cv2
-import numpy as np
+import cv2 # type: ignore
+import numpy as np # type: ignore
 import logging
 import os
 from ..base_detection import DetectionMethod

@@ -5,9 +5,9 @@
 
 import tkinter as tk
 from tkinter import ttk
-from PIL import Image, ImageTk
-from PIL.Image import Resampling 
-import cv2
+from PIL import Image, ImageTk # type: ignore
+from PIL.Image import Resampling  # type: ignore
+import cv2 # type: ignore
 import logging
 
 from utils.language import get_text

@@ -2,8 +2,8 @@
 圓形檢測方法
 使用霍夫變換進行圓形物體檢測
 """
-import cv2
-import numpy as np
+import cv2 # type: ignore
+import numpy as np # type: ignore
 import logging
 from ..base_detection import DetectionMethod
 

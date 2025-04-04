@@ -4,11 +4,11 @@
 """
 
 import logging
-import cv2
-import numpy as np
+import cv2 # type: ignore
+import numpy as np # type: ignore
 import os
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont # type: ignore
 from models.image_processor import ImageProcessor
 import time
 import threading

@@ -6,7 +6,7 @@
 import json
 import os
 import logging
-import yaml
+import yaml # type: ignore
 import shutil
 
 from utils.exceptions import ConfigError, InvalidSettingError

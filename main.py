@@ -7,7 +7,7 @@ import sys
 import logging
 import traceback
 import tkinter as tk
-import cv2
+import cv2 # type: ignore
 from datetime import datetime
 
 # 添加專案根目錄到系統路徑

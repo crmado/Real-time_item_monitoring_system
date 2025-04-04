@@ -11,9 +11,8 @@ import os
 import threading
 import time
 
-import cv2
-import numpy as np
-from PIL import Image, ImageTk
+import numpy as np # type: ignore
+from PIL import Image, ImageTk # type: ignore
 
 from .components.control_panel import ControlPanel
 from .components.video_panel import VideoPanel

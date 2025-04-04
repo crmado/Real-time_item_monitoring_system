@@ -5,15 +5,15 @@
 import os
 import threading
 
-import cv2
+import cv2 # type: ignore
 import signal
 import subprocess
 import time
 import logging
 from threading import Event
 # 引入pylon庫
-from pypylon import pylon
-import numpy as np
+from pypylon import pylon # type: ignore
+import numpy as np # type: ignore
 
 class CameraManager:
     """攝影機管理類別"""
@@ -747,7 +747,7 @@ class CameraManager:
         try:
             import os
             import datetime
-            import cv2
+            import cv2 # type: ignore
 
             # 確保目錄存在
             if not os.path.exists(directory):

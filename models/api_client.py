@@ -3,11 +3,11 @@ API客戶端
 負責與後端API通信和處理回傳數據
 """
 
-import requests
+import requests # type: ignore
 import logging
 import os
 import threading
-import json
+import json # type: ignore
 
 
 class APIClient:
@@ -116,7 +116,7 @@ class APIClient:
             str: 保存的文件路徑
         """
         try:
-            import cv2
+            import cv2 # type: ignore
             cv2.imwrite(filename, image)
             return filename
         except Exception as e:

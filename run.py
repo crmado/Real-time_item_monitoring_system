@@ -13,7 +13,7 @@ import logging
 import datetime
 import platform
 from main import main as program_main
-import cv2
+import cv2 # type: ignore
 
 
 def check_requirements():
@@ -42,7 +42,7 @@ def check_requirements():
             return False
 
         try:
-            from PIL import Image
+            from PIL import Image # type: ignore
             print("Pillow: 已安裝")
         except ImportError:
             print("錯誤：缺少 Pillow 庫，這是必需的")
@@ -102,13 +102,13 @@ def collect_system_info():
 
         # 收集庫版本
         try:
-            import cv2
+            import cv2 # type: ignore
             info.append(f"OpenCV 版本: {cv2.__version__}")
         except:
             info.append("OpenCV: 未找到或無法匯入")
 
         try:
-            import numpy
+            import numpy # type: ignore
             info.append(f"NumPy 版本: {numpy.__version__}")
         except:
             info.append("NumPy: 未找到或無法匯入")
@@ -120,13 +120,13 @@ def collect_system_info():
             info.append("Tkinter: 未找到或無法匯入")
 
         try:
-            from PIL import Image, __version__ as pil_version
+            from PIL import Image, __version__ as pil_version # type: ignore
             info.append(f"Pillow 版本: {pil_version}")
         except:
             info.append("Pillow: 未找到或無法匯入")
 
         # 嘗試收集資源信息
-        import psutil
+        import psutil # type: ignore
         info.append(f"CPU 核心數: {psutil.cpu_count(logical=True)}")
         memory = psutil.virtual_memory()
         info.append(f"記憶體: 總計 {memory.total / (1024 ** 3):.2f} GB，可用 {memory.available / (1024 ** 3):.2f} GB")
