@@ -28,4 +28,7 @@ build/*
 *.pyz3
 *.pywz4
 *.pyz4
+__pycache__/*
+.vscode/*
+venv/*
 
