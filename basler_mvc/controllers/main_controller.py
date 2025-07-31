@@ -129,6 +129,18 @@ class MainController:
         status = '檢測已開啟' if enabled else '檢測已關閉'
         self.notify_views('system_status', status)
     
+    def set_exposure_time(self, exposure_us: float) -> bool:
+        """設置相機曝光時間"""
+        return self.camera_model.set_exposure_time(exposure_us)
+    
+    def get_exposure_time(self) -> float:
+        """獲取當前曝光時間"""
+        return self.camera_model.get_exposure_time()
+    
+    def get_exposure_range(self) -> tuple:
+        """獲取曝光時間範圍"""
+        return self.camera_model.get_exposure_range()
+    
     # ==================== 主處理循環 ====================
     
     def _start_processing(self):

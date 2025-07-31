@@ -56,6 +56,79 @@ class BaslerCameraModel:
         
         logging.info("Basler 相機模型初始化完成")
         
+    def set_exposure_time(self, exposure_us: float) -> bool:
+        """動態設置曝光時間（微秒）"""
+        try:
+            if not self.camera or not self.is_connected:
+                logging.error("相機未連接，無法設置曝光時間")
+                return False
+            
+            # 設置曝光時間
+            if hasattr(self.camera, 'ExposureTimeAbs'):
+                # 檢查範圍
+                min_exposure = self.camera.ExposureTimeAbs.GetMin()
+                max_exposure = self.camera.ExposureTimeAbs.GetMax()
+                
+                if exposure_us < min_exposure or exposure_us > max_exposure:
+                    logging.warning(f"曝光時間 {exposure_us}us 超出範圍 [{min_exposure}, {max_exposure}]")
+                    exposure_us = max(min_exposure, min(exposure_us, max_exposure))
+                
+                self.camera.ExposureTimeAbs.SetValue(exposure_us)
+                logging.info(f"✅ 曝光時間已調整為: {exposure_us}us")
+                
+                # 通知觀察者
+                self.notify_observers('exposure_changed', {'exposure_time': exposure_us})
+                return True
+                
+            elif hasattr(self.camera, 'ExposureTime'):
+                self.camera.ExposureTime.SetValue(exposure_us)
+                logging.info(f"✅ 曝光時間已調整為: {exposure_us}us (ExposureTime)")
+                self.notify_observers('exposure_changed', {'exposure_time': exposure_us})
+                return True
+            else:
+                logging.error("相機不支持曝光時間調整")
+                return False
+                
+        except Exception as e:
+            logging.error(f"設置曝光時間失敗: {str(e)}")
+            return False
+    
+    def get_exposure_time(self) -> float:
+        """獲取當前曝光時間（微秒）"""
+        try:
+            if not self.camera or not self.is_connected:
+                return 0.0
+            
+            if hasattr(self.camera, 'ExposureTimeAbs'):
+                return self.camera.ExposureTimeAbs.GetValue()
+            elif hasattr(self.camera, 'ExposureTime'):
+                return self.camera.ExposureTime.GetValue()
+            else:
+                return 0.0
+        except Exception as e:
+            logging.error(f"獲取曝光時間失敗: {str(e)}")
+            return 0.0
+    
+    def get_exposure_range(self) -> tuple:
+        """獲取曝光時間範圍（最小值，最大值）"""
+        try:
+            if not self.camera or not self.is_connected:
+                return (0.0, 0.0)
+            
+            if hasattr(self.camera, 'ExposureTimeAbs'):
+                min_exp = self.camera.ExposureTimeAbs.GetMin()
+                max_exp = self.camera.ExposureTimeAbs.GetMax()
+                return (min_exp, max_exp)
+            elif hasattr(self.camera, 'ExposureTime'):
+                min_exp = self.camera.ExposureTime.GetMin()
+                max_exp = self.camera.ExposureTime.GetMax()
+                return (min_exp, max_exp)
+            else:
+                return (0.0, 0.0)
+        except Exception as e:
+            logging.error(f"獲取曝光範圍失敗: {str(e)}")
+            return (0.0, 0.0)
+        
     def add_observer(self, observer: Callable):
         """添加觀察者（View）"""
         self.observers.append(observer)
@@ -159,12 +232,12 @@ class BaslerCameraModel:
                 
                 # 根據診斷結果，這個相機使用ExposureTimeAbs
                 if hasattr(self.camera, 'ExposureTimeAbs'):
-                    # 設置5ms曝光時間，適合室內照明
-                    self.camera.ExposureTimeAbs.SetValue(5000.0)
-                    logging.info("✅ 設置曝光時間: 5ms (ExposureTimeAbs)")
+                    # 設置1ms曝光時間，追求280fps高性能
+                    self.camera.ExposureTimeAbs.SetValue(1000.0)
+                    logging.info("✅ 設置曝光時間: 1ms (ExposureTimeAbs) - 高速模式")
                 elif hasattr(self.camera, 'ExposureTime'):
-                    self.camera.ExposureTime.SetValue(5000.0)
-                    logging.info("✅ 設置曝光時間: 5ms (ExposureTime)")
+                    self.camera.ExposureTime.SetValue(1000.0)
+                    logging.info("✅ 設置曝光時間: 1ms (ExposureTime) - 高速模式")
                     
             except Exception as e:
                 logging.warning(f"設置曝光失敗: {str(e)}")
@@ -204,9 +277,9 @@ class BaslerCameraModel:
                         try:
                             if hasattr(self.camera, fps_attr):
                                 fps_node = getattr(self.camera, fps_attr)
-                                # 保守設置150fps
-                                fps_node.SetValue(150.0)
-                                logging.info(f"✅ 設置幀率: 150fps ({fps_attr})")
+                                # 高性能設置280fps
+                                fps_node.SetValue(280.0)
+                                logging.info(f"✅ 設置幀率: 280fps ({fps_attr})")
                                 frame_rate_set = True
                                 break
                         except Exception as e:

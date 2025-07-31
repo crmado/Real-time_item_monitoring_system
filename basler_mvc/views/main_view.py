@@ -48,6 +48,9 @@ class MainView:
         # 參數設置
         self.param_vars = {}
         
+        # 相機參數
+        self.exposure_var = None
+        
         # 創建UI
         self.create_ui()
         
@@ -147,9 +150,25 @@ class MainView:
                                          command=self.on_detection_toggle)
         detection_check.pack(anchor=tk.W)
         
+        # 相機參數
+        ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+        ttk.Label(detection_frame, text="相機參數:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
+        
+        # 曝光時間調整
+        exposure_frame = ttk.Frame(detection_frame)
+        exposure_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(exposure_frame, text="曝光時間:", width=8).pack(side=tk.LEFT)
+        self.exposure_var = tk.DoubleVar(value=1000.0)  # 默認1ms
+        exposure_spin = ttk.Spinbox(exposure_frame, from_=200, to=10000, 
+                                   textvariable=self.exposure_var, width=8,
+                                   increment=100,
+                                   command=self.on_exposure_changed)
+        exposure_spin.pack(side=tk.RIGHT)
+        ttk.Label(exposure_frame, text="μs", width=3).pack(side=tk.RIGHT)
+        
         # 快速參數
         ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        ttk.Label(detection_frame, text="快速參數:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
+        ttk.Label(detection_frame, text="檢測參數:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
         
         # 最小面積
         min_area_frame = ttk.Frame(detection_frame)
@@ -379,6 +398,18 @@ class MainView:
             'max_area': self.max_area_var.get()
         }
         self.controller.update_detection_parameters(params)
+    
+    def on_exposure_changed(self):
+        """曝光時間改變"""
+        try:
+            exposure_time = self.exposure_var.get()
+            success = self.controller.set_exposure_time(exposure_time)
+            if success:
+                self.status_var.set(f"狀態: 曝光時間已調整為 {exposure_time}μs")
+            else:
+                self.status_var.set("狀態: 曝光時間調整失敗")
+        except Exception as e:
+            logging.error(f"調整曝光時間錯誤: {str(e)}")
     
     def open_parameter_dialog(self):
         """打開參數設置對話框"""
