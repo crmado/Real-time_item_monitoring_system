@@ -177,7 +177,9 @@ class MainController:
         logging.info("停止主處理循環")
     
     def _processing_loop(self):
-        """主處理循環 - 高性能版本"""
+        """主處理循環 - 極致性能優化版本"""
+        logging.info("🚀 啟動高性能處理循環")
+        
         while not self.stop_event.is_set() and self.is_processing:
             try:
                 frame_start_time = time.time()
@@ -187,10 +189,8 @@ class MainController:
                 if frame is None:
                     # 第一次獲取失敗時的診斷日誌
                     if self.total_processed_frames == 0:
-                        logging.warning("處理循環：第一次獲取幀失敗，檢查相機狀態")
-                        stats = self.camera_model.get_stats()
-                        logging.info(f"相機統計: {stats}")
-                    time.sleep(0.01)  # 稍長的延遲給相機時間
+                        logging.warning("處理循環：等待第一幀")
+                    time.sleep(0.005)  # 🚀 減少延遲50%
                     continue
                 
                 # 執行檢測
@@ -201,31 +201,43 @@ class MainController:
                 frame_time = time.time() - frame_start_time
                 self.frame_times.append(frame_time)
                 
-                # 計算處理FPS
-                if len(self.frame_times) >= 10:
-                    avg_time = sum(self.frame_times) / len(self.frame_times)
+                # 🚀 優化FPS計算頻率（每30幀計算一次）
+                if len(self.frame_times) >= 30:
+                    # 確保使用正確的列表操作
+                    recent_times = list(self.frame_times)[-30:]
+                    avg_time = sum(recent_times) / len(recent_times)
                     self.processing_fps = 1.0 / avg_time if avg_time > 0 else 0
+                    # 保持最新100幀數據
+                    if len(self.frame_times) > 100:
+                        # 保留最新的100個時間記錄
+                        while len(self.frame_times) > 100:
+                            self.frame_times.pop(0)
                 
-                # 通知視圖 - 立即通知第一幀，然後每5幀通知一次
-                if self.total_processed_frames == 1 or self.total_processed_frames % 5 == 0:
+                # 🚀 優化視圖通知策略（高頻率通知提升流暢度）
+                should_notify = (
+                    self.total_processed_frames == 1 or  # 第一幀
+                    self.total_processed_frames % 2 == 0  # 每2幀通知一次（比原來更頻繁）
+                )
+                
+                if should_notify:
                     self.notify_views('frame_processed', {
                         'frame': result_frame,
                         'objects': objects,
                         'object_count': len(objects),
-                        'processing_fps': self.processing_fps
+                        'processing_fps': self.processing_fps,
+                        'detection_fps': getattr(self.detection_model, 'detection_fps', 0)
                     })
                     
-                    # 第一幀時額外日誌
+                    # 第一幀日誌
                     if self.total_processed_frames == 1:
-                        logging.info(f"處理第一幀成功，幀尺寸: {result_frame.shape if result_frame is not None else 'None'}")
-                        logging.info(f"發送frame_processed事件到視圖")
+                        logging.info(f"✅ 處理第一幀成功，高性能模式啟動")
                 
-                # 減少不必要的延遲以提高FPS
-                # time.sleep(0.001)  # 移除延遲以達到最高性能
+                # 🚀 完全移除延遲，追求極致性能
+                # 不添加任何sleep以達到最高FPS
                 
             except Exception as e:
                 logging.error(f"處理循環錯誤: {str(e)}")
-                time.sleep(0.01)
+                time.sleep(0.001)  # 🚀 錯誤時最小延遲
     
     # ==================== 系統控制 ====================
     

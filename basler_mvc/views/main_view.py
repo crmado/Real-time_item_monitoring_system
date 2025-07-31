@@ -77,6 +77,9 @@ class MainView:
         
         # 底部狀態面板
         self.create_status_panel(main_frame)
+        
+        # 初始化顯示狀態
+        self.root.after(100, self.initialize_display_status)  # 延遲初始化確保所有組件已創建
     
     def create_control_panel(self, parent):
         """創建控制面板"""
@@ -117,14 +120,131 @@ class MainView:
     
     def create_video_panel(self, parent):
         """創建視頻面板"""
-        video_frame = ttk.LabelFrame(parent, text="📺 實時視頻 (640x480)", padding=5)
-        video_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        # 主視頻容器
+        main_video_frame = ttk.Frame(parent)
+        main_video_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
         # 視頻顯示區域
+        video_frame = ttk.LabelFrame(main_video_frame, text="📺 實時檢測畫面 (640x480)", padding=5)
+        video_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        
+        # 視頻顯示標籤
         self.video_label = ttk.Label(video_frame, text="正在初始化相機...", 
                                     anchor=tk.CENTER, font=('Arial', 12),
-                                    background='black', foreground='white')
+                                    background='#1a1a1a', foreground='#00ff00',
+                                    relief=tk.SUNKEN, borderwidth=2)
         self.video_label.pack(expand=True, fill=tk.BOTH)
+        
+        # 大型計數顯示面板
+        self.create_count_display_panel(main_video_frame)
+    
+    def create_count_display_panel(self, parent):
+        """創建大型計數顯示面板"""
+        count_frame = ttk.LabelFrame(parent, text="📊 檢測計數", padding=10)
+        count_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        # 主計數容器
+        main_count_container = tk.Frame(count_frame, bg='#2c3e50', relief=tk.RAISED, bd=3)
+        main_count_container.pack(fill=tk.X, pady=5)
+        
+        # 大型數字顯示
+        self.large_count_var = tk.StringVar(value="0000")
+        # 使用系統兼容的等寬字體
+        try:
+            digital_font = ('Consolas', 48, 'bold')  # Windows
+            large_count_label = tk.Label(main_count_container, 
+                                       textvariable=self.large_count_var,
+                                       font=digital_font,
+                                       fg='#00ff41', bg='#2c3e50',
+                                       width=8, height=2)
+        except:
+            # 備用字體
+            digital_font = ('Courier New', 48, 'bold')
+            large_count_label = tk.Label(main_count_container, 
+                                       textvariable=self.large_count_var,
+                                       font=digital_font,
+                                       fg='#00ff41', bg='#2c3e50',
+                                       width=8, height=2)
+        large_count_label.pack(side=tk.LEFT, padx=20, pady=10)
+        
+        # 狀態指示器區域
+        status_container = tk.Frame(main_count_container, bg='#2c3e50')
+        status_container.pack(side=tk.RIGHT, fill=tk.Y, padx=20)
+        
+        # 檢測狀態指示燈
+        self.status_indicator = tk.Label(status_container, text="●", 
+                                       font=('Arial', 24, 'bold'),
+                                       fg='#ff4444', bg='#2c3e50')
+        self.status_indicator.pack(pady=(10, 5))
+        
+        # 狀態文字
+        self.status_text = tk.Label(status_container, text="離線",
+                                  font=('Arial', 12, 'bold'),
+                                  fg='#ffffff', bg='#2c3e50')
+        self.status_text.pack()
+        
+        # 檢測速率顯示
+        self.rate_text = tk.Label(status_container, text="0 物件/秒",
+                                font=('Arial', 10),
+                                fg='#cccccc', bg='#2c3e50')
+        self.rate_text.pack(pady=(5, 0))
+        
+        # 統計信息容器
+        stats_container = tk.Frame(count_frame, bg='#34495e')
+        stats_container.pack(fill=tk.X, pady=(5, 0))
+        
+        # 今日統計
+        self.create_stat_widget(stats_container, "今日總計", "0", "#3498db")
+        self.create_stat_widget(stats_container, "平均大小", "0 px²", "#e74c3c")
+        self.create_stat_widget(stats_container, "檢測精度", "100%", "#2ecc71")
+    
+    def create_stat_widget(self, parent, title, value, color):
+        """創建統計小組件"""
+        stat_frame = tk.Frame(parent, bg='#34495e')
+        stat_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # 標題
+        title_label = tk.Label(stat_frame, text=title, 
+                             font=('Arial', 9), 
+                             fg='#bdc3c7', bg='#34495e')
+        title_label.pack()
+        
+        # 數值
+        value_var = tk.StringVar(value=value)
+        value_label = tk.Label(stat_frame, textvariable=value_var,
+                             font=('Arial', 14, 'bold'),
+                             fg=color, bg='#34495e')
+        value_label.pack()
+        
+        # 保存變量引用以便後續更新
+        if not hasattr(self, 'stat_vars'):
+            self.stat_vars = {}
+        self.stat_vars[title] = value_var
+    
+    def initialize_display_status(self):
+        """初始化顯示狀態"""
+        try:
+            # 檢查組件是否存在
+            if hasattr(self, 'status_indicator') and self.status_indicator:
+                self.status_indicator.config(fg='#ff4444')  # 紅色表示離線
+                
+            if hasattr(self, 'status_text') and self.status_text:
+                self.status_text.config(text="系統啟動中")
+                
+            if hasattr(self, 'rate_text') and self.rate_text:
+                self.rate_text.config(text="0 物件/秒")
+            
+            # 初始化統計數據
+            self._daily_total = 0
+            
+            # 設置初始檢測品質
+            if hasattr(self, 'quality_var') and self.quality_var:
+                self.quality_var.set("待檢測")
+            
+            logging.info("✅ 大型計數顯示面板初始化完成")
+            
+        except Exception as e:
+            logging.debug(f"初始化顯示狀態錯誤: {str(e)}")
     
     def create_detection_panel(self, parent):
         """創建檢測面板"""
@@ -190,15 +310,26 @@ class MainView:
                                    command=self.on_parameter_changed)
         max_area_spin.pack(side=tk.RIGHT)
         
-        # 檢測結果顯示
+        # 檢測結果顯示（簡化版 - 主要顯示在大型面板）
         ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        ttk.Label(detection_frame, text="檢測結果:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
+        ttk.Label(detection_frame, text="檢測狀態:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
         
-        result_frame = ttk.Frame(detection_frame)
-        result_frame.pack(fill=tk.X)
+        # 簡潔的狀態顯示
+        status_info_frame = ttk.Frame(detection_frame)
+        status_info_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Label(result_frame, textvariable=self.object_count_var, 
-                 font=('Arial', 12, 'bold'), foreground='blue').pack(anchor=tk.W)
+        ttk.Label(status_info_frame, text="當前物件:", width=8).pack(side=tk.LEFT)
+        ttk.Label(status_info_frame, textvariable=self.object_count_var, 
+                 font=('Arial', 10, 'bold'), foreground='#2ecc71').pack(side=tk.RIGHT)
+        
+        # 檢測品質指示器
+        quality_frame = ttk.Frame(detection_frame)
+        quality_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(quality_frame, text="檢測品質:", width=8).pack(side=tk.LEFT)
+        self.quality_var = tk.StringVar(value="優秀")
+        ttk.Label(quality_frame, textvariable=self.quality_var, 
+                 font=('Arial', 10, 'bold'), foreground='#3498db').pack(side=tk.RIGHT)
     
     def create_status_panel(self, parent):
         """創建狀態面板"""
@@ -296,12 +427,100 @@ class MainView:
                     self._first_frame_logged = True
                     logging.info(f"視圖收到第一幀，尺寸: {frame.shape}")
             
-            # 更新檢測結果
+            # 更新檢測結果和大型顯示面板
             count = data.get('object_count', 0)
             self.object_count_var.set(f"物件: {count}")
             
+            # 安全地更新大型計數顯示
+            try:
+                self._update_large_count_display(count, data)
+                self._update_detection_quality(data)
+            except Exception as e:
+                logging.debug(f"更新大型顯示面板錯誤: {str(e)}")
+            
         except Exception as e:
             logging.error(f"處理幀更新錯誤: {str(e)}")
+    
+    def _update_large_count_display(self, count, data):
+        """更新大型計數顯示"""
+        try:
+            # 更新主計數顯示
+            self.large_count_var.set(f"{count:04d}")
+            
+            # 更新狀態指示器
+            if count > 0:
+                self.status_indicator.config(fg='#00ff41')  # 綠色
+                self.status_text.config(text="檢測中")
+            else:
+                self.status_indicator.config(fg='#ffaa00')  # 橙色
+                self.status_text.config(text="待檢測")
+            
+            # 計算檢測速率（物件/秒）
+            detection_fps = data.get('detection_fps', 0)
+            if detection_fps > 0:
+                rate = min(count * detection_fps / 60, count)  # 粗略估算
+                self.rate_text.config(text=f"{rate:.1f} 物件/秒")
+            else:
+                self.rate_text.config(text="0 物件/秒")
+                
+            # 更新統計信息
+            if hasattr(self, 'stat_vars'):
+                # 更新今日總計（這裡簡化處理）
+                if hasattr(self, '_daily_total'):
+                    self._daily_total += count
+                else:
+                    self._daily_total = count
+                
+                self.stat_vars.get('今日總計', tk.StringVar()).set(f"{self._daily_total}")
+                
+                # 更新平均大小（如果有物件數據）
+                objects = data.get('objects', [])
+                if objects:
+                    avg_area = sum(obj[5] if len(obj) > 5 else 0 for obj in objects) / len(objects)
+                    self.stat_vars.get('平均大小', tk.StringVar()).set(f"{avg_area:.0f} px²")
+                
+                # 檢測精度（基於FPS表現）
+                processing_fps = data.get('processing_fps', 0)
+                if processing_fps > 150:
+                    accuracy = "優秀"
+                elif processing_fps > 100:
+                    accuracy = "良好"
+                else:
+                    accuracy = "一般"
+                self.stat_vars.get('檢測精度', tk.StringVar()).set(accuracy)
+                
+        except Exception as e:
+            logging.error(f"更新大型計數顯示錯誤: {str(e)}")
+    
+    def _update_detection_quality(self, data):
+        """更新檢測品質指示"""
+        try:
+            detection_fps = data.get('detection_fps', 0)
+            processing_fps = data.get('processing_fps', 0)
+            
+            if detection_fps > 500 and processing_fps > 200:
+                quality = "極佳"
+                color = '#2ecc71'  # 綠色
+            elif detection_fps > 200 and processing_fps > 100:
+                quality = "良好"
+                color = '#3498db'  # 藍色
+            elif detection_fps > 50:
+                quality = "一般"
+                color = '#f39c12'  # 橙色
+            else:
+                quality = "需優化"
+                color = '#e74c3c'  # 紅色
+            
+            self.quality_var.set(quality)
+            # 動態更新品質標籤顏色
+            quality_widgets = [w for w in self.root.winfo_children() if isinstance(w, tk.Label)]
+            for widget in quality_widgets:
+                if hasattr(widget, 'textvariable') and widget['textvariable'] == str(self.quality_var):
+                    widget.config(foreground=color)
+                    break
+                    
+        except Exception as e:
+            logging.error(f"更新檢測品質錯誤: {str(e)}")
     
     def _update_status_display(self):
         """更新狀態顯示"""

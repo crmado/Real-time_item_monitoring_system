@@ -38,36 +38,46 @@ class DetectionMethod(ABC):
 
 
 class CircleDetection(DetectionMethod):
-    """霍夫圓檢測方法 - 精簡版"""
+    """霍夫圓檢測方法 - 高性能優化版"""
     
     def __init__(self):
         """初始化圓形檢測"""
-        # 高效參數設置
-        self.dp = 1.2
-        self.min_dist = 20
-        self.param1 = 50
-        self.param2 = 30
-        self.min_radius = 5
-        self.max_radius = 100
-        self.min_area = 50
-        self.max_area = 8000
+        # 🚀 高性能優化參數（基於測試結果）
+        self.resize_factor = 0.5      # 圖像縮小50%提升4x性能
+        self.dp = 2.0                 # 增大dp減少計算量
+        self.min_dist = 50            # 增大最小距離
+        self.param1 = 100             # 提高閾值減少誤檢
+        self.param2 = 60              # 提高閾值
+        self.min_radius = 10          # 調整最小半徑
+        self.max_radius = 60          # 限制最大半徑
+        self.min_area = 100           # 調整面積範圍
+        self.max_area = 5000
+        self.blur_kernel = 3          # 使用更小的模糊核
         
-        logging.info("圓形檢測初始化完成")
+        logging.info("✅ 高性能圓形檢測初始化完成")
     
     def process_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
-        """快速幀處理"""
+        """高速幀處理 - 輕量化優化"""
         if frame is None:
             return None
             
         try:
+            # 🚀 關鍵優化：縮小圖像處理
+            height, width = frame.shape[:2]
+            new_height = int(height * self.resize_factor)
+            new_width = int(width * self.resize_factor)
+            
+            # 快速縮放（使用最快的插值方法）
+            small_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST)
+            
             # 轉灰度
-            if len(frame.shape) == 3:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if len(small_frame.shape) == 3:
+                gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
             else:
-                gray = frame
+                gray = small_frame
                 
-            # 高斯濾波
-            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            # 🚀 優化：使用更快的中值濾波
+            blurred = cv2.medianBlur(gray, self.blur_kernel)
             return blurred
             
         except Exception as e:
@@ -75,40 +85,45 @@ class CircleDetection(DetectionMethod):
             return None
     
     def detect_objects(self, processed_frame: np.ndarray, min_area: int = None, max_area: int = None) -> List[Tuple]:
-        """霍夫圓檢測"""
+        """高性能霍夫圓檢測"""
         if processed_frame is None:
             return []
             
         try:
+            # 🚀 優化的圓檢測（在縮小的圖像上）
             circles = cv2.HoughCircles(
                 processed_frame,
                 cv2.HOUGH_GRADIENT,
                 dp=self.dp,
-                minDist=self.min_dist,
+                minDist=int(self.min_dist * self.resize_factor),
                 param1=self.param1,
                 param2=self.param2,
-                minRadius=self.min_radius,
-                maxRadius=self.max_radius
+                minRadius=int(self.min_radius * self.resize_factor),
+                maxRadius=int(self.max_radius * self.resize_factor)
             )
             
             objects = []
             if circles is not None:
-                circles = np.uint16(np.around(circles))
+                circles = np.round(circles[0, :]).astype("int")
+                scale_factor = 1.0 / self.resize_factor
                 
                 min_a = min_area if min_area is not None else self.min_area
                 max_a = max_area if max_area is not None else self.max_area
                 
-                for i in circles[0, :]:
-                    x, y, r = i[0], i[1], i[2]
-                    area = np.pi * (r ** 2)
+                for (x, y, r) in circles:
+                    # 🚀 關鍵：縮放回原始尺寸
+                    orig_x = int(x * scale_factor)
+                    orig_y = int(y * scale_factor)
+                    orig_r = int(r * scale_factor)
+                    area = np.pi * orig_r * orig_r
                     
                     if min_a <= area <= max_a:
                         # 返回 (x, y, w, h, centroid, area, radius)
-                        bbox_x = int(x - r)
-                        bbox_y = int(y - r)
-                        bbox_w = int(r * 2)
-                        bbox_h = int(r * 2)
-                        objects.append((bbox_x, bbox_y, bbox_w, bbox_h, (x, y), area, r))
+                        bbox_x = int(orig_x - orig_r)
+                        bbox_y = int(orig_y - orig_r)
+                        bbox_w = int(orig_r * 2)
+                        bbox_h = int(orig_r * 2)
+                        objects.append((bbox_x, bbox_y, bbox_w, bbox_h, (orig_x, orig_y), area, orig_r))
             
             return objects
             
@@ -122,6 +137,7 @@ class CircleDetection(DetectionMethod):
             for key, value in params.items():
                 if hasattr(self, key):
                     setattr(self, key, value)
+                    logging.info(f"更新參數 {key}: {value}")
             return True
         except Exception as e:
             logging.error(f"設置參數錯誤: {str(e)}")
@@ -219,11 +235,13 @@ class DetectionModel:
         self.current_method = self.available_methods['circle']
         self.method_name = 'circle'
         
-        # 檢測參數 - 高性能優化
+        # 檢測參數 - 高性能優化（基於測試結果）
         self.detection_params = {
-            'min_area': 50,     # 降低最小面積以減少計算量
-            'max_area': 3000,   # 限制最大面積
-            'enable_detection': True
+            'min_area': 100,    # 優化最小面積
+            'max_area': 5000,   # 優化最大面積  
+            'enable_detection': True,
+            'resize_factor': 0.5,  # 圖像縮小50%處理
+            'high_performance_mode': True  # 啟用高性能模式
         }
         
         # 檢測結果
