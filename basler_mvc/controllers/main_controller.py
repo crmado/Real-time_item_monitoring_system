@@ -141,6 +141,35 @@ class MainController:
         """獲取曝光時間範圍"""
         return self.camera_model.get_exposure_range()
     
+    # ==================== 批次檢測控制 ====================
+    
+    def start_batch_detection(self):
+        """開始批次檢測模式"""
+        try:
+            # 批次檢測模式不需要特殊處理，檢測邏輯在視圖層處理
+            # 這裡確保檢測正在運行
+            if not self.is_processing:
+                self._start_processing()
+            
+            logging.info("✅ 批次檢測模式已啟動")
+            return True
+            
+        except Exception as e:
+            logging.error(f"啟動批次檢測錯誤: {str(e)}")
+            return False
+    
+    def stop_batch_detection(self):
+        """停止批次檢測模式"""
+        try:
+            # 批次檢測停止不影響視頻流，只是邏輯上的停止
+            # 實際的檢測控制在視圖層處理
+            logging.info("⏹️ 批次檢測模式已停止")
+            return True
+            
+        except Exception as e:
+            logging.error(f"停止批次檢測錯誤: {str(e)}")
+            return False
+    
     # ==================== 主處理循環 ====================
     
     def _start_processing(self):
