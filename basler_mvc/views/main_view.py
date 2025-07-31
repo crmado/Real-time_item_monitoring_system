@@ -84,15 +84,22 @@ class MainView:
         button_frame = ttk.Frame(control_frame)
         button_frame.pack(fill=tk.X)
         
-        # 系統控制按鈕
+        # 主要控制按鈕（簡化流程）
+        ttk.Button(button_frame, text="🚀 一鍵啟動", 
+                  command=self.auto_start_system, width=12).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="⏹️ 停止系統", 
+                  command=self.stop_system, width=12).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="🔄 重啟系統", 
+                  command=self.restart_system, width=12).pack(side=tk.LEFT, padx=2)
+        
+        # 分隔線
+        ttk.Separator(button_frame, orient='vertical').pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        
+        # 進階控制按鈕（保留手動控制）
         ttk.Button(button_frame, text="🔍 檢測相機", 
                   command=self.detect_cameras, width=12).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="🔗 連接相機", 
                   command=self.connect_camera, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="🚀 啟動系統", 
-                  command=self.start_system, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="⏹️ 停止系統", 
-                  command=self.stop_system, width=12).pack(side=tk.LEFT, padx=2)
         
         # 分隔線
         ttk.Separator(button_frame, orient='vertical').pack(side=tk.LEFT, fill=tk.Y, padx=10)
@@ -111,8 +118,9 @@ class MainView:
         video_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
         # 視頻顯示區域
-        self.video_label = ttk.Label(video_frame, text="點擊「啟動系統」開始處理", 
-                                    anchor=tk.CENTER, font=('Arial', 12))
+        self.video_label = ttk.Label(video_frame, text="正在初始化相機...", 
+                                    anchor=tk.CENTER, font=('Arial', 12),
+                                    background='black', foreground='white')
         self.video_label.pack(expand=True, fill=tk.BOTH)
     
     def create_detection_panel(self, parent):
@@ -255,15 +263,26 @@ class MainView:
     
     def _on_frame_processed(self, data):
         """處理幀更新"""
-        frame = data.get('frame')
-        if frame is not None:
-            with self.frame_lock:
-                self.current_frame = frame
-            self._update_video_display()
-        
-        # 更新檢測結果
-        count = data.get('object_count', 0)
-        self.object_count_var.set(f"物件: {count}")
+        try:
+            frame = data.get('frame')
+            if frame is not None:
+                with self.frame_lock:
+                    self.current_frame = frame
+                    
+                # 立即更新視頻顯示
+                self.root.after(0, self._update_video_display)
+                
+                # 第一幀時的特殊日誌
+                if hasattr(self, '_first_frame_logged') == False:
+                    self._first_frame_logged = True
+                    logging.info(f"視圖收到第一幀，尺寸: {frame.shape}")
+            
+            # 更新檢測結果
+            count = data.get('object_count', 0)
+            self.object_count_var.set(f"物件: {count}")
+            
+        except Exception as e:
+            logging.error(f"處理幀更新錯誤: {str(e)}")
     
     def _update_status_display(self):
         """更新狀態顯示"""
@@ -305,9 +324,14 @@ class MainView:
             photo = ImageTk.PhotoImage(pil_image)
             
             # 更新顯示
-            if self.video_label.winfo_exists():
-                self.video_label.configure(image=photo)
-                self.video_label.image = photo
+            if self.video_label and self.video_label.winfo_exists():
+                self.video_label.configure(image=photo, text="")  # 清除文字
+                self.video_label.image = photo  # 保持引用避免垃圾回收
+                
+                # 第一次顯示幀時的日誌
+                if not hasattr(self, '_first_display_logged'):
+                    self._first_display_logged = True
+                    logging.info("成功顯示第一幀到UI")
                 
         except Exception as e:
             logging.error(f"更新視頻顯示錯誤: {str(e)}")
@@ -322,6 +346,10 @@ class MainView:
         """連接相機"""
         self.controller.connect_camera()
     
+    def auto_start_system(self):
+        """一鍵啟動系統 - 自動檢測並啟動相機"""
+        self.controller.auto_start_camera_system()
+    
     def start_system(self):
         """啟動系統"""
         self.controller.start_system()
@@ -329,6 +357,10 @@ class MainView:
     def stop_system(self):
         """停止系統"""
         self.controller.stop_system()
+    
+    def restart_system(self):
+        """重啟系統"""
+        self.controller.restart_system()
     
     def on_method_changed(self, event=None):
         """檢測方法改變"""

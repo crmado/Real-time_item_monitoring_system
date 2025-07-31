@@ -219,10 +219,10 @@ class DetectionModel:
         self.current_method = self.available_methods['circle']
         self.method_name = 'circle'
         
-        # 檢測參數
+        # 檢測參數 - 高性能優化
         self.detection_params = {
-            'min_area': 100,
-            'max_area': 5000,
+            'min_area': 50,     # 降低最小面積以減少計算量
+            'max_area': 3000,   # 限制最大面積
             'enable_detection': True
         }
         

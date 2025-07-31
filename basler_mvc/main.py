@@ -121,6 +121,15 @@ def main():
         logging.info("MVC 架構初始化完成")
         print("✅ 系統初始化完成")
         print()
+        
+        # 自動啟動相機系統
+        print("🚀 自動檢測並啟動相機系統...")
+        if controller.auto_start_camera_system():
+            print("✅ 相機系統啟動成功！即時畫面已開始顯示")
+        else:
+            print("⚠️ 自動啟動失敗，請手動點擊啟動按鈕")
+        
+        print()
         print("🎮 啟動用戶界面...")
         
         # 運行應用程序

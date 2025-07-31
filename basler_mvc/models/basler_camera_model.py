@@ -125,42 +125,111 @@ class BaslerCameraModel:
             return False
             
     def _configure_camera(self):
-        """配置相機為最佳性能"""
+        """配置相機為最佳性能 - acA640-300gm專用"""
         try:
-            # acA640-300gm 最佳設置
-            configs = [
+            logging.info("開始配置 acA640-300gm 相機...")
+            
+            # 基本設置 - 只使用確定存在的節點
+            basic_configs = [
                 ('AcquisitionMode', 'Continuous'),
                 ('PixelFormat', 'Mono8'),
                 ('Width', 640),
                 ('Height', 480),
-                ('ExposureAuto', 'Off'),
-                ('ExposureTime', 1000.0),  # 1ms
-                ('GainAuto', 'Off'),
-                ('Gain', 0.0),
-                ('AcquisitionFrameRateEnable', True),
-                ('AcquisitionFrameRate', 350.0),  # 接近理論最大值
             ]
             
-            for param, value in configs:
+            for param, value in basic_configs:
                 try:
                     if hasattr(self.camera, param):
                         node = getattr(self.camera, param)
                         if hasattr(node, 'SetValue'):
                             node.SetValue(value)
+                            logging.info(f"✅ 設置 {param} = {value}")
+                        else:
+                            logging.warning(f"⚠️ {param} 節點無SetValue方法")
+                    else:
+                        logging.warning(f"⚠️ {param} 節點不存在")
                 except Exception as e:
-                    logging.debug(f"設置 {param} 失敗: {str(e)}")
-                    
-            # 網路優化 (GigE)
+                    logging.warning(f"❌ 設置 {param} 失敗: {str(e)}")
+            
+            # 曝光設置 - acA640-300gm使用ExposureTimeAbs
             try:
-                if hasattr(self.camera, 'GevSCPSPacketSize'):
-                    self.camera.GevSCPSPacketSize.SetValue(9000)  # Jumbo frames
-            except:
-                pass
+                if hasattr(self.camera, 'ExposureAuto'):
+                    self.camera.ExposureAuto.SetValue('Off')
+                    logging.info("✅ 關閉自動曝光")
                 
-            logging.info("相機配置完成")
+                # 根據診斷結果，這個相機使用ExposureTimeAbs
+                if hasattr(self.camera, 'ExposureTimeAbs'):
+                    # 設置5ms曝光時間，適合室內照明
+                    self.camera.ExposureTimeAbs.SetValue(5000.0)
+                    logging.info("✅ 設置曝光時間: 5ms (ExposureTimeAbs)")
+                elif hasattr(self.camera, 'ExposureTime'):
+                    self.camera.ExposureTime.SetValue(5000.0)
+                    logging.info("✅ 設置曝光時間: 5ms (ExposureTime)")
+                    
+            except Exception as e:
+                logging.warning(f"設置曝光失敗: {str(e)}")
+            
+            # 增益設置 - acA640-300gm的GainRaw最小值是136
+            try:
+                if hasattr(self.camera, 'GainAuto'):
+                    self.camera.GainAuto.SetValue('Off')
+                    logging.info("✅ 關閉自動增益")
+                    
+                # 根據診斷結果，GainRaw最小值是136
+                if hasattr(self.camera, 'GainRaw'):
+                    try:
+                        min_gain = self.camera.GainRaw.GetMin()
+                        self.camera.GainRaw.SetValue(min_gain)
+                        logging.info(f"✅ 設置增益為最小值: {min_gain}")
+                    except:
+                        # 如果無法獲取最小值，直接設置136
+                        self.camera.GainRaw.SetValue(136)
+                        logging.info("✅ 設置增益: 136 (最小值)")
+                elif hasattr(self.camera, 'Gain'):
+                    self.camera.Gain.SetValue(0.0)
+                    logging.info("✅ 設置增益: 0")
+                    
+            except Exception as e:
+                logging.warning(f"設置增益失敗: {str(e)}")
+            
+            # 幀率設置 - 保守設置以確保穩定
+            try:
+                if hasattr(self.camera, 'AcquisitionFrameRateEnable'):
+                    self.camera.AcquisitionFrameRateEnable.SetValue(True)
+                    logging.info("✅ 啟用幀率控制")
+                    
+                    # 嘗試不同的幀率API
+                    frame_rate_set = False
+                    for fps_attr in ['AcquisitionFrameRateAbs', 'AcquisitionFrameRate']:
+                        try:
+                            if hasattr(self.camera, fps_attr):
+                                fps_node = getattr(self.camera, fps_attr)
+                                # 保守設置150fps
+                                fps_node.SetValue(150.0)
+                                logging.info(f"✅ 設置幀率: 150fps ({fps_attr})")
+                                frame_rate_set = True
+                                break
+                        except Exception as e:
+                            logging.debug(f"嘗試 {fps_attr} 失敗: {str(e)}")
+                    
+                    if not frame_rate_set:
+                        logging.warning("無法設置幀率，使用默認值")
+                        
+            except Exception as e:
+                logging.warning(f"設置幀率失敗: {str(e)}")
+            
+            # 觸發模式 - 確保關閉
+            try:
+                if hasattr(self.camera, 'TriggerMode'):
+                    self.camera.TriggerMode.SetValue('Off')
+                    logging.info("✅ 關閉觸發模式")
+            except Exception as e:
+                logging.warning(f"設置觸發模式失敗: {str(e)}")
+                
+            logging.info("✅ acA640-300gm 相機配置完成")
             
         except Exception as e:
-            logging.warning(f"相機配置警告: {str(e)}")
+            logging.error(f"相機配置失敗: {str(e)}")
             
     def _update_camera_info(self):
         """更新相機資訊"""
@@ -196,12 +265,22 @@ class BaslerCameraModel:
             
     def start_capture(self) -> bool:
         """開始高速捕獲"""
-        if not self.is_connected or self.is_grabbing:
+        if not self.is_connected:
+            logging.error("相機未連接，無法開始捕獲")
             return False
             
+        if self.is_grabbing:
+            logging.warning("捕獲已經在進行中")
+            return True
+            
         try:
-            # 使用最新圖像策略
-            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            # 確保相機是開啟狀態
+            if not self.camera.IsOpen():
+                logging.error("相機未開啟")
+                return False
+            
+            # 使用OneByOne策略，更穩定
+            self.camera.StartGrabbing(pylon.GrabStrategy_OneByOne)
             self.is_grabbing = True
             self.stop_event.clear()
             
@@ -210,25 +289,36 @@ class BaslerCameraModel:
             self.start_time = time.time()
             self.frame_times.clear()
             
+            logging.info("相機開始抓取，等待2秒讓相機穩定...")
+            time.sleep(2)  # 讓相機穩定
+            
             # 啟動高速抓取線程
             self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
             self.capture_thread.start()
             
-            logging.info("開始高速捕獲")
+            logging.info("開始高速捕獲，抓取線程已啟動")
             self.notify_observers('capture_started')
             return True
             
         except Exception as e:
             logging.error(f"啟動捕獲失敗: {str(e)}")
+            self.is_grabbing = False
             self.notify_observers('capture_error', str(e))
             return False
             
     def _capture_loop(self):
         """高性能捕獲循環"""
+        logging.info("進入相機捕獲循環")
+        
         while not self.stop_event.is_set() and self.is_grabbing:
             try:
-                # 直接抓取最新幀
-                grab_result = self.camera.RetrieveResult(1, pylon.TimeoutHandling_Return)
+                # 檢查相機狀態
+                if not self.camera.IsGrabbing():
+                    logging.warning("相機已停止抓取，退出循環")
+                    break
+                
+                # 使用穩定的超時設置
+                grab_result = self.camera.RetrieveResult(1000, pylon.TimeoutHandling_Return)
                 
                 if grab_result and grab_result.GrabSucceeded():
                     frame = grab_result.Array.copy()
@@ -251,12 +341,20 @@ class BaslerCameraModel:
                     # 更新統計
                     self._update_stats()
                     
+                    # 第一幀的特殊日誌
+                    if self.total_frames == 1:
+                        logging.info(f"成功獲取第一幀，尺寸: {frame.shape}")
+                    
                 elif grab_result:
                     grab_result.Release()
+                    # 移除過多的警告日誌
+                    # logging.warning("抓取失敗但有結果")
                     
             except Exception as e:
-                logging.debug(f"抓取循環錯誤: {str(e)}")
-                time.sleep(0.001)
+                logging.error(f"抓取循環錯誤: {str(e)}")
+                time.sleep(0.1)  # 出錯時稍作等待
+                
+        logging.info("退出相機捕獲循環")
                 
     def _update_stats(self):
         """更新性能統計"""
@@ -272,8 +370,8 @@ class BaslerCameraModel:
                 if time_span > 0:
                     self.current_fps = (len(self.frame_times) - 1) / time_span
                     
-        # 定期通知觀察者
-        if self.total_frames % 30 == 0:  # 每30幀通知一次
+        # 定期通知觀察者（優化頻率以提高性能）
+        if self.total_frames % 50 == 0:  # 每50幀通知一次以減少開銷
             stats = self.get_stats()
             self.notify_observers('stats_updated', stats)
             

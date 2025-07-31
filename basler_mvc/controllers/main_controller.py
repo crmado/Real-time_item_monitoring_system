@@ -65,8 +65,10 @@ class MainController:
         
         # 特殊處理
         if event_type == 'capture_started':
+            logging.info("收到相機捕獲開始事件，啟動處理循環")
             self._start_processing()
         elif event_type == 'capture_stopped':
+            logging.info("收到相機捕獲停止事件，停止處理循環")
             self._stop_processing()
     
     def _on_detection_event(self, event_type: str, data: Any = None):
@@ -132,6 +134,7 @@ class MainController:
     def _start_processing(self):
         """開始處理循環"""
         if self.is_processing:
+            logging.info("處理循環已經在運行")
             return
         
         self.is_processing = True
@@ -146,7 +149,10 @@ class MainController:
         self.processing_thread = threading.Thread(target=self._processing_loop, daemon=True)
         self.processing_thread.start()
         
-        logging.info("開始主處理循環")
+        logging.info("✅ 開始主處理循環，線程已啟動")
+        
+        # 等待一小段時間確保線程啟動
+        time.sleep(0.1)
     
     def _stop_processing(self):
         """停止處理循環"""
@@ -167,7 +173,12 @@ class MainController:
                 # 獲取最新幀
                 frame = self.camera_model.get_latest_frame()
                 if frame is None:
-                    time.sleep(0.001)  # 微小延遲
+                    # 第一次獲取失敗時的診斷日誌
+                    if self.total_processed_frames == 0:
+                        logging.warning("處理循環：第一次獲取幀失敗，檢查相機狀態")
+                        stats = self.camera_model.get_stats()
+                        logging.info(f"相機統計: {stats}")
+                    time.sleep(0.01)  # 稍長的延遲給相機時間
                     continue
                 
                 # 執行檢測
@@ -183,23 +194,126 @@ class MainController:
                     avg_time = sum(self.frame_times) / len(self.frame_times)
                     self.processing_fps = 1.0 / avg_time if avg_time > 0 else 0
                 
-                # 通知視圖（減少頻率）
-                if self.total_processed_frames % 15 == 0:  # 每15幀通知一次
+                # 通知視圖 - 立即通知第一幀，然後每5幀通知一次
+                if self.total_processed_frames == 1 or self.total_processed_frames % 5 == 0:
                     self.notify_views('frame_processed', {
                         'frame': result_frame,
                         'objects': objects,
                         'object_count': len(objects),
                         'processing_fps': self.processing_fps
                     })
+                    
+                    # 第一幀時額外日誌
+                    if self.total_processed_frames == 1:
+                        logging.info(f"處理第一幀成功，幀尺寸: {result_frame.shape if result_frame is not None else 'None'}")
+                        logging.info(f"發送frame_processed事件到視圖")
                 
-                # 極小延遲以防CPU過載
-                time.sleep(0.001)
+                # 減少不必要的延遲以提高FPS
+                # time.sleep(0.001)  # 移除延遲以達到最高性能
                 
             except Exception as e:
                 logging.error(f"處理循環錯誤: {str(e)}")
                 time.sleep(0.01)
     
     # ==================== 系統控制 ====================
+    
+    def auto_start_camera_system(self) -> bool:
+        """自動檢測並啟動相機系統 - 一鍵啟動"""
+        try:
+            print("   🔍 檢測可用相機...")
+            cameras = self.detect_cameras()
+            if not cameras:
+                print("   ❌ 未檢測到Basler相機")
+                return False
+            
+            # 尋找目標相機 acA640-300gm
+            target_camera_index = 0
+            for i, camera in enumerate(cameras):
+                if camera.get('is_target', False):
+                    target_camera_index = i
+                    print(f"   ✅ 找到目標相機: {camera['model']} (索引: {i})")
+                    break
+            else:
+                print(f"   ⚠️ 使用第一台相機: {cameras[0]['model']}")
+            
+            print("   🔗 連接相機...")
+            if not self.connect_camera(target_camera_index):
+                print("   ❌ 相機連接失敗")
+                return False
+            
+            # 跳過重複配置，相機模型已經配置好了
+            # print("   ⚙️ 配置高性能參數...")
+            # self._configure_high_performance()
+            
+            print("   🚀 啟動捕獲...")
+            if not self.start_capture():
+                print("   ❌ 啟動捕獲失敗")
+                return False
+            
+            # 手動啟動處理循環，因為觀察者可能沒有正確觸發
+            print("   🔄 手動啟動處理循環...")
+            self._start_processing()
+            
+            print("   ✅ 系統完全啟動，開始高速捕獲")
+            return True
+            
+        except Exception as e:
+            error_msg = f"自動啟動失敗: {str(e)}"
+            logging.error(error_msg)
+            print(f"   ❌ {error_msg}")
+            return False
+    
+    def _configure_high_performance(self):
+        """配置相機以達到最高性能 - 280fps目標"""
+        try:
+            # 獲取相機實例進行進階配置
+            camera = self.camera_model.camera
+            if not camera:
+                return
+            
+            # 設置最高性能參數
+            high_perf_configs = [
+                # 幀率設置 - 目標280fps
+                ('AcquisitionFrameRateEnable', True),
+                ('AcquisitionFrameRate', 285.0),  # 設置略高於目標值
+                
+                # 最小曝光時間以達到高速
+                ('ExposureTime', 800.0),  # 0.8ms
+                
+                # 固定增益避免自動調整
+                ('Gain', 1.0),
+                
+                # 網路優化
+                ('GevSCPSPacketSize', 9000),  # Jumbo frames
+                ('GevSCPD', 1000),  # 幀間延遲最小化
+                
+                # 緩衝區優化
+                ('DeviceStreamChannelCount', 1),
+                ('DeviceStreamChannelSelector', 0),
+                ('DeviceStreamChannelType', 'Stream'),
+            ]
+            
+            for param, value in high_perf_configs:
+                try:
+                    if hasattr(camera, param):
+                        node = getattr(camera, param)
+                        if hasattr(node, 'SetValue'):
+                            node.SetValue(value)
+                            logging.info(f"高性能配置 {param} = {value}")
+                except Exception as e:
+                    logging.debug(f"配置 {param} 失敗: {str(e)}")
+            
+            # 設置檢測參數為高速模式
+            self.detection_model.update_parameters({
+                'min_area': 50,    # 降低最小面積以減少計算
+                'max_area': 3000,  # 限制最大面積
+                'enable_detection': True
+            })
+            
+            logging.info("高性能配置完成 - 目標280fps")
+            
+        except Exception as e:
+            logging.warning(f"高性能配置警告: {str(e)}")
     
     def start_system(self) -> bool:
         """啟動整個系統"""
