@@ -30,9 +30,9 @@ def setup_logging():
     log_dir = Path(__file__).parent / "logs"
     log_dir.mkdir(exist_ok=True)
     
-    # 配置日誌
+    # 配置日誌 - 提高級別以減少I/O
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.WARNING,  # 從INFO提高到WARNING減少日誌量
         format=log_format,
         handlers=[
             logging.FileHandler(log_dir / "basler_mvc.log", encoding='utf-8'),
@@ -122,7 +122,7 @@ def main():
         print("✅ 系統初始化完成")
         print()
         
-        # 檢測可用相機設備
+        # 檢測可用相機設備（但不自動啟動）
         print("🔍 檢測可用相機設備...")
         detected_cameras = controller.detect_cameras()
         if detected_cameras:
@@ -130,6 +130,7 @@ def main():
             for i, camera in enumerate(detected_cameras):
                 status = "✅ 目標型號" if camera.get('is_target', False) else "⚠️ 其他型號"
                 print(f"   相機 {i+1}: {camera['model']} ({status})")
+            print("📌 請在界面中雙擊設備進行連接")
         else:
             print("⚠️ 未檢測到任何相機設備")
         

@@ -40,7 +40,7 @@ class BaslerCameraModel:
         
         # 數據緩衝
         self.latest_frame = None
-        self.frame_queue = queue.Queue(maxsize=10)
+        self.frame_queue = queue.Queue(maxsize=3)  # 減少緩存以降低記憶體使用
         
         # 性能統計
         self.total_frames = 0
