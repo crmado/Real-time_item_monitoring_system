@@ -122,12 +122,16 @@ def main():
         print("✅ 系統初始化完成")
         print()
         
-        # 自動啟動相機系統
-        print("🚀 自動檢測並啟動相機系統...")
-        if controller.auto_start_camera_system():
-            print("✅ 相機系統啟動成功！即時畫面已開始顯示")
+        # 檢測可用相機設備
+        print("🔍 檢測可用相機設備...")
+        detected_cameras = controller.detect_cameras()
+        if detected_cameras:
+            print(f"✅ 檢測到 {len(detected_cameras)} 台相機設備")
+            for i, camera in enumerate(detected_cameras):
+                status = "✅ 目標型號" if camera.get('is_target', False) else "⚠️ 其他型號"
+                print(f"   相機 {i+1}: {camera['model']} ({status})")
         else:
-            print("⚠️ 自動啟動失敗，請手動點擊啟動按鈕")
+            print("⚠️ 未檢測到任何相機設備")
         
         print()
         print("🎮 啟動用戶界面...")

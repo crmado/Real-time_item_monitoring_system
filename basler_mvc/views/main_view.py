@@ -45,9 +45,7 @@ class MainView:
         self.root.minsize(1200, 900)  # 設置最小尺寸確保所有元素可見
         self.root.resizable(True, True)
         
-        # 面板狀態控制
-        self.left_panel_visible = True
-        self.right_panel_visible = True
+        # 簡化的面板配置 - 固定顯示所有面板
         self.panels_width_ratio = {'left': 0.2, 'center': 0.6, 'right': 0.2}
         
         # UI 變量
@@ -58,6 +56,14 @@ class MainView:
         self.object_count_var = tk.StringVar(value="物件: 0")
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
         self.method_var = tk.StringVar(value="circle")
+        
+        # FPS平滑顯示緩衝區
+        self.fps_history = {
+            'camera': [],
+            'processing': [],
+            'detection': []
+        }
+        self.fps_update_counter = 0
         
         # 視頻顯示
         self.video_label = None
@@ -79,6 +85,12 @@ class MainView:
         
         # 創建UI
         self.create_ui()
+        
+        # 初始化設備列表
+        self.refresh_device_list()
+        
+        # 初始化UI狀態
+        self.update_connection_ui()
         
         # 註冊為控制器觀察者
         self.controller.add_view_observer(self.on_controller_event)
@@ -112,9 +124,6 @@ class MainView:
         # 底部狀態欄（固定高度）
         self.create_status_panel(main_container)
         
-        # 綁定視窗大小變化事件
-        self.root.bind('<Configure>', self.on_window_resize)
-        
         # 初始化顯示狀態
         self.root.after(100, self.initialize_display_status)
     
@@ -129,86 +138,70 @@ class MainView:
         left_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
         left_controls.pack(side=tk.LEFT, padx=8, pady=5)
         
-        # 面板切換按鈕
-        self.left_panel_btn = tk.Button(left_controls, text="◀", width=3, height=1,
-                                       font=('Arial', 10), relief='flat',
-                                       bg='#e0e0e0', activebackground='#d0d0d0',
-                                       command=self.toggle_left_panel)
-        self.left_panel_btn.pack(side=tk.LEFT, padx=(0, 2))
-        
-        self.right_panel_btn = tk.Button(left_controls, text="▶", width=3, height=1,
-                                        font=('Arial', 10), relief='flat',
-                                        bg='#e0e0e0', activebackground='#d0d0d0',
-                                        command=self.toggle_right_panel)
-        self.right_panel_btn.pack(side=tk.LEFT, padx=(0, 10))
+        # 移除不必要的面板切換按鈕 - 簡化界面
         
         # 分隔線
         sep1 = tk.Frame(main_toolbar, bg='#c0c0c0', width=1)
         sep1.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        # 主要控制按鈕 - 專業樣式
-        main_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
-        main_controls.pack(side=tk.LEFT, padx=8, pady=3)
+        # 連接開關控制
+        connection_control = tk.Frame(main_toolbar, bg='#f0f0f0')
+        connection_control.pack(side=tk.LEFT, padx=8, pady=3)
         
-        # 🚀 一鍵啟動按鈕 - 醒目的藍色
-        self.start_btn = tk.Button(main_controls, text="🚀 一鍵啟動", 
-                                  font=('Arial', 10, 'bold'),
-                                  bg='#007aff', fg='white',
-                                  activebackground='#0056cc', activeforeground='white',
+        # 連接開關按鈕（仿iOS開關樣式）
+        self.connection_switch_frame = tk.Frame(connection_control, bg='#f0f0f0')
+        self.connection_switch_frame.pack(side=tk.LEFT)
+        
+        tk.Label(self.connection_switch_frame, text="連線:", 
+                font=('Arial', 11), bg='#f0f0f0', fg='#333333').pack(side=tk.LEFT, padx=(0, 8))
+        
+        # 開關按鈕
+        self.connection_switch = tk.Button(self.connection_switch_frame,
+                                         text="○",
+                                         font=('Arial', 16),
+                                         bg='#e0e0e0', fg='#999999',
+                                         activebackground='#d0d0d0',
                                   relief='flat', borderwidth=0,
-                                  padx=15, pady=5,
-                                  command=self.auto_start_system)
-        self.start_btn.pack(side=tk.LEFT, padx=(0, 8))
+                                         width=3, height=1,
+                                         command=self.toggle_connection_switch)
+        self.connection_switch.pack(side=tk.LEFT)
         
-        # 停止按鈕 - 專業樣式
-        self.stop_btn = tk.Button(main_controls, text="⏹️ 停止",
-                                 font=('Arial', 10),
-                                 bg='#f2f2f7', fg='#007aff',
-                                 activebackground='#e5e5ea',
-                                 relief='solid', borderwidth=1,
-                                 padx=12, pady=5,
-                                 command=self.stop_system)
-        self.stop_btn.pack(side=tk.LEFT, padx=(0, 10))
+        # 儲存開關狀態
+        self.connection_switch_on = False
         
         # 分隔線
         sep2 = tk.Frame(main_toolbar, bg='#c0c0c0', width=1)
         sep2.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        # 相機控制組
-        camera_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
-        camera_controls.pack(side=tk.LEFT, padx=8, pady=3)
+        # 啟動/停止控制組
+        start_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
+        start_controls.pack(side=tk.LEFT, padx=8, pady=3)
         
-        # 檢測相機按鈕
-        self.detect_btn = tk.Button(camera_controls, text="🔍 檢測相機",
-                                   font=('Arial', 9),
+        # 啟動處理按鈕（僅負責啟動/停止影像處理）
+        self.start_processing_btn = tk.Button(start_controls, text="▶️ 啟動處理",
+                                            font=('Arial', 12),
                                    bg='#f2f2f7', fg='#007aff',
                                    activebackground='#e5e5ea',
                                    relief='solid', borderwidth=1,
-                                   padx=10, pady=4,
-                                   command=self.detect_cameras)
-        self.detect_btn.pack(side=tk.LEFT, padx=(0, 5))
+                                            padx=12, pady=6,
+                                            command=self.toggle_processing,
+                                            state='disabled')  # 初始禁用
+        self.start_processing_btn.pack(side=tk.LEFT, padx=(0, 10))
         
-        # 連接相機按鈕
-        self.connect_btn = tk.Button(camera_controls, text="🔗 連接",
-                                    font=('Arial', 9),
-                                    bg='#f2f2f7', fg='#007aff',
-                                    activebackground='#e5e5ea',
-                                    relief='solid', borderwidth=1,
-                                    padx=10, pady=4,
-                                    command=self.connect_camera)
-        self.connect_btn.pack(side=tk.LEFT, padx=(0, 15))
+        # 儲存處理狀態
+        self.is_processing_active = False
         
         # 檢測方法選擇
-        method_frame = tk.Frame(camera_controls, bg='#f0f0f0')
+        method_frame = tk.Frame(start_controls, bg='#f0f0f0')
         method_frame.pack(side=tk.LEFT)
         
         tk.Label(method_frame, text="檢測方法:", 
-                font=('Arial', 9), bg='#f0f0f0').pack(side=tk.LEFT, padx=(0, 5))
+                font=('Arial', 12), bg='#f0f0f0').pack(side=tk.LEFT, padx=(0, 5))  # 字體從9增大到12
         
-        # 創建檢測方法下拉框 - 使用ttk保持一致性
+        # 創建檢測方法下拉框 - 使用ttk保持一致性，字體增大
         self.detection_method = ttk.Combobox(method_frame, values=["circle"], 
                                            state="readonly", width=8,
-                                           font=('Arial', 9))
+                                           font=('Arial', 12))  # 字體從9增大到12
         self.detection_method.set("circle")
         self.detection_method.pack(side=tk.LEFT)
         self.detection_method.bind('<<ComboboxSelected>>', self.on_method_changed)
@@ -217,24 +210,14 @@ class MainView:
         right_tools = tk.Frame(main_toolbar, bg='#f0f0f0')
         right_tools.pack(side=tk.RIGHT, padx=8, pady=5)
         
-        # 工具按鈕
+        # 工具按鈕 - 簡化版本，只保留設定按鈕
         self.settings_btn = tk.Button(right_tools, text="⚙️", width=3, height=1,
-                                     font=('Arial', 10), relief='flat',
+                                     font=('Arial', 14), relief='flat',
                                      bg='#e0e0e0', activebackground='#d0d0d0',
                                      command=self.open_parameter_dialog)
         self.settings_btn.pack(side=tk.RIGHT, padx=1)
         
-        self.stats_btn = tk.Button(right_tools, text="📊", width=3, height=1,
-                                  font=('Arial', 10), relief='flat',
-                                  bg='#e0e0e0', activebackground='#d0d0d0',
-                                  command=self.show_performance_report)
-        self.stats_btn.pack(side=tk.RIGHT, padx=1)
-        
-        self.help_btn = tk.Button(right_tools, text="❓", width=3, height=1,
-                                 font=('Arial', 10), relief='flat',
-                                 bg='#e0e0e0', activebackground='#d0d0d0',
-                                 command=self.show_about)
-        self.help_btn.pack(side=tk.RIGHT, padx=1)
+        # 移除不必要的性能報告和關於按鈕，簡化界面
     
     def create_left_panel(self, parent):
         """創建左側設備控制面板 - Apple風格"""
@@ -242,37 +225,60 @@ class MainView:
         self.left_panel = ttk.Frame(parent, style='Apple.TFrame')
         self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         
-        # 設備資訊卡片
-        device_frame = ttk.LabelFrame(self.left_panel, text="📱 設備", 
+        # 設備資訊 - 仿Basler專業設計
+        device_frame = ttk.LabelFrame(self.left_panel, text="設備", 
                                      style='Apple.TLabelframe')
         device_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # 相機資訊顯示 - 現代化樣式
-        self.camera_info_label = ttk.Label(device_frame, textvariable=self.camera_info_var, 
-                                          style='Apple.TLabel', wraplength=180)
-        self.camera_info_label.pack(fill=tk.X, pady=(0, 8))
+        # 設備列表區域
+        device_list_frame = tk.Frame(device_frame, bg='#ffffff')
+        device_list_frame.pack(fill=tk.X, pady=(5, 8))
         
-        # 連接狀態指示器 - Apple風格
-        status_frame = ttk.Frame(device_frame, style='Apple.TFrame')
+        # 設備列表（用Listbox實現）
+        listbox_frame = tk.Frame(device_list_frame, bg='#ffffff', relief='sunken', bd=1)
+        listbox_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        self.device_listbox = tk.Listbox(listbox_frame, 
+                                       height=3,
+                                       font=('Arial', 10),
+                                       bg='#ffffff', 
+                                       fg='#333333',
+                                       selectbackground='#007aff',
+                                       selectforeground='white',
+                                       activestyle='none',
+                                       borderwidth=0,
+                                       highlightthickness=0)
+        self.device_listbox.pack(fill=tk.X, padx=2, pady=2)
+        
+        # 綁定雙擊事件
+        self.device_listbox.bind('<Double-Button-1>', self.on_device_double_click)
+        
+        # 提示文字
+        hint_label = tk.Label(device_list_frame, 
+                            text="雙擊設備進行連接",
+                            font=('Arial', 9), 
+                            fg='#999999', bg='#ffffff')
+        hint_label.pack(anchor='w')
+        
+        # 分隔線
+        separator = tk.Frame(device_frame, height=1, bg='#e0e0e0')
+        separator.pack(fill=tk.X, pady=(5, 5))
+        
+        # 連接狀態顯示
+        status_frame = tk.Frame(device_frame, bg='#ffffff')
         status_frame.pack(fill=tk.X, pady=(0, 8))
         
-        # 狀態指示燈容器
-        indicator_frame = tk.Frame(status_frame, bg='#ffffff')
-        indicator_frame.pack(fill=tk.X)
+        self.connection_status_label = tk.Label(status_frame, 
+                                              text="● 未連接", 
+                                              font=('Arial', 10),
+                                              fg='#ff3b30', 
+                                              bg='#ffffff')
+        self.connection_status_label.pack(side=tk.LEFT)
         
-        self.connection_indicator = tk.Label(indicator_frame, text="●", 
-                                           font=self.theme_manager.get_font(
-                                               self.theme_manager.theme.Typography.FONT_SIZE_BODY,
-                                               self.theme_manager.theme.Typography.FONT_WEIGHT_BOLD
-                                           ), 
-                                           fg=self.theme_manager.get_color('ERROR_RED'), 
-                                           bg=self.theme_manager.get_color('BACKGROUND_CARD'))
-        self.connection_indicator.pack(side=tk.LEFT)
-        
-        tk.Label(indicator_frame, text="連接狀態", 
-                font=self.theme_manager.get_font(self.theme_manager.theme.Typography.FONT_SIZE_BODY),
-                fg=self.theme_manager.get_color('TEXT_SECONDARY'), 
-                bg=self.theme_manager.get_color('BACKGROUND_CARD')).pack(side=tk.LEFT, padx=(8, 0))
+        # 儲存連接狀態和設備列表
+        self.is_camera_connected = False
+        self.detected_cameras = []
+        self.selected_camera_index = -1
         
         # 相機設置卡片
         camera_settings_frame = ttk.LabelFrame(self.left_panel, text="🎥 相機設置", 
@@ -287,16 +293,27 @@ class MainView:
         exp_label_frame.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Label(exp_label_frame, text="曝光時間 (μs)", style='Apple.TLabel').pack(side=tk.LEFT)
-        self.exposure_label = ttk.Label(exp_label_frame, text="1000.0", 
-                                       style='AppleSubtitle.TLabel')
-        self.exposure_label.pack(side=tk.RIGHT)
+        
+        # 輸入框和滑動條組合
+        exp_input_frame = ttk.Frame(exp_label_frame, style='Apple.TFrame')
+        exp_input_frame.pack(side=tk.RIGHT)
         
         self.exposure_var = tk.DoubleVar(value=1000.0)
-        exp_scale = ttk.Scale(exp_frame, from_=200, to=10000, 
+        self.exposure_entry = ttk.Entry(exp_input_frame, textvariable=self.exposure_var, 
+                                       width=8, font=('Arial', 12))
+        self.exposure_entry.pack(side=tk.LEFT)
+        self.exposure_entry.bind('<Return>', self.on_exposure_entry_changed)
+        self.exposure_entry.bind('<FocusOut>', self.on_exposure_entry_changed)
+        
+        # 初始化更新標誌 - 避免初始化時觸發回調
+        self._exposure_updating = False
+        self._min_area_updating = False  
+        self._max_area_updating = False
+        exp_scale = ttk.Scale(exp_frame, from_=100, to=50000,
                              variable=self.exposure_var, orient=tk.HORIZONTAL,
                              style='Apple.Horizontal.TScale',
                              command=self.on_exposure_changed_scale)
-        exp_scale.pack(fill=tk.X)
+        exp_scale.pack(fill=tk.X, pady=(5, 0))
         
         # 檢測開關 - Apple風格
         detection_frame = ttk.Frame(camera_settings_frame, style='Apple.TFrame')
@@ -361,7 +378,7 @@ class MainView:
         
         # 縮放控制 - 小型按鈕
         self.zoom_fit_btn = tk.Button(left_tools, text="🔍", width=2, height=1,
-                                     font=('Arial', 8), relief='flat',
+                                     font=('Arial', 11), relief='flat',
                                      bg='#e0e0e0', activebackground='#d0d0d0',
                                      command=self.zoom_fit)
         self.zoom_fit_btn.pack(side=tk.LEFT, padx=1)
@@ -374,13 +391,13 @@ class MainView:
         
         # 圖像工具 - 緊湊版
         self.crosshair_btn = tk.Button(left_tools, text="✛", width=2, height=1,
-                                      font=('Arial', 8), relief='flat',
+                                      font=('Arial', 11), relief='flat',
                                       bg='#e0e0e0', activebackground='#d0d0d0',
                                       command=self.toggle_crosshair)
         self.crosshair_btn.pack(side=tk.LEFT, padx=1)
         
         self.roi_btn = tk.Button(left_tools, text="□", width=2, height=1,
-                                font=('Arial', 8), relief='flat',
+                                font=('Arial', 11), relief='flat',
                                 bg='#e0e0e0', activebackground='#d0d0d0',
                                 command=self.toggle_roi)
         self.roi_btn.pack(side=tk.LEFT, padx=1)
@@ -390,7 +407,7 @@ class MainView:
         right_info.pack(side=tk.RIGHT, padx=3, pady=2)
         
         self.zoom_label = tk.Label(right_info, text="100%", 
-                                  font=('Arial', 8), bg='#f0f0f0')
+                                  font=('Arial', 11), bg='#f0f0f0')
         self.zoom_label.pack(side=tk.RIGHT)
     
     def create_compact_image_status_bar(self, parent):
@@ -406,27 +423,27 @@ class MainView:
         # 分辨率信息
         self.resolution_var = tk.StringVar(value="640 × 480")
         resolution_label = tk.Label(left_info, textvariable=self.resolution_var,
-                                   font=('Arial', 8), bg='#e8e8e8')
+                                   font=('Arial', 11), bg='#e8e8e8')
         resolution_label.pack(side=tk.LEFT)
         
         # 分隔符
-        sep1 = tk.Label(left_info, text=" | ", font=('Arial', 8), bg='#e8e8e8')
+        sep1 = tk.Label(left_info, text=" | ", font=('Arial', 11), bg='#e8e8e8')
         sep1.pack(side=tk.LEFT)
         
         # 像素格式
         self.pixel_format_var = tk.StringVar(value="Mono8")
         format_label = tk.Label(left_info, textvariable=self.pixel_format_var,
-                               font=('Arial', 8), bg='#e8e8e8')
+                               font=('Arial', 11), bg='#e8e8e8')
         format_label.pack(side=tk.LEFT)
         
         # 分隔符
-        sep2 = tk.Label(left_info, text=" | ", font=('Arial', 8), bg='#e8e8e8')
+        sep2 = tk.Label(left_info, text=" | ", font=('Arial', 11), bg='#e8e8e8')
         sep2.pack(side=tk.LEFT)
         
         # 位深度
         self.bit_depth_var = tk.StringVar(value="8 bit")
         depth_label = tk.Label(left_info, textvariable=self.bit_depth_var,
-                              font=('Arial', 8), bg='#e8e8e8')
+                              font=('Arial', 11), bg='#e8e8e8')
         depth_label.pack(side=tk.LEFT)
         
         # 右側狀態信息
@@ -436,7 +453,7 @@ class MainView:
         # 獲取狀態
         self.acquisition_status_var = tk.StringVar(value="就緒")
         status_label = tk.Label(right_info, textvariable=self.acquisition_status_var,
-                               font=('Arial', 8), bg='#e8e8e8', fg='#007aff')
+                               font=('Arial', 11), bg='#e8e8e8', fg='#007aff')
         status_label.pack(side=tk.RIGHT)
     
     def create_compact_performance_bar(self, parent):
@@ -453,7 +470,7 @@ class MainView:
         camera_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
         camera_fps_frame.pack(side=tk.LEFT, padx=(0, 8))
         
-        tk.Label(camera_fps_frame, text="📷", font=('Arial', 8), bg='#f8f9fa').pack(side=tk.LEFT)
+        tk.Label(camera_fps_frame, text="📷", font=('Arial', 11), bg='#f8f9fa').pack(side=tk.LEFT)
         camera_fps_label = tk.Label(camera_fps_frame, textvariable=self.camera_fps_var,
                                    font=('Arial', 8, 'bold'), fg='#34c759', bg='#f8f9fa')
         camera_fps_label.pack(side=tk.LEFT, padx=(1, 0))
@@ -462,7 +479,7 @@ class MainView:
         processing_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
         processing_fps_frame.pack(side=tk.LEFT, padx=(0, 8))
         
-        tk.Label(processing_fps_frame, text="⚡", font=('Arial', 8), bg='#f8f9fa').pack(side=tk.LEFT)
+        tk.Label(processing_fps_frame, text="⚡", font=('Arial', 11), bg='#f8f9fa').pack(side=tk.LEFT)
         processing_fps_label = tk.Label(processing_fps_frame, textvariable=self.processing_fps_var,
                                        font=('Arial', 8, 'bold'), fg='#007aff', bg='#f8f9fa')
         processing_fps_label.pack(side=tk.LEFT, padx=(1, 0))
@@ -471,7 +488,7 @@ class MainView:
         detection_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
         detection_fps_frame.pack(side=tk.LEFT)
         
-        tk.Label(detection_fps_frame, text="🔍", font=('Arial', 8), bg='#f8f9fa').pack(side=tk.LEFT)
+        tk.Label(detection_fps_frame, text="🔍", font=('Arial', 11), bg='#f8f9fa').pack(side=tk.LEFT)
         detection_fps_label = tk.Label(detection_fps_frame, textvariable=self.detection_fps_var,
                                       font=('Arial', 8, 'bold'), fg='#af52de', bg='#f8f9fa')
         detection_fps_label.pack(side=tk.LEFT, padx=(1, 0))
@@ -484,7 +501,7 @@ class MainView:
         count_inner.pack(padx=4, pady=1)
         
         tk.Label(count_inner, text="物件:", 
-                font=('Arial', 8), fg='#856404', bg='#fff3cd').pack(side=tk.LEFT)
+                font=('Arial', 11), fg='#856404', bg='#fff3cd').pack(side=tk.LEFT)
         
         count_value = tk.Label(count_inner, textvariable=self.object_count_var, 
                               font=('Arial', 9, 'bold'), fg='#d73527', bg='#fff3cd')
@@ -553,7 +570,7 @@ class MainView:
         
         # 標題
         count_title = tk.Label(count_container, text="當前計數", 
-                              font=('Arial', 9), fg='#666666', bg='#ffffff')
+                              font=('Arial', 12), fg='#666666', bg='#ffffff')
         count_title.pack(pady=(8, 2))
         
         # 大數字顯示 - 專業樣式
@@ -569,7 +586,7 @@ class MainView:
         target_container.pack(fill=tk.X, pady=(0, 8), padx=8)
         
         tk.Label(target_container, text="目標數量:", 
-                font=('Arial', 9), fg='#333333', bg='#f8f9fa').pack(side=tk.LEFT)
+                font=('Arial', 12), fg='#333333', bg='#f8f9fa').pack(side=tk.LEFT)
         
         self.target_count_var = tk.IntVar(value=100)
         target_entry = tk.Entry(target_container, textvariable=self.target_count_var,
@@ -590,7 +607,7 @@ class MainView:
         
         # 進度文字 - 居中顯示
         self.progress_text = tk.Label(progress_container, text="0 / 100", 
-                                     font=('Arial', 9), fg='#666666', bg='#f8f9fa')
+                                     font=('Arial', 12), fg='#666666', bg='#f8f9fa')
         self.progress_text.pack()
         
         # 控制按鈕區域 - 專業布局
@@ -609,7 +626,7 @@ class MainView:
         
         # 停止按鈕 - 專業樣式
         self.stop_batch_btn = tk.Button(btn_container, text="⏹ 停止",
-                                       font=('Arial', 9),
+                                       font=('Arial', 12),
                                        bg='#f2f2f7', fg='#ff3b30',
                                        activebackground='#e5e5ea',
                                        relief='solid', borderwidth=1,
@@ -632,15 +649,24 @@ class MainView:
         min_label_frame.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Label(min_label_frame, text="最小面積", style='Apple.TLabel').pack(side=tk.LEFT)
-        self.min_area_var = tk.IntVar(value=100)
-        self.min_area_label = ttk.Label(min_label_frame, text="100", style='AppleSubtitle.TLabel')
-        self.min_area_label.pack(side=tk.RIGHT)
         
-        min_scale = ttk.Scale(min_area_frame, from_=10, to=2000, 
+        # 最小面積輸入框
+        min_input_frame = ttk.Frame(min_label_frame, style='Apple.TFrame')
+        min_input_frame.pack(side=tk.RIGHT)
+        
+        self.min_area_var = tk.IntVar(value=100)
+        self.min_area_entry = ttk.Entry(min_input_frame, textvariable=self.min_area_var, 
+                                       width=6, font=('Arial', 12))
+        self.min_area_entry.pack(side=tk.LEFT)
+        self.min_area_entry.bind('<Return>', self.on_min_area_entry_changed)
+        self.min_area_entry.bind('<FocusOut>', self.on_min_area_entry_changed)
+        
+        # 最小面積滑動條
+        min_scale = ttk.Scale(min_area_frame, from_=1, to=5000,
                              variable=self.min_area_var, orient=tk.HORIZONTAL,
                              style='Apple.Horizontal.TScale',
-                             command=self.on_parameter_changed_scale)
-        min_scale.pack(fill=tk.X)
+                             command=self.on_min_area_changed_scale)
+        min_scale.pack(fill=tk.X, pady=(5, 0))
         
         # 最大面積控制
         max_area_frame = ttk.Frame(params_frame, style='Apple.TFrame')
@@ -650,15 +676,24 @@ class MainView:
         max_label_frame.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Label(max_label_frame, text="最大面積", style='Apple.TLabel').pack(side=tk.LEFT)
-        self.max_area_var = tk.IntVar(value=5000)
-        self.max_area_label = ttk.Label(max_label_frame, text="5000", style='AppleSubtitle.TLabel')
-        self.max_area_label.pack(side=tk.RIGHT)
         
-        max_scale = ttk.Scale(max_area_frame, from_=100, to=20000, 
+        # 最大面積輸入框
+        max_input_frame = ttk.Frame(max_label_frame, style='Apple.TFrame')
+        max_input_frame.pack(side=tk.RIGHT)
+        
+        self.max_area_var = tk.IntVar(value=5000)
+        self.max_area_entry = ttk.Entry(max_input_frame, textvariable=self.max_area_var, 
+                                       width=6, font=('Arial', 12))
+        self.max_area_entry.pack(side=tk.LEFT)
+        self.max_area_entry.bind('<Return>', self.on_max_area_entry_changed)
+        self.max_area_entry.bind('<FocusOut>', self.on_max_area_entry_changed)
+        
+        # 最大面積滑動條
+        max_scale = ttk.Scale(max_area_frame, from_=100, to=50000,
                              variable=self.max_area_var, orient=tk.HORIZONTAL,
                              style='Apple.Horizontal.TScale',
-                             command=self.on_parameter_changed_scale)
-        max_scale.pack(fill=tk.X)
+                             command=self.on_max_area_changed_scale)
+        max_scale.pack(fill=tk.X, pady=(5, 0))
     
     def create_realtime_statistics(self):
         """創建實時統計顯示 - Apple風格"""
@@ -701,77 +736,194 @@ class MainView:
                             bg=self.theme_manager.get_color('BACKGROUND_CARD'))
         fps_label.pack(anchor=tk.W, pady=2)
     
-    def toggle_left_panel(self):
-        """切換左側面板顯示/隱藏"""
-        if self.left_panel_visible:
-            self.left_panel.grid_remove()
-            self.left_panel_visible = False
-        else:
-            self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
-            self.left_panel_visible = True
-    
-    def toggle_right_panel(self):
-        """切換右側面板顯示/隱藏"""
-        if self.right_panel_visible:
-            self.right_panel.grid_remove()
-            self.right_panel_visible = False
-        else:
-            self.right_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
-            self.right_panel_visible = True
-    
-    def on_window_resize(self, event):
-        """處理視窗大小變化"""
-        if event.widget == self.root:
-            # 根據視窗寬度調整面板可見性
-            window_width = self.root.winfo_width()
-            
-            if window_width < 1000:
-                # 小視窗：只顯示中央面板
-                if self.left_panel_visible:
-                    self.toggle_left_panel()
-                if self.right_panel_visible:
-                    self.toggle_right_panel()
-            elif window_width < 1200:
-                # 中等視窗：顯示中央和右側面板
-                if self.left_panel_visible:
-                    self.toggle_left_panel()
-                if not self.right_panel_visible:
-                    self.toggle_right_panel()
-            else:
-                # 大視窗：顯示所有面板
-                if not self.left_panel_visible:
-                    self.toggle_left_panel()
-                if not self.right_panel_visible:
-                    self.toggle_right_panel()
+    # 移除了複雜的面板切換功能，保持簡潔的固定布局
     
     def on_exposure_changed_scale(self, value):
         """曝光滑塊變化回調"""
+        if self._exposure_updating:  # 避免循環更新
+            return
+            
         try:
             exposure_time = float(value)
-            self.exposure_label.config(text=f"{exposure_time:.1f}")
-            success = self.controller.set_exposure_time(exposure_time)
-            if success:
-                self.status_var.set(f"狀態: 曝光時間已調整為 {exposure_time:.1f}μs")
+            # 模擬10μs步長的精確度控制
+            exposure_time = round(exposure_time / 10) * 10
+            
+            self._exposure_updating = True
+            self.exposure_var.set(exposure_time)  # 更新變量到四捨五入後的值
+            self._exposure_updating = False
+            
+            # 只有在相機連接時才嘗試設置曝光時間
+            if hasattr(self.controller, 'camera_model') and self.controller.camera_model:
+                camera_info = self.controller.camera_model.get_camera_info()
+                if camera_info.get('is_connected', False):
+                    success = self.controller.set_exposure_time(exposure_time)
+                    if success:
+                        self.status_var.set(f"狀態: 曝光時間已調整為 {exposure_time:.0f}μs")
+                    else:
+                        self.status_var.set(f"狀態: 曝光時間設置失敗")
+                else:
+                    self.status_var.set(f"狀態: 曝光時間已設為 {exposure_time:.0f}μs (相機未連接)")
+            else:
+                self.status_var.set(f"狀態: 曝光時間已設為 {exposure_time:.0f}μs (相機未連接)")
         except Exception as e:
             logging.error(f"調整曝光時間錯誤: {str(e)}")
     
-    def on_parameter_changed_scale(self, value):
-        """檢測參數滑塊變化回調"""
-        try:
-            # 更新顯示的數值標籤
-            if hasattr(self, 'min_area_label'):
-                self.min_area_label.config(text=str(self.min_area_var.get()))
-            if hasattr(self, 'max_area_label'):
-                self.max_area_label.config(text=str(self.max_area_var.get()))
+    def on_exposure_entry_changed(self, event=None):
+        """曝光輸入框變化回調"""
+        if self._exposure_updating:  # 避免循環更新
+            return
             
-            # 更新檢測參數
+        try:
+            exposure_time = self.exposure_var.get()
+            
+            # 輸入驗證：檢查曝光時間範圍
+            if not (100.0 <= exposure_time <= 50000.0):
+                self.status_var.set("錯誤: 曝光時間必須在100-50000μs之間")
+                self.exposure_var.set(max(100, min(50000, exposure_time)))  # 自動修正
+                return
+            
+            # 模擬10μs步長的精確度控制
+            exposure_time = round(exposure_time / 10) * 10
+            
+            self._exposure_updating = True
+            self.exposure_var.set(exposure_time)
+            self._exposure_updating = False
+            
+            # 只有在相機連接時才嘗試設置曝光時間
+            if hasattr(self.controller, 'camera_model') and self.controller.camera_model:
+                camera_info = self.controller.camera_model.get_camera_info()
+                if camera_info.get('is_connected', False):
+                    success = self.controller.set_exposure_time(exposure_time)
+                    if success:
+                        self.status_var.set(f"狀態: 曝光時間已調整為 {exposure_time:.0f}μs")
+                    else:
+                        self.status_var.set(f"狀態: 曝光時間設置失敗")
+                else:
+                    self.status_var.set(f"狀態: 曝光時間已設為 {exposure_time:.0f}μs (相機未連接)")
+            else:
+                self.status_var.set(f"狀態: 曝光時間已設為 {exposure_time:.0f}μs (相機未連接)")
+                
+        except (ValueError, TypeError) as e:
+            self.status_var.set("錯誤: 請輸入有效的數值")
+            logging.error(f"曝光時間輸入格式錯誤: {str(e)}")
+        except Exception as e:
+            logging.error(f"調整曝光時間錯誤: {str(e)}")
+            self.status_var.set("錯誤: 調整曝光時間時發生未知錯誤")
+    
+    def on_min_area_changed_scale(self, value):
+        """最小面積滑塊變化回調"""
+        if self._min_area_updating:  # 避免循環更新
+            return
+            
+        try:
+            min_area = int(float(value))  # 確保為整數
+            
+            self._min_area_updating = True
+            self.min_area_var.set(min_area)
+            self._min_area_updating = False
+            
+            self._update_detection_parameters()
+        except Exception as e:
+            logging.error(f"更新最小面積錯誤: {str(e)}")
+    
+    def on_max_area_changed_scale(self, value):
+        """最大面積滑塊變化回調"""
+        if self._max_area_updating:  # 避免循環更新
+            return
+            
+        try:
+            max_area = round(float(value) / 10) * 10  # 四捨五入到10的倍數
+            
+            self._max_area_updating = True
+            self.max_area_var.set(max_area)
+            self._max_area_updating = False
+            
+            self._update_detection_parameters()
+        except Exception as e:
+            logging.error(f"更新最大面積錯誤: {str(e)}")
+    
+    def on_min_area_entry_changed(self, event=None):
+        """最小面積輸入框變化回調"""
+        if self._min_area_updating:  # 避免循環更新
+            return
+            
+        try:
+            min_area = self.min_area_var.get()
+            
+            # 輸入驗證
+            if min_area < 1 or min_area > 5000:
+                self.status_var.set("錯誤: 最小面積必須在1-5000之間")
+                self.min_area_var.set(max(1, min(5000, min_area)))  # 自動修正
+                return
+            
+            # 檢查邏輯關係
+            max_area = self.max_area_var.get()
+            if min_area >= max_area:
+                self.status_var.set("錯誤: 最小面積必須小於最大面積")
+                return
+            
+            self._update_detection_parameters()
+                
+        except (ValueError, TypeError) as e:
+            self.status_var.set("錯誤: 請輸入有效的整數")
+            logging.error(f"最小面積輸入格式錯誤: {str(e)}")
+        except Exception as e:
+            logging.error(f"更新最小面積錯誤: {str(e)}")
+    
+    def on_max_area_entry_changed(self, event=None):
+        """最大面積輸入框變化回調"""
+        if self._max_area_updating:  # 避免循環更新
+            return
+            
+        try:
+            max_area = self.max_area_var.get()
+            
+            # 輸入驗證
+            if max_area < 100 or max_area > 50000:
+                self.status_var.set("錯誤: 最大面積必須在100-50000之間")
+                self.max_area_var.set(max(100, min(50000, max_area)))  # 自動修正
+                return
+            
+            # 模擬10的倍數精確度控制
+            max_area = round(max_area / 10) * 10
+            
+            self._max_area_updating = True
+            self.max_area_var.set(max_area)
+            self._max_area_updating = False
+            
+            # 檢查邏輯關係
+            min_area = self.min_area_var.get()
+            if max_area <= min_area:
+                self.status_var.set("錯誤: 最大面積必須大於最小面積")
+                return
+            
+            self._update_detection_parameters()
+                
+        except (ValueError, TypeError) as e:
+            self.status_var.set("錯誤: 請輸入有效的整數")
+            logging.error(f"最大面積輸入格式錯誤: {str(e)}")
+        except Exception as e:
+            logging.error(f"更新最大面積錯誤: {str(e)}")
+    
+    def _update_detection_parameters(self):
+        """統一的檢測參數更新方法"""
+        try:
+            min_area = self.min_area_var.get()
+            max_area = self.max_area_var.get()
+            
             params = {
-                'min_area': self.min_area_var.get(),
-                'max_area': self.max_area_var.get()
+                'min_area': min_area,
+                'max_area': max_area
             }
-            self.controller.update_detection_parameters(params)
+            
+            success = self.controller.update_detection_parameters(params)
+            if success:
+                self.status_var.set(f"狀態: 檢測參數已更新 (面積: {min_area}-{max_area})")
+            else:
+                self.status_var.set("狀態: 檢測參數更新失敗")
         except Exception as e:
             logging.error(f"更新檢測參數錯誤: {str(e)}")
+            self.status_var.set("錯誤: 更新檢測參數時發生錯誤")
     
         
     # ==================== 批次控制方法 ====================
@@ -871,7 +1023,7 @@ class MainView:
         status_indicator.pack(side=tk.LEFT)
         
         tk.Label(status_indicator, text="狀態:", 
-                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+                font=('Arial', 12), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
         
         self.status_display = tk.Label(status_indicator, textvariable=self.status_var,
                                      font=('Arial', 9, 'bold'), 
@@ -883,10 +1035,10 @@ class MainView:
         camera_info.pack(side=tk.LEFT)
         
         tk.Label(camera_info, text="相機:", 
-                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+                font=('Arial', 12), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
         
         self.camera_display = tk.Label(camera_info, textvariable=self.camera_info_var,
-                                     font=('Arial', 9), 
+                                     font=('Arial', 12), 
                                      bg='#e8e8e8', fg='#666666')
         self.camera_display.pack(side=tk.LEFT, padx=(5, 0))
         
@@ -903,7 +1055,7 @@ class MainView:
         camera_fps_frame.pack(side=tk.LEFT, padx=(0, 20))
         
         tk.Label(camera_fps_frame, text="相機:", 
-                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+                font=('Arial', 12), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
         camera_fps_display = tk.Label(camera_fps_frame, textvariable=self.camera_fps_var,
                                      font=('Arial', 9, 'bold'), 
                                      bg='#e8e8e8', fg='#34c759')
@@ -914,7 +1066,7 @@ class MainView:
         processing_fps_frame.pack(side=tk.LEFT, padx=(0, 20))
         
         tk.Label(processing_fps_frame, text="處理:", 
-                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+                font=('Arial', 12), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
         processing_fps_display = tk.Label(processing_fps_frame, textvariable=self.processing_fps_var,
                                          font=('Arial', 9, 'bold'), 
                                          bg='#e8e8e8', fg='#007aff')
@@ -925,7 +1077,7 @@ class MainView:
         detection_fps_frame.pack(side=tk.LEFT)
         
         tk.Label(detection_fps_frame, text="檢測:", 
-                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+                font=('Arial', 12), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
         detection_fps_display = tk.Label(detection_fps_frame, textvariable=self.detection_fps_var,
                                         font=('Arial', 9, 'bold'), 
                                         bg='#e8e8e8', fg='#af52de')
@@ -938,7 +1090,7 @@ class MainView:
         import time
         current_time = time.strftime("%Y-%m-%d %H:%M:%S")
         self.time_display = tk.Label(right_status, text=current_time,
-                                   font=('Arial', 9), 
+                                   font=('Arial', 12), 
                                    bg='#e8e8e8', fg='#666666')
         self.time_display.pack()
         
@@ -984,6 +1136,9 @@ class MainView:
                 self._on_camera_connected(data)
                 self.update_video_status("就緒")
             
+            elif event_type == 'camera_disconnected':
+                self._on_camera_disconnected()
+            
             elif event_type == 'frame_processed':
                 self._on_frame_processed(data)
             
@@ -1011,7 +1166,38 @@ class MainView:
         """處理相機連接"""
         model = camera_info.get('model', 'Unknown')
         serial = camera_info.get('serial', 'N/A')
+        
+        # 保持舊接口兼容性
         self.camera_info_var.set(f"相機: {model} ({serial})")
+        
+        # 更新連接狀態
+        self.is_camera_connected = True
+        self.connection_switch_on = True
+        
+        # 在設備列表中找到對應設備並設置為選中
+        for i, camera in enumerate(self.detected_cameras):
+            if camera.get('model') == model and camera.get('serial') == serial:
+                self.selected_camera_index = i
+                break
+        
+        self.update_connection_ui()
+        self.update_device_list_ui()
+    
+    def _on_camera_disconnected(self):
+        """處理相機斷開連接"""
+        # 保持舊接口兼容性
+        self.camera_info_var.set("相機: 未連接")
+        
+        # 更新連接狀態
+        self.is_camera_connected = False
+        self.connection_switch_on = False
+        self.selected_camera_index = -1
+        
+        self.update_connection_ui()
+        self.update_device_list_ui()
+        
+        # 清空視頻顯示
+        self.update_video_status("相機未連接")
     
     def _on_frame_processed(self, data):
         """處理幀更新 - 批次模式"""
@@ -1109,13 +1295,42 @@ class MainView:
             logging.error(f"更新檢測品質錯誤: {str(e)}")
     
     def _update_status_display(self):
-        """更新狀態顯示"""
+        """更新狀態顯示 - 平滑FPS顯示"""
         try:
             status = self.controller.get_system_status()
             
-            self.camera_fps_var.set(f"相機: {status['camera_fps']:.1f} FPS")
-            self.processing_fps_var.set(f"處理: {status['processing_fps']:.1f} FPS")
-            self.detection_fps_var.set(f"檢測: {status['detection_fps']:.1f} FPS")
+            # 添加到歷史記錄
+            self.fps_history['camera'].append(status['camera_fps'])
+            self.fps_history['processing'].append(status['processing_fps'])
+            self.fps_history['detection'].append(status['detection_fps'])
+            
+            # 限制歷史記錄大小 (保持最近10個值)
+            for key in self.fps_history:
+                if len(self.fps_history[key]) > 10:
+                    self.fps_history[key].pop(0)
+            
+            # 每5次更新才刷新一次顯示 (降低刷新頻率)
+            self.fps_update_counter += 1
+            if self.fps_update_counter >= 5:
+                self.fps_update_counter = 0
+                
+                # 計算平滑的平均值
+                camera_avg = sum(self.fps_history['camera']) / len(self.fps_history['camera']) if self.fps_history['camera'] else 0
+                processing_avg = sum(self.fps_history['processing']) / len(self.fps_history['processing']) if self.fps_history['processing'] else 0
+                detection_avg = sum(self.fps_history['detection']) / len(self.fps_history['detection']) if self.fps_history['detection'] else 0
+                
+                # 更新顯示 - 仿Basler格式，防止4位數造成畫面異動
+                camera_fps_text = f"{min(camera_avg, 999.0):.1f} fps" if camera_avg < 1000 else "999+ fps"
+                processing_fps_text = f"{min(processing_avg, 999.0):.1f} fps" if processing_avg < 1000 else "999+ fps"
+                detection_fps_text = f"{min(detection_avg, 999.0):.1f} fps" if detection_avg < 1000 else "999+ fps"
+                
+                # 計算大致的數據速率（假設每幀約86KB）
+                data_rate = (camera_avg * 86) / 1024  # MB/s
+                data_rate_text = f"({data_rate:.1f} MB/s)" if data_rate < 1000 else "(999+ MB/s)"
+                
+                self.camera_fps_var.set(f"相機: {camera_fps_text} {data_rate_text}")
+                self.processing_fps_var.set(f"處理: {processing_fps_text}")
+                self.detection_fps_var.set(f"檢測: {detection_fps_text}")
             
         except Exception as e:
             logging.error(f"更新狀態顯示錯誤: {str(e)}")
@@ -1147,10 +1362,15 @@ class MainView:
             pil_image = Image.fromarray(frame)
             photo = ImageTk.PhotoImage(pil_image)
             
-            # 更新顯示
-            if self.video_label and self.video_label.winfo_exists():
-                self.video_label.configure(image=photo, text="")  # 清除文字
-                self.video_label.image = photo  # 保持引用避免垃圾回收
+            # 更新顯示 - 增強安全檢查
+            if (hasattr(self, 'video_label') and self.video_label and 
+                hasattr(self.video_label, 'winfo_exists') and self.video_label.winfo_exists()):
+                try:
+                    self.video_label.configure(image=photo, text="")  # 清除文字
+                    self.video_label.image = photo  # 保持引用避免垃圾回收
+                except tk.TclError as e:
+                    logging.warning(f"視頻標籤配置錯誤: {str(e)}")
+                    # 標籤可能已被銷毀，忽略此次更新
                 
                 # 第一次顯示幀時的日誌
                 if not hasattr(self, '_first_display_logged'):
@@ -1162,23 +1382,281 @@ class MainView:
     
     # ==================== 控制方法 ====================
     
-    def detect_cameras(self):
-        """檢測相機"""
-        self.controller.detect_cameras()
+    def refresh_device_list(self):
+        """刷新設備列表"""
+        try:
+            # 檢測可用相機
+            self.detected_cameras = self.controller.detect_cameras()
+            
+            # 清空列表
+            self.device_listbox.delete(0, tk.END)
+            
+            # 添加檢測到的設備
+            if self.detected_cameras:
+                for i, camera in enumerate(self.detected_cameras):
+                    model = camera.get('model', 'Unknown')
+                    serial = camera.get('serial', 'N/A')
+                    is_target = camera.get('is_target', False)
+                    
+                    # 格式化顯示文字
+                    display_text = f"{model} ({serial})"
+                    if is_target:
+                        display_text += " ✓"
+                    
+                    self.device_listbox.insert(tk.END, display_text)
+            else:
+                self.device_listbox.insert(tk.END, "未檢測到設備")
+                
+        except Exception as e:
+            logging.error(f"刷新設備列表錯誤: {str(e)}")
+            self.device_listbox.delete(0, tk.END)
+            self.device_listbox.insert(tk.END, "檢測失敗")
     
-    def connect_camera(self):
-        """連接相機"""
-        self.controller.connect_camera()
+    def on_device_double_click(self, event):
+        """設備列表雙擊事件"""
+        try:
+            selection = self.device_listbox.curselection()
+            if not selection or not self.detected_cameras:
+                return
+                
+            selected_index = selection[0]
+            if selected_index >= len(self.detected_cameras):
+                return
+                
+            # 如果已經連接其他設備，先斷開
+            if self.is_camera_connected:
+                self.disconnect_camera()
+                
+            # 連接選中的設備
+            self.selected_camera_index = selected_index
+            selected_camera = self.detected_cameras[selected_index]
+            
+            self.status_var.set(f"狀態: 正在連接 {selected_camera['model']}...")
+            
+            # 嘗試連接 - 使用簡單的連接方法避免重複連接
+            success = self.controller.connect_camera(selected_index)
+            if success:
+                # 連接成功後啟動捕獲
+                if self.controller.start_capture():
+                    # 啟動處理循環
+                    self.controller._start_processing()
+                    
+                    self.is_camera_connected = True
+                    self.connection_switch_on = True
+                    self.update_connection_ui()
+                    self.update_device_list_ui()
+                    self.status_var.set(f"狀態: 已連接 {selected_camera['model']}")
+                else:
+                    self.status_var.set("錯誤: 啟動捕獲失敗")
+            else:
+                self.status_var.set("錯誤: 相機連接失敗")
+                
+        except Exception as e:
+            logging.error(f"設備雙擊連接錯誤: {str(e)}")
+            self.status_var.set("錯誤: 連接操作失敗")
+    
+    def toggle_connection_switch(self):
+        """切換連接開關"""
+        try:
+            if self.connection_switch_on:
+                # 斷開連接
+                self.disconnect_camera()
+                self.connection_switch_on = False
+            else:
+                # 檢查是否有選中的設備
+                selection = self.device_listbox.curselection()
+                if not selection or not self.detected_cameras:
+                    self.status_var.set("錯誤: 請先選擇要連接的設備")
+                    return
+                    
+                # 連接選中的設備
+                self.on_device_double_click(None)
+                
+            self.update_connection_switch_ui()
+            
+        except Exception as e:
+            logging.error(f"切換連接開關錯誤: {str(e)}")
+            self.status_var.set("錯誤: 開關操作失敗")
+    
+    def disconnect_camera(self):
+        """斷開相機連接"""
+        try:
+            self.controller.disconnect_camera()
+            self.is_camera_connected = False
+            self.selected_camera_index = -1
+            self.update_connection_ui()
+            self.update_device_list_ui()
+            self.status_var.set("狀態: 相機已斷開連接")
+        except Exception as e:
+            logging.error(f"斷開相機錯誤: {str(e)}")
+    
+    def update_device_list_ui(self):
+        """更新設備列表UI顯示"""
+        try:
+            # 重新填充列表，更新連接狀態的顯示
+            self.device_listbox.delete(0, tk.END)
+            
+            if self.detected_cameras:
+                for i, camera in enumerate(self.detected_cameras):
+                    model = camera.get('model', 'Unknown')
+                    serial = camera.get('serial', 'N/A')
+                    is_target = camera.get('is_target', False)
+                    
+                    # 格式化顯示文字
+                    display_text = f"{model} ({serial})"
+                    if is_target:
+                        display_text += " ✓"
+                    
+                    self.device_listbox.insert(tk.END, display_text)
+                    
+                    # 如果是已連接的設備，設置為粗體（通過選中狀態模擬）
+                    if i == self.selected_camera_index and self.is_camera_connected:
+                        self.device_listbox.selection_set(i)
+            else:
+                self.device_listbox.insert(tk.END, "未檢測到設備")
+                
+        except Exception as e:
+            logging.error(f"更新設備列表UI錯誤: {str(e)}")
+    
+    def update_connection_switch_ui(self):
+        """更新連接開關UI"""
+        if self.connection_switch_on:
+            # 開啟狀態
+            self.connection_switch.config(
+                text="●",
+                bg='#34c759',
+                fg='white'
+            )
+        else:
+            # 關閉狀態
+            self.connection_switch.config(
+                text="○",
+                bg='#e0e0e0',
+                fg='#999999'
+            )
+    
+    def toggle_camera_connection(self):
+        """切換相機連接狀態 - 仿Basler設計"""
+        try:
+            if self.is_camera_connected:
+                # 斷開連接
+                self.controller.disconnect_camera()
+                self.is_camera_connected = False
+                self.connection_switch_on = False
+                self.update_connection_ui()
+                self.status_var.set("狀態: 相機已斷開連接")
+            else:
+                # 檢查是否有選中的設備
+                selection = self.device_listbox.curselection()
+                if not selection or not self.detected_cameras:
+                    self.status_var.set("錯誤: 請先雙擊選擇要連接的設備")
+                    return
+                    
+                # 連接選中的設備
+                self.on_device_double_click(None)
+                
+        except Exception as e:
+            logging.error(f"切換相機連接錯誤: {str(e)}")
+            self.status_var.set("錯誤: 相機連接操作失敗")
+    
+    def toggle_processing(self):
+        """切換影像處理狀態"""
+        try:
+            if self.is_processing_active:
+                # 停止處理
+                self.controller.stop_system()
+                self.is_processing_active = False
+                self.update_processing_ui()
+                self.status_var.set("狀態: 影像處理已停止")
+            else:
+                # 啟動處理
+                if not self.is_camera_connected:
+                    self.status_var.set("錯誤: 請先連接相機")
+                    return
+                    
+                self.controller.start_system()
+                self.is_processing_active = True
+                self.update_processing_ui()
+                self.status_var.set("狀態: 影像處理已啟動")
+        except Exception as e:
+            logging.error(f"切換處理狀態錯誤: {str(e)}")
+            self.status_var.set("錯誤: 處理狀態切換失敗")
+    
+    def update_connection_ui(self):
+        """更新連接狀態的UI"""
+        if self.is_camera_connected:
+            # 已連接狀態
+            self.connection_status_label.config(
+                text="● 已連接",
+                fg='#34c759'
+            )
+            # 啟用相關功能按鈕
+            self.start_processing_btn.config(state='normal')
+            self.exposure_entry.config(state='normal')
+            self.min_area_entry.config(state='normal')
+            self.max_area_entry.config(state='normal')
+            if hasattr(self, 'detection_method'):
+                self.detection_method.config(state='readonly')
+        else:
+            # 未連接狀態
+            self.connection_status_label.config(
+                text="● 未連接",
+                fg='#ff3b30'
+            )
+            # 禁用相關功能按鈕
+            self.start_processing_btn.config(state='disabled')
+            self.exposure_entry.config(state='disabled')
+            self.min_area_entry.config(state='disabled')
+            self.max_area_entry.config(state='disabled')
+            if hasattr(self, 'detection_method'):
+                self.detection_method.config(state='disabled')
+            
+            # 重置處理狀態
+            if self.is_processing_active:
+                self.is_processing_active = False
+                self.update_processing_ui()
+        
+        # 更新連接開關
+        self.update_connection_switch_ui()
+    
+    def update_processing_ui(self):
+        """更新處理狀態的UI"""
+        if self.is_processing_active:
+            self.start_processing_btn.config(
+                text="⏸️ 停止處理",
+                bg='#ff9500',
+                activebackground='#e6870b'
+            )
+        else:
+            self.start_processing_btn.config(
+                text="▶️ 啟動處理",
+                bg='#f2f2f7',
+                fg='#007aff'
+            )
     
     def auto_start_system(self):
-        """一鍵啟動系統 - 自動檢測並啟動相機"""
-        self.update_video_status("獲取中")
-        self.controller.auto_start_camera_system()
+        """一鍵啟動系統 - 同時連接相機和啟動處理"""
+        try:
+            if not self.is_camera_connected:
+                # 先連接相機
+                self.toggle_camera_connection()
+                # 等待連接完成
+                self.root.after(1000, self._start_processing_after_connection)
+            else:
+                # 直接啟動處理
+                if not self.is_processing_active:
+                    self.toggle_processing()
+        except Exception as e:
+            logging.error(f"一鍵啟動錯誤: {str(e)}")
+    
+    def _start_processing_after_connection(self):
+        """連接後啟動處理"""
+        if self.is_camera_connected and not self.is_processing_active:
+            self.toggle_processing()
     
     def start_system(self):
-        """啟動系統"""
-        self.update_video_status("獲取中")
-        self.controller.start_system()
+        """啟動系統（舊接口，重定向到新邏輯）"""
+        self.auto_start_system()
     
     def stop_system(self):
         """停止系統"""
@@ -1199,25 +1677,7 @@ class MainView:
         enabled = self.detection_enabled.get()
         self.controller.toggle_detection(enabled)
     
-    def on_parameter_changed(self):
-        """參數改變"""
-        params = {
-            'min_area': self.min_area_var.get(),
-            'max_area': self.max_area_var.get()
-        }
-        self.controller.update_detection_parameters(params)
-    
-    def on_exposure_changed(self):
-        """曝光時間改變"""
-        try:
-            exposure_time = self.exposure_var.get()
-            success = self.controller.set_exposure_time(exposure_time)
-            if success:
-                self.status_var.set(f"狀態: 曝光時間已調整為 {exposure_time}μs")
-            else:
-                self.status_var.set("狀態: 曝光時間調整失敗")
-        except Exception as e:
-            logging.error(f"調整曝光時間錯誤: {str(e)}")
+    # 舊的參數處理函數已被新的輸入框+滑動條組合方式取代
     
     def open_parameter_dialog(self):
         """打開參數設置對話框"""
@@ -1246,67 +1706,7 @@ class MainView:
         
         ttk.Button(button_frame, text="確定", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
-    def show_performance_report(self):
-        """顯示性能報告"""
-        try:
-            report = self.controller.get_performance_report()
-            
-            report_text = "🚀 系統性能報告\n"
-            report_text += "=" * 50 + "\n\n"
-            
-            # 相機性能
-            cam_perf = report['camera_performance']
-            report_text += f"📹 相機性能: {cam_perf['grade']}\n"
-            report_text += f"   FPS: {cam_perf['fps']:.1f}\n"
-            report_text += f"   總幀數: {cam_perf['total_frames']}\n\n"
-            
-            # 處理性能
-            proc_perf = report['processing_performance']
-            report_text += f"⚙️ 處理性能: {proc_perf['grade']}\n"
-            report_text += f"   FPS: {proc_perf['fps']:.1f}\n"
-            report_text += f"   總幀數: {proc_perf['total_frames']}\n\n"
-            
-            # 檢測性能
-            det_perf = report['detection_performance']
-            report_text += f"🔍 檢測性能:\n"
-            report_text += f"   FPS: {det_perf['fps']:.1f}\n"
-            report_text += f"   物件數: {det_perf['object_count']}\n"
-            report_text += f"   方法: {det_perf['method']}\n\n"
-            
-            # 系統效率
-            sys_eff = report['system_efficiency']
-            report_text += f"📊 系統效率:\n"
-            report_text += f"   處理效率: {sys_eff['fps_ratio']:.2%}\n"
-            report_text += f"   運行時間: {sys_eff['elapsed_time']:.1f}s"
-            
-            messagebox.showinfo("性能報告", report_text)
-            
-        except Exception as e:
-            messagebox.showerror("錯誤", f"生成性能報告失敗: {str(e)}")
-    
-    def show_about(self):
-        """顯示關於信息"""
-        about_text = """🚀 Basler acA640-300gm 精簡高性能系統
-
-🎯 專為極致性能設計:
-• 型號: acA640-300gm (640×480)
-• 像素格式: Mono8
-• 目標FPS: 280+
-
-🔥 核心特色:
-✓ 精簡 MVC 架構
-✓ 高性能多線程處理
-✓ 實時影像檢測
-✓ 零延遲幀獲取
-
-⚡ 檢測方法:
-• 圓形檢測 (霍夫變換)
-• 輪廓檢測 (形態學)
-
-🏆 這是工業相機處理的精簡高效版本！
-專注核心功能，追求極致性能。"""
-        
-        messagebox.showinfo("關於系統", about_text)
+    # 移除了不必要的性能報告和關於功能，簡化界面
     
     # ==================== 生命週期 ====================
     

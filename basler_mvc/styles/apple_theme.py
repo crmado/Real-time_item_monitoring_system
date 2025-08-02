@@ -54,17 +54,17 @@ class AppleTheme:
         FONT_FAMILY_MONO = 'SF Mono'
         FONT_FAMILY_MONO_FALLBACK = 'Consolas'
         
-        # 字體大小 (遵循Apple設計指南)
-        FONT_SIZE_CAPTION = 9          # 說明文字
-        FONT_SIZE_SMALL = 11           # 小字體
-        FONT_SIZE_BODY = 13            # 正文
-        FONT_SIZE_SUBHEADLINE = 15     # 副標題
-        FONT_SIZE_HEADLINE = 17        # 標題
-        FONT_SIZE_TITLE3 = 20          # 三級標題
-        FONT_SIZE_TITLE2 = 22          # 二級標題
-        FONT_SIZE_TITLE1 = 28          # 一級標題
-        FONT_SIZE_LARGE_TITLE = 34     # 大標題
-        FONT_SIZE_DISPLAY = 40         # 顯示文字
+        # 字體大小 (針對高解析度螢幕優化，提高可讀性)
+        FONT_SIZE_CAPTION = 12         # 說明文字 (增大3px)
+        FONT_SIZE_SMALL = 14           # 小字體 (增大3px)
+        FONT_SIZE_BODY = 16            # 正文 (增大3px)
+        FONT_SIZE_SUBHEADLINE = 18     # 副標題 (增大3px)
+        FONT_SIZE_HEADLINE = 20        # 標題 (增大3px)
+        FONT_SIZE_TITLE3 = 23          # 三級標題 (增大3px)
+        FONT_SIZE_TITLE2 = 25          # 二級標題 (增大3px)
+        FONT_SIZE_TITLE1 = 31          # 一級標題 (增大3px)
+        FONT_SIZE_LARGE_TITLE = 37     # 大標題 (增大3px)
+        FONT_SIZE_DISPLAY = 43         # 顯示文字 (增大3px)
         
         # 字體權重 (tkinter支持的權重)
         FONT_WEIGHT_LIGHT = 'normal'      # tkinter沒有light，使用normal

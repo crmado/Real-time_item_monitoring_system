@@ -166,10 +166,13 @@ class BaslerCameraModel:
             return []
             
     def connect(self, device_index: int = 0) -> bool:
-        """連接指定相機"""
+        """連接指定相機 - 線程安全版本"""
         try:
             if self.is_connected:
+                logging.info("斷開現有連接...")
                 self.disconnect()
+                # 等待確保舊連接完全斷開
+                time.sleep(1.0)
                 
             tl_factory = pylon.TlFactory.GetInstance()
             devices = tl_factory.EnumerateDevices()
@@ -437,6 +440,10 @@ class BaslerCameraModel:
             self.total_frames += 1
             self.frame_times.append(current_time)
             
+            # 限制列表大小，防止記憶體洩漏
+            if len(self.frame_times) > 200:  # 保持最新200個時間戳
+                self.frame_times.pop(0)
+            
             # 計算實時 FPS
             if len(self.frame_times) >= 2:
                 time_span = self.frame_times[-1] - self.frame_times[0]
@@ -481,25 +488,51 @@ class BaslerCameraModel:
         return self.camera_info.copy()
         
     def stop_capture(self):
-        """停止捕獲"""
+        """停止捕獲 - 改進版，確保線程安全停止"""
         try:
+            if not self.is_grabbing:
+                logging.info("捕獲已經停止")
+                return
+                
+            logging.info("正在停止捕獲...")
             self.is_grabbing = False
             self.stop_event.set()
             
-            if hasattr(self, 'capture_thread'):
-                self.capture_thread.join(timeout=2.0)
-                
+            # 先停止相機抓取
             if self.camera and self.camera.IsGrabbing():
-                self.camera.StopGrabbing()
-                
-            # 清空隊列
-            while not self.frame_queue.empty():
                 try:
-                    self.frame_queue.get_nowait()
-                except queue.Empty:
-                    break
+                    self.camera.StopGrabbing()
+                    logging.info("相機停止抓取")
+                except Exception as e:
+                    logging.error(f"停止相機抓取失敗: {str(e)}")
+            
+            # 等待線程停止
+            if hasattr(self, 'capture_thread') and self.capture_thread:
+                if self.capture_thread.is_alive():
+                    logging.info("等待捕獲線程停止...")
+                    self.capture_thread.join(timeout=3.0)
+                    if self.capture_thread.is_alive():
+                        logging.warning("捕獲線程未能在3秒內停止")
+                    else:
+                        logging.info("捕獲線程已停止")
+                
+            # 安全清空隊列 - 防止死鎖
+            try:
+                # 設定清理超時，避免無限等待
+                start_time = time.time()
+                cleared_count = 0
+                while not self.frame_queue.empty() and (time.time() - start_time) < 1.0:
+                    try:
+                        self.frame_queue.get_nowait()
+                        cleared_count += 1
+                    except queue.Empty:
+                        break
+                if cleared_count > 0:
+                    logging.info(f"清空了 {cleared_count} 個幀")
+            except Exception as e:
+                logging.warning(f"清空幀隊列時發生錯誤: {str(e)}")
                     
-            logging.info("停止高速捕獲")
+            logging.info("停止高速捕獲完成")
             self.notify_observers('capture_stopped')
             
         except Exception as e:

@@ -323,9 +323,13 @@ class DetectionModel:
                 self.latest_objects = objects
                 self.object_count = len(objects)
             
-            # 更新性能統計
+            # 更新性能統計 - 防止記憶體洩漏
             detection_time = time.time() - start_time
             self.detection_times.append(detection_time)
+            
+            # 限制列表大小，防止記憶體無限增長
+            if len(self.detection_times) > 100:  # 保持最新100次檢測時間
+                self.detection_times.pop(0)
             
             if len(self.detection_times) >= 10:
                 avg_time = sum(self.detection_times) / len(self.detection_times)

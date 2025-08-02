@@ -83,15 +83,44 @@ class MainController:
         return self.camera_model.detect_cameras()
     
     def connect_camera(self, device_index: int = 0) -> bool:
-        """連接相機"""
-        success = self.camera_model.connect(device_index)
-        if success:
-            self.notify_views('system_status', '相機已連接')
-        return success
+        """連接相機 - 線程安全版本"""
+        try:
+            # 先完全停止任何現有的系統
+            self.force_stop_all()
+            
+            # 等待線程完全停止
+            time.sleep(0.5)
+            
+            success = self.camera_model.connect(device_index)
+            if success:
+                self.notify_views('system_status', '相機已連接')
+            return success
+        except Exception as e:
+            logging.error(f"連接相機錯誤: {str(e)}")
+            return False
+    
+    def force_stop_all(self):
+        """強制停止所有線程和連接 - 用於防止線程競爭"""
+        try:
+            # 停止處理循環
+            self._stop_processing()
+            
+            # 停止相機捕獲
+            if hasattr(self, 'camera_model') and self.camera_model:
+                self.camera_model.stop_capture()
+                
+            # 等待線程停止
+            if hasattr(self, 'processing_thread') and self.processing_thread and self.processing_thread.is_alive():
+                self.processing_thread.join(timeout=2.0)
+                
+            logging.info("強制停止所有線程完成")
+            
+        except Exception as e:
+            logging.error(f"強制停止錯誤: {str(e)}")
     
     def disconnect_camera(self):
         """斷開相機"""
-        self.stop_system()
+        self.force_stop_all()
         self.camera_model.disconnect()
         self.notify_views('system_status', '相機已斷開')
     
@@ -271,8 +300,13 @@ class MainController:
     # ==================== 系統控制 ====================
     
     def auto_start_camera_system(self) -> bool:
-        """自動檢測並啟動相機系統 - 一鍵啟動"""
+        """自動檢測並啟動相機系統 - 防止重複連接版本"""
         try:
+            # 檢查是否已經連接
+            if self.camera_model.is_connected and self.camera_model.is_grabbing:
+                print("   ⚠️ 相機已連接並正在捕獲，跳過重複啟動")
+                return True
+            
             print("   🔍 檢測可用相機...")
             cameras = self.detect_cameras()
             if not cameras:
@@ -293,10 +327,6 @@ class MainController:
             if not self.connect_camera(target_camera_index):
                 print("   ❌ 相機連接失敗")
                 return False
-            
-            # 跳過重複配置，相機模型已經配置好了
-            # print("   ⚙️ 配置高性能參數...")
-            # self._configure_high_performance()
             
             print("   🚀 啟動捕獲...")
             if not self.start_capture():
@@ -502,18 +532,73 @@ class MainController:
     
     # ==================== 清理 ====================
     
-    def cleanup(self):
-        """清理資源"""
+    def system_health_check(self) -> Dict[str, Any]:
+        """系統健康檢查"""
+        health_status = {
+            'camera_connected': False,
+            'camera_grabbing': False,
+            'processing_active': False,
+            'memory_usage': 'unknown',
+            'thread_status': 'unknown',
+            'error_count': 0,
+            'overall_status': 'unhealthy'
+        }
+        
         try:
+            # 檢查相機狀態
+            if self.camera_model:
+                camera_info = self.camera_model.get_camera_info()
+                health_status['camera_connected'] = camera_info.get('is_connected', False)
+                health_status['camera_grabbing'] = camera_info.get('is_grabbing', False)
+            
+            # 檢查處理狀態
+            health_status['processing_active'] = self.is_processing
+            
+            # 檢查線程狀態
+            thread_alive = (hasattr(self, 'processing_thread') and 
+                          self.processing_thread and 
+                          self.processing_thread.is_alive())
+            health_status['thread_status'] = 'alive' if thread_alive else 'stopped'
+            
+            # 計算總體健康狀態
+            if (health_status['camera_connected'] and 
+                health_status['processing_active'] and
+                thread_alive):
+                health_status['overall_status'] = 'healthy'
+            elif health_status['camera_connected']:
+                health_status['overall_status'] = 'warning'
+            else:
+                health_status['overall_status'] = 'critical'
+                
+        except Exception as e:
+            logging.error(f"系統健康檢查錯誤: {str(e)}")
+            health_status['error_count'] += 1
+        
+        return health_status
+    
+    def cleanup(self):
+        """清理資源 - 增強版本"""
+        try:
+            logging.info("開始清理控制器資源...")
+            
+            # 停止系統
             self.stop_system()
+            
+            # 斷開相機
             self.disconnect_camera()
+            
+            # 清理觀察者列表
+            if hasattr(self, 'view_observers'):
+                self.view_observers.clear()
+            
             logging.info("控制器資源清理完成")
         except Exception as e:
             logging.error(f"清理資源錯誤: {str(e)}")
     
     def __del__(self):
-        """析構函數"""
+        """析構函數 - 安全版本"""
         try:
             self.cleanup()
         except:
+            # 忽略析構時的所有異常，避免程序崩潰
             pass
