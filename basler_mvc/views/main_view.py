@@ -1,6 +1,7 @@
 """
 主視圖 - MVC 架構核心
 精簡的用戶界面，專注於 Basler 相機和檢測功能
+使用樣式分離架構，實現統一的視覺設計管理
 """
 
 import tkinter as tk
@@ -13,6 +14,9 @@ import time
 import logging
 from typing import Optional, Dict, Any
 
+# 導入優化後的樣式管理系統
+from ..styles import ThemeManager, AppleTheme
+
 
 class MainView:
     """主視圖 - 精簡高性能版本"""
@@ -22,10 +26,29 @@ class MainView:
         self.controller = controller
         self.root = tk.Tk()
         
-        # 視窗設置
+        # 視窗設置 - 響應式設計
         self.root.title("🚀 Basler acA640-300gm 精簡高性能系統")
-        self.root.geometry("1100x800")
+        
+        # 獲取螢幕尺寸
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # 設定最佳尺寸（螢幕的80%但不超過最大值，不低於最小值）
+        optimal_width = min(max(int(screen_width * 0.8), 1200), 1800)
+        optimal_height = min(max(int(screen_height * 0.8), 900), 1200)
+        
+        # 計算居中位置
+        x = (screen_width - optimal_width) // 2
+        y = (screen_height - optimal_height) // 2
+        
+        self.root.geometry(f"{optimal_width}x{optimal_height}+{x}+{y}")
+        self.root.minsize(1200, 900)  # 設置最小尺寸確保所有元素可見
         self.root.resizable(True, True)
+        
+        # 面板狀態控制
+        self.left_panel_visible = True
+        self.right_panel_visible = True
+        self.panels_width_ratio = {'left': 0.2, 'center': 0.6, 'right': 0.2}
         
         # UI 變量
         self.status_var = tk.StringVar(value="狀態: 系統就緒")
@@ -51,6 +74,9 @@ class MainView:
         # 相機參數
         self.exposure_var = None
         
+        # 初始化優化的主題管理器
+        self.theme_manager = ThemeManager(self.root, AppleTheme)
+        
         # 創建UI
         self.create_ui()
         
@@ -60,303 +86,718 @@ class MainView:
         logging.info("主視圖初始化完成")
     
     def create_ui(self):
-        """創建用戶界面"""
-        # 主框架
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        """創建響應式用戶界面 - 三欄布局"""
+        # 主容器 - Liquid Glass風格
+        main_container = ttk.Frame(self.root, style='Apple.TFrame')
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # 頂部控制面板
-        self.create_control_panel(main_frame)
+        # 頂部工具欄（固定高度）
+        self.create_top_toolbar(main_container)
         
-        # 中間視頻和檢測面板
-        middle_frame = ttk.Frame(main_frame)
-        middle_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        # 主要內容區域（三欄布局）
+        content_frame = ttk.Frame(main_container)
+        content_frame.pack(fill=tk.BOTH, expand=True, pady=(3, 0))
         
-        self.create_video_panel(middle_frame)
-        self.create_detection_panel(middle_frame)
+        # 配置三欄權重
+        content_frame.grid_columnconfigure(0, weight=20, minsize=200)  # 左側面板 20%
+        content_frame.grid_columnconfigure(1, weight=60, minsize=600)  # 中央區域 60%
+        content_frame.grid_columnconfigure(2, weight=20, minsize=200)  # 右側面板 20%
+        content_frame.grid_rowconfigure(0, weight=1)
         
-        # 批次計數面板（在狀態面板上方）
-        self.create_count_display_panel(main_frame)
+        # 創建三個主要面板
+        self.create_left_panel(content_frame)
+        self.create_center_panel(content_frame)
+        self.create_right_panel(content_frame)
         
-        # 底部狀態面板
-        self.create_status_panel(main_frame)
+        # 底部狀態欄（固定高度）
+        self.create_status_panel(main_container)
+        
+        # 綁定視窗大小變化事件
+        self.root.bind('<Configure>', self.on_window_resize)
         
         # 初始化顯示狀態
-        self.root.after(100, self.initialize_display_status)  # 延遲初始化確保所有組件已創建
+        self.root.after(100, self.initialize_display_status)
     
-    def create_control_panel(self, parent):
-        """創建控制面板"""
-        control_frame = ttk.LabelFrame(parent, text="🎮 系統控制", padding=10)
-        control_frame.pack(fill=tk.X, pady=(0, 5))
+    def create_top_toolbar(self, parent):
+        """創建專業級工具欄 - 仿Basler pylon Viewer"""
+        # 主工具欄 - 專業設計
+        main_toolbar = tk.Frame(parent, bg='#f0f0f0', height=50)
+        main_toolbar.pack(fill=tk.X, padx=2, pady=(2, 5))
+        main_toolbar.pack_propagate(False)
         
-        # 按鈕行
-        button_frame = ttk.Frame(control_frame)
-        button_frame.pack(fill=tk.X)
+        # 左側控制組
+        left_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
+        left_controls.pack(side=tk.LEFT, padx=10, pady=8)
         
-        # 主要控制按鈕（簡化流程）
-        ttk.Button(button_frame, text="🚀 一鍵啟動", 
-                  command=self.auto_start_system, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="⏹️ 停止系統", 
-                  command=self.stop_system, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="🔄 重啟系統", 
-                  command=self.restart_system, width=12).pack(side=tk.LEFT, padx=2)
+        # 面板切換按鈕
+        self.left_panel_btn = tk.Button(left_controls, text="◀", width=3, height=1,
+                                       font=('Arial', 10), relief='flat',
+                                       bg='#e0e0e0', activebackground='#d0d0d0',
+                                       command=self.toggle_left_panel)
+        self.left_panel_btn.pack(side=tk.LEFT, padx=(0, 2))
+        
+        self.right_panel_btn = tk.Button(left_controls, text="▶", width=3, height=1,
+                                        font=('Arial', 10), relief='flat',
+                                        bg='#e0e0e0', activebackground='#d0d0d0',
+                                        command=self.toggle_right_panel)
+        self.right_panel_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # 分隔線
-        ttk.Separator(button_frame, orient='vertical').pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        sep1 = tk.Frame(main_toolbar, bg='#c0c0c0', width=1)
+        sep1.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        # 進階控制按鈕（保留手動控制）
-        ttk.Button(button_frame, text="🔍 檢測相機", 
-                  command=self.detect_cameras, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="🔗 連接相機", 
-                  command=self.connect_camera, width=12).pack(side=tk.LEFT, padx=2)
+        # 主要控制按鈕 - 專業樣式
+        main_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
+        main_controls.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # 🚀 一鍵啟動按鈕 - 醒目的藍色
+        self.start_btn = tk.Button(main_controls, text="🚀 一鍵啟動", 
+                                  font=('Arial', 10, 'bold'),
+                                  bg='#007aff', fg='white',
+                                  activebackground='#0056cc', activeforeground='white',
+                                  relief='flat', borderwidth=0,
+                                  padx=15, pady=5,
+                                  command=self.auto_start_system)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # 停止按鈕 - 專業樣式
+        self.stop_btn = tk.Button(main_controls, text="⏹️ 停止",
+                                 font=('Arial', 10),
+                                 bg='#f2f2f7', fg='#007aff',
+                                 activebackground='#e5e5ea',
+                                 relief='solid', borderwidth=1,
+                                 padx=12, pady=5,
+                                 command=self.stop_system)
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # 分隔線
-        ttk.Separator(button_frame, orient='vertical').pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        sep2 = tk.Frame(main_toolbar, bg='#c0c0c0', width=1)
+        sep2.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        # 檢測控制
-        ttk.Button(button_frame, text="📊 性能報告", 
-                  command=self.show_performance_report, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="⚙️ 設置參數", 
-                  command=self.open_parameter_dialog, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="❓ 關於", 
-                  command=self.show_about, width=12).pack(side=tk.RIGHT, padx=2)
+        # 相機控制組
+        camera_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
+        camera_controls.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # 檢測相機按鈕
+        self.detect_btn = tk.Button(camera_controls, text="🔍 檢測相機",
+                                   font=('Arial', 9),
+                                   bg='#f2f2f7', fg='#007aff',
+                                   activebackground='#e5e5ea',
+                                   relief='solid', borderwidth=1,
+                                   padx=10, pady=4,
+                                   command=self.detect_cameras)
+        self.detect_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # 連接相機按鈕
+        self.connect_btn = tk.Button(camera_controls, text="🔗 連接",
+                                    font=('Arial', 9),
+                                    bg='#f2f2f7', fg='#007aff',
+                                    activebackground='#e5e5ea',
+                                    relief='solid', borderwidth=1,
+                                    padx=10, pady=4,
+                                    command=self.connect_camera)
+        self.connect_btn.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # 檢測方法選擇
+        method_frame = tk.Frame(camera_controls, bg='#f0f0f0')
+        method_frame.pack(side=tk.LEFT)
+        
+        tk.Label(method_frame, text="檢測方法:", 
+                font=('Arial', 9), bg='#f0f0f0').pack(side=tk.LEFT, padx=(0, 5))
+        
+        # 創建檢測方法下拉框 - 使用ttk保持一致性
+        self.detection_method = ttk.Combobox(method_frame, values=["circle"], 
+                                           state="readonly", width=8,
+                                           font=('Arial', 9))
+        self.detection_method.set("circle")
+        self.detection_method.pack(side=tk.LEFT)
+        self.detection_method.bind('<<ComboboxSelected>>', self.on_method_changed)
+        
+        # 右側工具組
+        right_tools = tk.Frame(main_toolbar, bg='#f0f0f0')
+        right_tools.pack(side=tk.RIGHT, padx=10, pady=8)
+        
+        # 工具按鈕
+        self.settings_btn = tk.Button(right_tools, text="⚙️", width=3, height=1,
+                                     font=('Arial', 10), relief='flat',
+                                     bg='#e0e0e0', activebackground='#d0d0d0',
+                                     command=self.open_parameter_dialog)
+        self.settings_btn.pack(side=tk.RIGHT, padx=1)
+        
+        self.stats_btn = tk.Button(right_tools, text="📊", width=3, height=1,
+                                  font=('Arial', 10), relief='flat',
+                                  bg='#e0e0e0', activebackground='#d0d0d0',
+                                  command=self.show_performance_report)
+        self.stats_btn.pack(side=tk.RIGHT, padx=1)
+        
+        self.help_btn = tk.Button(right_tools, text="❓", width=3, height=1,
+                                 font=('Arial', 10), relief='flat',
+                                 bg='#e0e0e0', activebackground='#d0d0d0',
+                                 command=self.show_about)
+        self.help_btn.pack(side=tk.RIGHT, padx=1)
     
-    def create_video_panel(self, parent):
-        """創建視頻面板 - 重新設計佈局"""
-        # 視頻顯示區域（占用最大空間）
-        video_frame = ttk.LabelFrame(parent, text="📺 實時檢測畫面 (640x480)", padding=5)
-        video_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+    def create_left_panel(self, parent):
+        """創建左側設備控制面板 - Apple風格"""
+        # 左側面板容器
+        self.left_panel = ttk.Frame(parent, style='Apple.TFrame')
+        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         
-        # 視頻顯示標籤
-        self.video_label = ttk.Label(video_frame, text="正在初始化相機...", 
-                                    anchor=tk.CENTER, font=('Arial', 12),
-                                    background='#1a1a1a', foreground='#00ff00',
-                                    relief=tk.SUNKEN, borderwidth=2)
+        # 設備資訊卡片
+        device_frame = ttk.LabelFrame(self.left_panel, text="📱 設備", 
+                                     style='Apple.TLabelframe')
+        device_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 相機資訊顯示 - 現代化樣式
+        self.camera_info_label = ttk.Label(device_frame, textvariable=self.camera_info_var, 
+                                          style='Apple.TLabel', wraplength=180)
+        self.camera_info_label.pack(fill=tk.X, pady=(0, 8))
+        
+        # 連接狀態指示器 - Apple風格
+        status_frame = ttk.Frame(device_frame, style='Apple.TFrame')
+        status_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        # 狀態指示燈容器
+        indicator_frame = tk.Frame(status_frame, bg='#ffffff')
+        indicator_frame.pack(fill=tk.X)
+        
+        self.connection_indicator = tk.Label(indicator_frame, text="●", 
+                                           font=self.theme_manager.get_font(
+                                               self.theme_manager.theme.Typography.FONT_SIZE_BODY,
+                                               self.theme_manager.theme.Typography.FONT_WEIGHT_BOLD
+                                           ), 
+                                           fg=self.theme_manager.get_color('ERROR_RED'), 
+                                           bg=self.theme_manager.get_color('BACKGROUND_CARD'))
+        self.connection_indicator.pack(side=tk.LEFT)
+        
+        tk.Label(indicator_frame, text="連接狀態", 
+                font=self.theme_manager.get_font(self.theme_manager.theme.Typography.FONT_SIZE_BODY),
+                fg=self.theme_manager.get_color('TEXT_SECONDARY'), 
+                bg=self.theme_manager.get_color('BACKGROUND_CARD')).pack(side=tk.LEFT, padx=(8, 0))
+        
+        # 相機設置卡片
+        camera_settings_frame = ttk.LabelFrame(self.left_panel, text="🎥 相機設置", 
+                                             style='Apple.TLabelframe')
+        camera_settings_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 曝光時間控制 - 優化排版
+        exp_frame = ttk.Frame(camera_settings_frame, style='Apple.TFrame')
+        exp_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        exp_label_frame = ttk.Frame(exp_frame, style='Apple.TFrame')
+        exp_label_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(exp_label_frame, text="曝光時間 (μs)", style='Apple.TLabel').pack(side=tk.LEFT)
+        self.exposure_label = ttk.Label(exp_label_frame, text="1000.0", 
+                                       style='AppleSubtitle.TLabel')
+        self.exposure_label.pack(side=tk.RIGHT)
+        
+        self.exposure_var = tk.DoubleVar(value=1000.0)
+        exp_scale = ttk.Scale(exp_frame, from_=200, to=10000, 
+                             variable=self.exposure_var, orient=tk.HORIZONTAL,
+                             style='Apple.Horizontal.TScale',
+                             command=self.on_exposure_changed_scale)
+        exp_scale.pack(fill=tk.X)
+        
+        # 檢測開關 - Apple風格
+        detection_frame = ttk.Frame(camera_settings_frame, style='Apple.TFrame')
+        detection_frame.pack(fill=tk.X, pady=(8, 0))
+        
+        self.detection_enabled = tk.BooleanVar(value=True)
+        detection_check = ttk.Checkbutton(detection_frame, text="啟用即時檢測", 
+                                         variable=self.detection_enabled,
+                                         command=self.on_detection_toggle)
+        detection_check.pack(anchor=tk.W)
+    
+    def create_center_panel(self, parent):
+        """創建專業級相機顯示區域 - 仿Basler官方設計"""
+        # 中央面板容器
+        self.center_panel = ttk.Frame(parent, style='Apple.TFrame')
+        self.center_panel.grid(row=0, column=1, sticky="nsew", 
+                              padx=self.theme_manager.get_dimension('SPACING_MD'))
+        
+        # 主視頻框架 - 專業相機界面
+        main_video_frame = ttk.LabelFrame(self.center_panel, text="📷 Basler acA640-300gm - 實時影像", 
+                                         style='Apple.TLabelframe')
+        main_video_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 圖像工具欄 - 仿Basler設計
+        self.create_image_toolbar(main_video_frame)
+        
+        # 影像顯示容器 - 專業設計
+        image_container = tk.Frame(main_video_frame, 
+                                  bg='#2c2c2c',  # 深色背景像專業軟件
+                                  relief='sunken', 
+                                  bd=2)
+        image_container.pack(fill=tk.BOTH, expand=True, 
+                           padx=3, pady=3)
+        
+        # 視頻顯示區域 - 專業相機風格
+        self.video_label = tk.Label(image_container, 
+                                   text="Basler acA640-300gm\n\n🎥 Camera Ready\n點擊開始獲取影像", 
+                                   anchor=tk.CENTER, 
+                                   font=self.theme_manager.get_font(
+                                       self.theme_manager.theme.Typography.FONT_SIZE_BODY
+                                   ),
+                                   background='#1e1e1e',  # 深色背景
+                                   foreground='#ffffff',   # 白色文字
+                                   relief='flat',
+                                   bd=0)
         self.video_label.pack(expand=True, fill=tk.BOTH)
+        
+        # 圖像信息狀態欄 - 仿Basler設計
+        self.create_image_status_bar(main_video_frame)
+        
+        # 底部性能統計欄
+        self.create_performance_bar(main_video_frame)
     
-    def create_count_display_panel(self, parent):
-        """創建工業批次計數面板 - 緊湊設計"""
-        count_frame = ttk.LabelFrame(parent, text="🏭 批次計數系統", padding=5)
-        count_frame.pack(fill=tk.X, pady=(5, 0))
+    def create_image_toolbar(self, parent):
+        """創建圖像工具欄 - 仿Basler pylon Viewer"""
+        toolbar_frame = tk.Frame(parent, bg='#f0f0f0', height=35)
+        toolbar_frame.pack(fill=tk.X, padx=2, pady=(2, 0))
+        toolbar_frame.pack_propagate(False)
         
-        # 主計數容器（緊湊設計）
-        main_count_container = tk.Frame(count_frame, bg='#2c3e50', relief=tk.RAISED, bd=2)
-        main_count_container.pack(fill=tk.X, pady=2)
+        # 左側圖像控制按鈕
+        left_tools = tk.Frame(toolbar_frame, bg='#f0f0f0')
+        left_tools.pack(side=tk.LEFT, padx=5, pady=3)
         
-        # 左側：當前批次計數
-        left_container = tk.Frame(main_count_container, bg='#2c3e50')
-        left_container.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=5)
+        # 縮放控制
+        self.zoom_fit_btn = tk.Button(left_tools, text="🔍", width=3, height=1,
+                                     font=('Arial', 10), relief='flat',
+                                     bg='#e0e0e0', activebackground='#d0d0d0',
+                                     command=self.zoom_fit)
+        self.zoom_fit_btn.pack(side=tk.LEFT, padx=1)
         
-        # 當前批次標題
-        batch_title = tk.Label(left_container, text="本批計數", 
-                             font=('Arial', 12, 'bold'),
-                             fg='#ffffff', bg='#2c3e50')
-        batch_title.pack()
+        self.zoom_100_btn = tk.Button(left_tools, text="1:1", width=3, height=1,
+                                     font=('Arial', 8), relief='flat',
+                                     bg='#e0e0e0', activebackground='#d0d0d0',
+                                     command=self.zoom_100)
+        self.zoom_100_btn.pack(side=tk.LEFT, padx=1)
         
-        # 數字顯示（緊湊版）
+        # 分隔線
+        separator1 = tk.Frame(toolbar_frame, bg='#c0c0c0', width=1)
+        separator1.pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        
+        # 圖像工具
+        image_tools = tk.Frame(toolbar_frame, bg='#f0f0f0')
+        image_tools.pack(side=tk.LEFT, padx=5, pady=3)
+        
+        self.crosshair_btn = tk.Button(image_tools, text="✛", width=3, height=1,
+                                      font=('Arial', 10), relief='flat',
+                                      bg='#e0e0e0', activebackground='#d0d0d0',
+                                      command=self.toggle_crosshair)
+        self.crosshair_btn.pack(side=tk.LEFT, padx=1)
+        
+        self.roi_btn = tk.Button(image_tools, text="□", width=3, height=1,
+                                font=('Arial', 10), relief='flat',
+                                bg='#e0e0e0', activebackground='#d0d0d0',
+                                command=self.toggle_roi)
+        self.roi_btn.pack(side=tk.LEFT, padx=1)
+        
+        # 右側圖像信息
+        right_info = tk.Frame(toolbar_frame, bg='#f0f0f0')
+        right_info.pack(side=tk.RIGHT, padx=5, pady=5)
+        
+        # 縮放顯示
+        self.zoom_label = tk.Label(right_info, text="100%", 
+                                  font=('Arial', 9), bg='#f0f0f0')
+        self.zoom_label.pack(side=tk.RIGHT, padx=5)
+    
+    def create_image_status_bar(self, parent):
+        """創建圖像信息狀態欄"""
+        status_frame = tk.Frame(parent, bg='#e8e8e8', height=25)
+        status_frame.pack(fill=tk.X, padx=2, pady=(0, 2))
+        status_frame.pack_propagate(False)
+        
+        # 左側圖像信息
+        left_info = tk.Frame(status_frame, bg='#e8e8e8')
+        left_info.pack(side=tk.LEFT, padx=8, pady=2)
+        
+        # 分辨率信息
+        self.resolution_var = tk.StringVar(value="640 × 480")
+        resolution_label = tk.Label(left_info, textvariable=self.resolution_var,
+                                   font=('Arial', 9), bg='#e8e8e8')
+        resolution_label.pack(side=tk.LEFT)
+        
+        # 分隔符
+        sep1 = tk.Label(left_info, text=" | ", font=('Arial', 9), bg='#e8e8e8')
+        sep1.pack(side=tk.LEFT)
+        
+        # 像素格式
+        self.pixel_format_var = tk.StringVar(value="Mono8")
+        format_label = tk.Label(left_info, textvariable=self.pixel_format_var,
+                               font=('Arial', 9), bg='#e8e8e8')
+        format_label.pack(side=tk.LEFT)
+        
+        # 分隔符
+        sep2 = tk.Label(left_info, text=" | ", font=('Arial', 9), bg='#e8e8e8')
+        sep2.pack(side=tk.LEFT)
+        
+        # 位深度
+        self.bit_depth_var = tk.StringVar(value="8 bit")
+        depth_label = tk.Label(left_info, textvariable=self.bit_depth_var,
+                              font=('Arial', 9), bg='#e8e8e8')
+        depth_label.pack(side=tk.LEFT)
+        
+        # 右側狀態信息
+        right_info = tk.Frame(status_frame, bg='#e8e8e8')
+        right_info.pack(side=tk.RIGHT, padx=8, pady=2)
+        
+        # 獲取狀態
+        self.acquisition_status_var = tk.StringVar(value="就緒")
+        status_label = tk.Label(right_info, textvariable=self.acquisition_status_var,
+                               font=('Arial', 9), bg='#e8e8e8', fg='#007aff')
+        status_label.pack(side=tk.RIGHT)
+    
+    def create_performance_bar(self, parent):
+        """創建底部性能統計欄"""
+        perf_frame = tk.Frame(parent, bg='#f8f9fa', height=30)
+        perf_frame.pack(fill=tk.X, padx=2, pady=(0, 2))
+        perf_frame.pack_propagate(False)
+        
+        # 左側FPS信息 - 使用圖標
+        fps_container = tk.Frame(perf_frame, bg='#f8f9fa')
+        fps_container.pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # 相機FPS
+        camera_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
+        camera_fps_frame.pack(side=tk.LEFT, padx=(0, 15))
+        
+        tk.Label(camera_fps_frame, text="📷", font=('Arial', 10), bg='#f8f9fa').pack(side=tk.LEFT)
+        camera_fps_label = tk.Label(camera_fps_frame, textvariable=self.camera_fps_var,
+                                   font=('Arial', 9, 'bold'), fg='#34c759', bg='#f8f9fa')
+        camera_fps_label.pack(side=tk.LEFT, padx=(2, 0))
+        
+        # 處理FPS
+        processing_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
+        processing_fps_frame.pack(side=tk.LEFT, padx=(0, 15))
+        
+        tk.Label(processing_fps_frame, text="⚡", font=('Arial', 10), bg='#f8f9fa').pack(side=tk.LEFT)
+        processing_fps_label = tk.Label(processing_fps_frame, textvariable=self.processing_fps_var,
+                                       font=('Arial', 9, 'bold'), fg='#007aff', bg='#f8f9fa')
+        processing_fps_label.pack(side=tk.LEFT, padx=(2, 0))
+        
+        # 檢測FPS
+        detection_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
+        detection_fps_frame.pack(side=tk.LEFT)
+        
+        tk.Label(detection_fps_frame, text="🔍", font=('Arial', 10), bg='#f8f9fa').pack(side=tk.LEFT)
+        detection_fps_label = tk.Label(detection_fps_frame, textvariable=self.detection_fps_var,
+                                      font=('Arial', 9, 'bold'), fg='#af52de', bg='#f8f9fa')
+        detection_fps_label.pack(side=tk.LEFT, padx=(2, 0))
+        
+        # 右側物件計數 - 專業顯示
+        count_container = tk.Frame(perf_frame, bg='#fff3cd', relief='solid', bd=1)
+        count_container.pack(side=tk.RIGHT, padx=10, pady=3)
+        
+        count_inner = tk.Frame(count_container, bg='#fff3cd')
+        count_inner.pack(padx=8, pady=2)
+        
+        tk.Label(count_inner, text="檢測物件:", 
+                font=('Arial', 9), fg='#856404', bg='#fff3cd').pack(side=tk.LEFT)
+        
+        count_value = tk.Label(count_inner, textvariable=self.object_count_var, 
+                              font=('Arial', 11, 'bold'), fg='#d73527', bg='#fff3cd')
+        count_value.pack(side=tk.LEFT, padx=(5, 0))
+    
+    # 圖像控制功能
+    def zoom_fit(self):
+        """縮放至適合"""
+        self.zoom_label.config(text="Fit")
+        
+    def zoom_100(self):
+        """100%縮放"""
+        self.zoom_label.config(text="100%")
+        
+    def toggle_crosshair(self):
+        """切換十字線"""
+        pass
+        
+    def toggle_roi(self):
+        """切換ROI"""
+        pass
+    
+    def update_video_status(self, status):
+        """更新視頻狀態顯示"""
+        if hasattr(self, 'acquisition_status_var'):
+            self.acquisition_status_var.set(status)
+        
+        if hasattr(self, 'video_label'):
+            if status == "獲取中":
+                self.video_label.config(
+                    text="📷 正在獲取影像...\n\nBasler acA640-300gm\n實時影像串流中",
+                    fg='#00ff00'  # 綠色表示活動
+                )
+            elif status == "就緒":
+                self.video_label.config(
+                    text="Basler acA640-300gm\n\n🎥 Camera Ready\n點擊開始獲取影像",
+                    fg='#ffffff'
+                )
+    
+    def create_right_panel(self, parent):
+        """創建右側參數控制面板 - Apple風格"""
+        # 右側面板容器
+        self.right_panel = ttk.Frame(parent, style='Apple.TFrame')
+        self.right_panel.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
+        
+        # 批次計數系統（Apple風格）
+        self.create_compact_batch_counter()
+        
+        # 檢測參數調整
+        self.create_detection_parameters()
+        
+        # 實時統計
+        self.create_realtime_statistics()
+    
+    def create_compact_batch_counter(self):
+        """創建專業級批次計數器 - 仿Basler pylon Viewer"""
+        # 主框架 - 專業樣式
+        batch_frame = tk.LabelFrame(self.right_panel, text=" 批次計數 ", 
+                                   font=('Arial', 10, 'bold'), fg='#333333',
+                                   bg='#f8f9fa', relief='solid', bd=1)
+        batch_frame.pack(fill=tk.X, pady=(0, 8), padx=3)
+        
+        # 當前計數顯示區域 - 專業設計
+        count_container = tk.Frame(batch_frame, bg='#ffffff', relief='sunken', bd=1)
+        count_container.pack(fill=tk.X, pady=(8, 10), padx=8)
+        
+        # 標題
+        count_title = tk.Label(count_container, text="當前計數", 
+                              font=('Arial', 9), fg='#666666', bg='#ffffff')
+        count_title.pack(pady=(8, 2))
+        
+        # 大數字顯示 - 專業樣式
         self.batch_count_var = tk.StringVar(value="000")
-        try:
-            digital_font = ('Consolas', 32, 'bold')  # 較小字體
-            batch_count_label = tk.Label(left_container, 
-                                       textvariable=self.batch_count_var,
-                                       font=digital_font,
-                                       fg='#00ff41', bg='#2c3e50',
-                                       width=4, height=1)
-        except:
-            digital_font = ('Courier New', 32, 'bold')
-            batch_count_label = tk.Label(left_container, 
-                                       textvariable=self.batch_count_var,
-                                       font=digital_font,
-                                       fg='#00ff41', bg='#2c3e50',
-                                       width=4, height=1)
-        batch_count_label.pack()
+        count_display = tk.Label(count_container, 
+                               textvariable=self.batch_count_var,
+                               font=('Arial', 32, 'bold'), 
+                               fg='#007aff', bg='#ffffff')
+        count_display.pack(pady=(0, 8))
         
-        # 批次進度條
-        self.create_batch_progress(left_container)
+        # 目標設置區域 - 專業布局
+        target_container = tk.Frame(batch_frame, bg='#f8f9fa')
+        target_container.pack(fill=tk.X, pady=(0, 8), padx=8)
         
-        # 中間：批次設定
-        middle_container = tk.Frame(main_count_container, bg='#2c3e50')
-        middle_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        self.create_batch_settings(middle_container)
-        
-        # 右側：狀態指示器
-        right_container = tk.Frame(main_count_container, bg='#2c3e50')
-        right_container.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
-        
-        # 批次狀態指示燈（緊湊版）
-        self.batch_status_indicator = tk.Label(right_container, text="●", 
-                                             font=('Arial', 24, 'bold'),
-                                             fg='#ff4444', bg='#2c3e50')
-        self.batch_status_indicator.pack(pady=(2, 2))
-        
-        # 狀態文字
-        self.batch_status_text = tk.Label(right_container, text="等待開始",
-                                        font=('Arial', 14, 'bold'),
-                                        fg='#ffffff', bg='#2c3e50')
-        self.batch_status_text.pack()
-        
-        # 批次控制按鈕
-        self.create_batch_controls(right_container)
-        
-        # 底部：統計信息
-        self.create_batch_statistics(count_frame)
-    
-    def create_batch_progress(self, parent):
-        """創建批次進度條"""
-        # 進度條容器
-        progress_frame = tk.Frame(parent, bg='#2c3e50')
-        progress_frame.pack(fill=tk.X, pady=(10, 5))
-        
-        # 進度條
-        from tkinter import ttk
-        self.batch_progress = ttk.Progressbar(progress_frame, 
-                                            length=120, 
-                                            mode='determinate',
-                                            maximum=100,
-                                            value=0)
-        self.batch_progress.pack()
-        
-        # 進度文字
-        self.progress_text = tk.Label(progress_frame, text="0 / 100", 
-                                    font=('Arial', 10),
-                                    fg='#cccccc', bg='#2c3e50')
-        self.progress_text.pack(pady=(2, 0))
-    
-    def create_batch_settings(self, parent):
-        """創建批次設定區域"""
-        # 設定標題
-        settings_title = tk.Label(parent, text="批次設定", 
-                                font=('Arial', 12, 'bold'),
-                                fg='#ffffff', bg='#2c3e50')
-        settings_title.pack(anchor=tk.W)
-        
-        # 目標數量設定
-        target_frame = tk.Frame(parent, bg='#2c3e50')
-        target_frame.pack(fill=tk.X, pady=(5, 2))
-        
-        tk.Label(target_frame, text="目標數量:", 
-               font=('Arial', 10),
-               fg='#cccccc', bg='#2c3e50').pack(side=tk.LEFT)
+        tk.Label(target_container, text="目標數量:", 
+                font=('Arial', 9), fg='#333333', bg='#f8f9fa').pack(side=tk.LEFT)
         
         self.target_count_var = tk.IntVar(value=100)
-        target_spinbox = ttk.Spinbox(target_frame, 
-                                   from_=1, to=1000, 
-                                   textvariable=self.target_count_var,
-                                   width=6,
-                                   command=self.on_target_changed)
-        target_spinbox.pack(side=tk.RIGHT)
+        target_entry = tk.Entry(target_container, textvariable=self.target_count_var,
+                               font=('Arial', 10), width=8, justify='center',
+                               relief='solid', bd=1)
+        target_entry.pack(side=tk.RIGHT)
+        target_entry.bind('<Return>', self.on_target_changed)
         
-        # 當前批次號
-        batch_num_frame = tk.Frame(parent, bg='#2c3e50')
-        batch_num_frame.pack(fill=tk.X, pady=2)
+        # 進度顯示區域 - 專業樣式
+        progress_container = tk.Frame(batch_frame, bg='#f8f9fa')
+        progress_container.pack(fill=tk.X, pady=(0, 8), padx=8)
         
-        tk.Label(batch_num_frame, text="批次號:", 
-               font=('Arial', 10),
-               fg='#cccccc', bg='#2c3e50').pack(side=tk.LEFT)
+        # 進度條 - 專業外觀
+        self.batch_progress = ttk.Progressbar(progress_container,
+                                            mode='determinate',
+                                            maximum=100, value=0)
+        self.batch_progress.pack(fill=tk.X, pady=(0, 5))
         
-        self.batch_number_var = tk.StringVar(value="001")
-        tk.Label(batch_num_frame, textvariable=self.batch_number_var,
-               font=('Arial', 10, 'bold'),
-               fg='#00ff41', bg='#2c3e50').pack(side=tk.RIGHT)
+        # 進度文字 - 居中顯示
+        self.progress_text = tk.Label(progress_container, text="0 / 100", 
+                                     font=('Arial', 9), fg='#666666', bg='#f8f9fa')
+        self.progress_text.pack()
         
-        # 自動模式開關
-        auto_frame = tk.Frame(parent, bg='#2c3e50')
-        auto_frame.pack(fill=tk.X, pady=(5, 0))
+        # 控制按鈕區域 - 專業布局
+        btn_container = tk.Frame(batch_frame, bg='#f8f9fa')
+        btn_container.pack(fill=tk.X, pady=(5, 8), padx=8)
         
-        self.auto_mode_var = tk.BooleanVar(value=True)
-        auto_check = ttk.Checkbutton(auto_frame, 
-                                   text="自動模式",
-                                   variable=self.auto_mode_var)
-        auto_check.pack(side=tk.LEFT)
+        # 開始按鈕 - 醒目設計
+        self.start_batch_btn = tk.Button(btn_container, text="▶ 開始",
+                                        font=('Arial', 9, 'bold'),
+                                        bg='#34c759', fg='white',
+                                        activebackground='#28a745',
+                                        relief='flat', borderwidth=0,
+                                        padx=12, pady=4,
+                                        command=self.start_batch)
+        self.start_batch_btn.pack(side=tk.LEFT)
+        
+        # 停止按鈕 - 專業樣式
+        self.stop_batch_btn = tk.Button(btn_container, text="⏹ 停止",
+                                       font=('Arial', 9),
+                                       bg='#f2f2f7', fg='#ff3b30',
+                                       activebackground='#e5e5ea',
+                                       relief='solid', borderwidth=1,
+                                       padx=12, pady=4,
+                                       state='disabled',
+                                       command=self.stop_batch)
+        self.stop_batch_btn.pack(side=tk.RIGHT)
     
-    def create_batch_controls(self, parent):
-        """創建批次控制按鈕"""
-        # 添加標題
-        controls_title = tk.Label(parent, text="控制操作", 
-                                font=('Arial', 10, 'bold'),
-                                fg='#ffffff', bg='#2c3e50')
-        controls_title.pack(pady=(5, 2))
+    def create_detection_parameters(self):
+        """創建檢測參數調整區域 - Apple風格"""
+        params_frame = ttk.LabelFrame(self.right_panel, text="🔧 檢測參數", 
+                                     style='Apple.TLabelframe')
+        params_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # 開始批次按鈕
-        self.start_batch_btn = tk.Button(parent, 
-                                       text="▶ 開始",
-                                       font=('Arial', 9, 'bold'),
-                                       bg='#27ae60', fg='white',
-                                       activebackground='#2ecc71',
-                                       command=self.start_batch,
-                                       width=8, height=1,
-                                       relief=tk.RAISED, bd=2)
-        self.start_batch_btn.pack(pady=1)
+        # 最小面積控制
+        min_area_frame = ttk.Frame(params_frame, style='Apple.TFrame')
+        min_area_frame.pack(fill=tk.X, pady=(0, 8))
         
-        # 停止批次按鈕
-        self.stop_batch_btn = tk.Button(parent, 
-                                      text="⏹ 停止",
-                                      font=('Arial', 9, 'bold'),
-                                      bg='#e74c3c', fg='white',
-                                      activebackground='#c0392b',
-                                      command=self.stop_batch,
-                                      width=8, height=1,
-                                      state='disabled',
-                                      relief=tk.RAISED, bd=2)
-        self.stop_batch_btn.pack(pady=1)
+        min_label_frame = ttk.Frame(min_area_frame, style='Apple.TFrame')
+        min_label_frame.pack(fill=tk.X, pady=(0, 5))
         
-        # 重置批次按鈕
-        self.reset_batch_btn = tk.Button(parent, 
-                                       text="🔄 重置",
-                                       font=('Arial', 9, 'bold'),
-                                       bg='#f39c12', fg='white',
-                                       activebackground='#e67e22',
-                                       command=self.reset_batch,
-                                       width=8, height=1,
-                                       relief=tk.RAISED, bd=2)
-        self.reset_batch_btn.pack(pady=1)
+        ttk.Label(min_label_frame, text="最小面積", style='Apple.TLabel').pack(side=tk.LEFT)
+        self.min_area_var = tk.IntVar(value=100)
+        self.min_area_label = ttk.Label(min_label_frame, text="100", style='AppleSubtitle.TLabel')
+        self.min_area_label.pack(side=tk.RIGHT)
+        
+        min_scale = ttk.Scale(min_area_frame, from_=10, to=2000, 
+                             variable=self.min_area_var, orient=tk.HORIZONTAL,
+                             style='Apple.Horizontal.TScale',
+                             command=self.on_parameter_changed_scale)
+        min_scale.pack(fill=tk.X)
+        
+        # 最大面積控制
+        max_area_frame = ttk.Frame(params_frame, style='Apple.TFrame')
+        max_area_frame.pack(fill=tk.X)
+        
+        max_label_frame = ttk.Frame(max_area_frame, style='Apple.TFrame')
+        max_label_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(max_label_frame, text="最大面積", style='Apple.TLabel').pack(side=tk.LEFT)
+        self.max_area_var = tk.IntVar(value=5000)
+        self.max_area_label = ttk.Label(max_label_frame, text="5000", style='AppleSubtitle.TLabel')
+        self.max_area_label.pack(side=tk.RIGHT)
+        
+        max_scale = ttk.Scale(max_area_frame, from_=100, to=20000, 
+                             variable=self.max_area_var, orient=tk.HORIZONTAL,
+                             style='Apple.Horizontal.TScale',
+                             command=self.on_parameter_changed_scale)
+        max_scale.pack(fill=tk.X)
     
-    def create_batch_statistics(self, parent):
-        """創建批次統計區域 - 緊湊版"""
-        stats_frame = tk.Frame(parent, bg='#34495e')
-        stats_frame.pack(fill=tk.X, pady=(2, 0))
+    def create_realtime_statistics(self):
+        """創建實時統計顯示 - Apple風格"""
+        stats_frame = ttk.LabelFrame(self.right_panel, text="📊 即時統計", 
+                                    style='Apple.TLabelframe')
+        stats_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 今日批次統計（簡化版）
-        self.create_stat_widget(stats_frame, "今日批次", "0", "#3498db")
-        self.create_stat_widget(stats_frame, "總計", "0", "#e74c3c")
-        self.create_stat_widget(stats_frame, "速度", "0/分", "#2ecc71")
+        # 檢測品質顯示
+        quality_container = tk.Frame(stats_frame, bg='#ffffff')
+        quality_container.pack(fill=tk.X, pady=(0, 10))
         
-        # 初始化批次狀態
-        self.batch_mode = 'idle'  # idle, running, paused, completed
-        self.current_batch_count = 0
-        self.total_batches_today = 0
-        self.total_items_today = 0
-        self.batch_start_time = None
+        quality_title = tk.Label(quality_container, text="檢測品質", 
+                               font=self.theme_manager.get_font(
+                                   self.theme_manager.theme.Typography.FONT_SIZE_BODY
+                               ), 
+                               fg=self.theme_manager.get_color('TEXT_SECONDARY'), 
+                               bg=self.theme_manager.get_color('BACKGROUND_CARD'))
+        quality_title.pack(side=tk.LEFT)
         
-        # 添加使用說明
-        help_frame = tk.Frame(parent, bg='#f8f9fa')
-        help_frame.pack(fill=tk.X, pady=(2, 0))
+        self.quality_var = tk.StringVar(value="良好")
+        self.quality_label = tk.Label(quality_container, textvariable=self.quality_var, 
+                                     font=self.theme_manager.get_font(
+                                         self.theme_manager.theme.Typography.FONT_SIZE_BODY,
+                                         self.theme_manager.theme.Typography.FONT_WEIGHT_BOLD
+                                     ), 
+                                     fg=self.theme_manager.get_color('SUCCESS_GREEN'), 
+                                     bg=self.theme_manager.get_color('BACKGROUND_CARD'))
+        self.quality_label.pack(side=tk.RIGHT)
         
-        help_text = tk.Label(help_frame, 
-                           text="💡 使用說明：點擊「開始批次」按鈕啟動計數，達到目標數量將自動停止", 
-                           font=('Arial', 10),
-                           fg='#6c757d', bg='#f8f9fa',
-                           padx=10, pady=3)
-        help_text.pack(anchor=tk.W)
+        # 性能統計
+        perf_container = tk.Frame(stats_frame, bg=self.theme_manager.get_color('BACKGROUND_CARD'))
+        perf_container.pack(fill=tk.X)
+        
+        # 檢測FPS顯示
+        fps_label = tk.Label(perf_container, textvariable=self.detection_fps_var, 
+                            font=self.theme_manager.get_font(
+                                self.theme_manager.theme.Typography.FONT_SIZE_BODY
+                            ), 
+                            fg=self.theme_manager.get_color('INFO_PURPLE'), 
+                            bg=self.theme_manager.get_color('BACKGROUND_CARD'))
+        fps_label.pack(anchor=tk.W, pady=2)
+    
+    def toggle_left_panel(self):
+        """切換左側面板顯示/隱藏"""
+        if self.left_panel_visible:
+            self.left_panel.grid_remove()
+            self.left_panel_visible = False
+        else:
+            self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
+            self.left_panel_visible = True
+    
+    def toggle_right_panel(self):
+        """切換右側面板顯示/隱藏"""
+        if self.right_panel_visible:
+            self.right_panel.grid_remove()
+            self.right_panel_visible = False
+        else:
+            self.right_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
+            self.right_panel_visible = True
+    
+    def on_window_resize(self, event):
+        """處理視窗大小變化"""
+        if event.widget == self.root:
+            # 根據視窗寬度調整面板可見性
+            window_width = self.root.winfo_width()
+            
+            if window_width < 1000:
+                # 小視窗：只顯示中央面板
+                if self.left_panel_visible:
+                    self.toggle_left_panel()
+                if self.right_panel_visible:
+                    self.toggle_right_panel()
+            elif window_width < 1200:
+                # 中等視窗：顯示中央和右側面板
+                if self.left_panel_visible:
+                    self.toggle_left_panel()
+                if not self.right_panel_visible:
+                    self.toggle_right_panel()
+            else:
+                # 大視窗：顯示所有面板
+                if not self.left_panel_visible:
+                    self.toggle_left_panel()
+                if not self.right_panel_visible:
+                    self.toggle_right_panel()
+    
+    def on_exposure_changed_scale(self, value):
+        """曝光滑塊變化回調"""
+        try:
+            exposure_time = float(value)
+            self.exposure_label.config(text=f"{exposure_time:.1f}")
+            success = self.controller.set_exposure_time(exposure_time)
+            if success:
+                self.status_var.set(f"狀態: 曝光時間已調整為 {exposure_time:.1f}μs")
+        except Exception as e:
+            logging.error(f"調整曝光時間錯誤: {str(e)}")
+    
+    def on_parameter_changed_scale(self, value):
+        """檢測參數滑塊變化回調"""
+        try:
+            # 更新顯示的數值標籤
+            if hasattr(self, 'min_area_label'):
+                self.min_area_label.config(text=str(self.min_area_var.get()))
+            if hasattr(self, 'max_area_label'):
+                self.max_area_label.config(text=str(self.max_area_var.get()))
+            
+            # 更新檢測參數
+            params = {
+                'min_area': self.min_area_var.get(),
+                'max_area': self.max_area_var.get()
+            }
+            self.controller.update_detection_parameters(params)
+        except Exception as e:
+            logging.error(f"更新檢測參數錯誤: {str(e)}")
+    
         
     # ==================== 批次控制方法 ====================
     
     def start_batch(self):
         """開始新批次"""
         try:
-            if self.batch_mode == 'idle':
+            if hasattr(self, 'batch_mode') and self.batch_mode != 'running':
                 self.batch_mode = 'running'
                 self.current_batch_count = 0
                 self.batch_start_time = time.time()
                 
                 # 更新UI狀態
-                self.batch_status_indicator.config(fg='#00ff41')  # 綠色
-                self.batch_status_text.config(text="計數中")
-                
-                # 按鈕狀態
-                self.start_batch_btn.config(state='disabled')
-                self.stop_batch_btn.config(state='normal')
+                if hasattr(self, 'start_batch_btn'):
+                    self.start_batch_btn.config(state='disabled')
+                if hasattr(self, 'stop_batch_btn'):
+                    self.stop_batch_btn.config(state='normal')
                 
                 # 通知控制器開始批次檢測
                 if hasattr(self.controller, 'start_batch_detection'):
@@ -370,59 +811,33 @@ class MainView:
     def stop_batch(self):
         """停止當前批次"""
         try:
-            if self.batch_mode == 'running':
+            if hasattr(self, 'batch_mode') and self.batch_mode == 'running':
                 self.batch_mode = 'idle'
                 
                 # 更新UI狀態
-                self.batch_status_indicator.config(fg='#ffaa00')  # 橙色
-                self.batch_status_text.config(text="已停止")
-                
-                # 按鈕狀態
-                self.start_batch_btn.config(state='normal')
-                self.stop_batch_btn.config(state='disabled')
+                if hasattr(self, 'start_batch_btn'):
+                    self.start_batch_btn.config(state='normal')
+                if hasattr(self, 'stop_batch_btn'):
+                    self.stop_batch_btn.config(state='disabled')
                 
                 # 通知控制器停止檢測
                 if hasattr(self.controller, 'stop_batch_detection'):
                     self.controller.stop_batch_detection()
                     
-                logging.info(f"⏹️ 手動停止批次，當前計數: {self.current_batch_count}")
+                logging.info(f"⏹️ 手動停止批次，當前計數: {getattr(self, 'current_batch_count', 0)}")
                 
         except Exception as e:
             logging.error(f"停止批次錯誤: {str(e)}")
-    
-    def reset_batch(self):
-        """重置批次計數"""
-        try:
-            # 先停止如果正在運行
-            if self.batch_mode == 'running':
-                self.stop_batch()
-            
-            # 重置計數
-            self.current_batch_count = 0
-            self.batch_count_var.set("000")
-            
-            # 重置進度條
-            self.batch_progress.config(value=0)
-            self.progress_text.config(text=f"0 / {self.target_count_var.get()}")
-            
-            # 更新狀態
-            self.batch_status_indicator.config(fg='#ff4444')  # 紅色
-            self.batch_status_text.config(text="等待開始")
-            
-            logging.info("🔄 批次已重置")
-            
-        except Exception as e:
-            logging.error(f"重置批次錯誤: {str(e)}")
     
     def on_target_changed(self):
         """目標數量改變回調"""
         try:
             target = self.target_count_var.get()
-            self.progress_text.config(text=f"{self.current_batch_count} / {target}")
+            current_count = getattr(self, 'current_batch_count', 0)
             
-            # 更新進度條最大值
+            # 更新進度條
             if hasattr(self, 'batch_progress'):
-                progress_percentage = (self.current_batch_count / target * 100) if target > 0 else 0
+                progress_percentage = (current_count / target * 100) if target > 0 else 0
                 self.batch_progress.config(value=progress_percentage)
                 
             logging.info(f"目標數量已更改為: {target}")
@@ -430,224 +845,126 @@ class MainView:
         except Exception as e:
             logging.error(f"更改目標數量錯誤: {str(e)}")
     
-    def complete_batch(self):
-        """完成當前批次"""
-        try:
-            if self.batch_mode == 'running':
-                self.batch_mode = 'completed'
-                
-                # 更新統計
-                self.total_batches_today += 1
-                self.total_items_today += self.current_batch_count
-                
-                # 更新批次號
-                current_num = int(self.batch_number_var.get())
-                self.batch_number_var.set(f"{current_num + 1:03d}")
-                
-                # 更新UI狀態
-                self.batch_status_indicator.config(fg='#3498db')  # 藍色
-                self.batch_status_text.config(text="已完成")
-                
-                # 按鈕狀態
-                self.start_batch_btn.config(state='normal')
-                self.stop_batch_btn.config(state='disabled')
-                
-                # 更新統計顯示
-                self.update_batch_statistics()
-                
-                # 計算批次時間
-                if self.batch_start_time:
-                    batch_time = time.time() - self.batch_start_time
-                    rate = self.current_batch_count / (batch_time / 60) if batch_time > 0 else 0
-                    logging.info(f"🎉 批次完成！數量: {self.current_batch_count}, 用時: {batch_time:.1f}秒, 速度: {rate:.1f}/分鐘")
-                
-                # 自動模式下準備下一批次
-                if self.auto_mode_var.get():
-                    self.root.after(2000, self._auto_start_next_batch)  # 2秒後自動開始下一批次
-                    
-        except Exception as e:
-            logging.error(f"完成批次錯誤: {str(e)}")
-    
-    def _auto_start_next_batch(self):
-        """自動開始下一批次"""
-        try:
-            if self.batch_mode == 'completed' and self.auto_mode_var.get():
-                self.reset_batch()
-                self.root.after(500, self.start_batch)  # 延遲500ms開始
-                
-        except Exception as e:
-            logging.error(f"自動開始下一批次錯誤: {str(e)}")
-    
-    def update_batch_statistics(self):
-        """更新批次統計顯示"""
-        try:
-            if hasattr(self, 'stat_vars'):
-                self.stat_vars.get('今日批次', tk.StringVar()).set(f"{self.total_batches_today}")
-                self.stat_vars.get('總計數量', tk.StringVar()).set(f"{self.total_items_today}")
-                
-                # 計算平均速度
-                if self.total_batches_today > 0 and self.batch_start_time:
-                    total_time = time.time() - self.batch_start_time
-                    avg_rate = self.total_items_today / (total_time / 60) if total_time > 0 else 0
-                    self.stat_vars.get('平均速度', tk.StringVar()).set(f"{avg_rate:.0f}/分鐘")
-                    
-        except Exception as e:
-            logging.error(f"更新批次統計錯誤: {str(e)}")
-        
-    def create_stat_widget(self, parent, title, value, color):
-        """創建統計小組件"""
-        stat_frame = tk.Frame(parent, bg='#34495e')
-        stat_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        # 標題
-        title_label = tk.Label(stat_frame, text=title, 
-                             font=('Arial', 9), 
-                             fg='#bdc3c7', bg='#34495e')
-        title_label.pack()
-        
-        # 數值
-        value_var = tk.StringVar(value=value)
-        value_label = tk.Label(stat_frame, textvariable=value_var,
-                             font=('Arial', 14, 'bold'),
-                             fg=color, bg='#34495e')
-        value_label.pack()
-        
-        # 保存變量引用以便後續更新
-        if not hasattr(self, 'stat_vars'):
-            self.stat_vars = {}
-        self.stat_vars[title] = value_var
-    
     def initialize_display_status(self):
         """初始化顯示狀態"""
         try:
-            # 檢查批次組件是否存在
-            if hasattr(self, 'batch_status_indicator') and self.batch_status_indicator:
-                self.batch_status_indicator.config(fg='#ff4444')  # 紅色表示等待
-                
-            if hasattr(self, 'batch_status_text') and self.batch_status_text:
-                self.batch_status_text.config(text="等待開始")
-            
-            # 初始化統計數據
-            self._daily_total = 0
+            # 初始化批次狀態
+            self.batch_mode = 'idle'
+            self.current_batch_count = 0
+            self.total_batches_today = 0
+            self.total_items_today = 0
+            self.batch_start_time = None
             
             # 設置初始檢測品質
             if hasattr(self, 'quality_var') and self.quality_var:
-                self.quality_var.set("待檢測")
+                self.quality_var.set("良好")
             
-            logging.info("✅ 批次計數系統初始化完成")
+            logging.info("✅ 響應式UI系統初始化完成")
             
         except Exception as e:
             logging.debug(f"初始化顯示狀態錯誤: {str(e)}")
     
-    def create_detection_panel(self, parent):
-        """創建檢測面板"""
-        detection_frame = ttk.LabelFrame(parent, text="🔍 檢測設置", padding=10)
-        detection_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 0))
-        
-        # 檢測方法選擇
-        method_frame = ttk.Frame(detection_frame)
-        method_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(method_frame, text="檢測方法:").pack(anchor=tk.W)
-        method_combo = ttk.Combobox(method_frame, textvariable=self.method_var, 
-                                   values=['circle', 'contour'], state='readonly', width=15)
-        method_combo.pack(fill=tk.X, pady=(2, 0))
-        method_combo.bind('<<ComboboxSelected>>', self.on_method_changed)
-        
-        # 檢測開關
-        ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        
-        self.detection_enabled = tk.BooleanVar(value=True)
-        detection_check = ttk.Checkbutton(detection_frame, text="啟用檢測", 
-                                         variable=self.detection_enabled,
-                                         command=self.on_detection_toggle)
-        detection_check.pack(anchor=tk.W)
-        
-        # 相機參數
-        ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        ttk.Label(detection_frame, text="相機參數:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
-        
-        # 曝光時間調整
-        exposure_frame = ttk.Frame(detection_frame)
-        exposure_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(exposure_frame, text="曝光時間:", width=8).pack(side=tk.LEFT)
-        self.exposure_var = tk.DoubleVar(value=1000.0)  # 默認1ms
-        exposure_spin = ttk.Spinbox(exposure_frame, from_=200, to=10000, 
-                                   textvariable=self.exposure_var, width=8,
-                                   increment=100,
-                                   command=self.on_exposure_changed)
-        exposure_spin.pack(side=tk.RIGHT)
-        ttk.Label(exposure_frame, text="μs", width=3).pack(side=tk.RIGHT)
-        
-        # 快速參數
-        ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        ttk.Label(detection_frame, text="檢測參數:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
-        
-        # 最小面積
-        min_area_frame = ttk.Frame(detection_frame)
-        min_area_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(min_area_frame, text="最小面積:", width=8).pack(side=tk.LEFT)
-        self.min_area_var = tk.IntVar(value=100)
-        min_area_spin = ttk.Spinbox(min_area_frame, from_=10, to=2000, 
-                                   textvariable=self.min_area_var, width=8,
-                                   command=self.on_parameter_changed)
-        min_area_spin.pack(side=tk.RIGHT)
-        
-        # 最大面積
-        max_area_frame = ttk.Frame(detection_frame)
-        max_area_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(max_area_frame, text="最大面積:", width=8).pack(side=tk.LEFT)
-        self.max_area_var = tk.IntVar(value=5000)
-        max_area_spin = ttk.Spinbox(max_area_frame, from_=100, to=20000, 
-                                   textvariable=self.max_area_var, width=8,
-                                   command=self.on_parameter_changed)
-        max_area_spin.pack(side=tk.RIGHT)
-        
-        # 檢測結果顯示（簡化版 - 主要顯示在大型面板）
-        ttk.Separator(detection_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        ttk.Label(detection_frame, text="檢測狀態:", font=('Arial', 9, 'bold')).pack(anchor=tk.W)
-        
-        # 簡潔的狀態顯示
-        status_info_frame = ttk.Frame(detection_frame)
-        status_info_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Label(status_info_frame, text="當前物件:", width=8).pack(side=tk.LEFT)
-        ttk.Label(status_info_frame, textvariable=self.object_count_var, 
-                 font=('Arial', 10, 'bold'), foreground='#2ecc71').pack(side=tk.RIGHT)
-        
-        # 檢測品質指示器
-        quality_frame = ttk.Frame(detection_frame)
-        quality_frame.pack(fill=tk.X, pady=2)
-        
-        ttk.Label(quality_frame, text="檢測品質:", width=8).pack(side=tk.LEFT)
-        self.quality_var = tk.StringVar(value="優秀")
-        ttk.Label(quality_frame, textvariable=self.quality_var, 
-                 font=('Arial', 10, 'bold'), foreground='#3498db').pack(side=tk.RIGHT)
-    
     def create_status_panel(self, parent):
-        """創建狀態面板"""
-        status_frame = ttk.LabelFrame(parent, text="📊 系統狀態", padding=5)
-        status_frame.pack(fill=tk.X, pady=(5, 0))
+        """創建專業級系統狀態欄 - 仿Basler pylon Viewer"""
+        # 主狀態欄 - 專業設計
+        main_status_bar = tk.Frame(parent, bg='#e8e8e8', height=40)
+        main_status_bar.pack(fill=tk.X, pady=(5, 0))
+        main_status_bar.pack_propagate(False)
         
-        # 狀態行1：系統狀態
-        status_row1 = ttk.Frame(status_frame)
-        status_row1.pack(fill=tk.X)
+        # 左側系統狀態
+        left_status = tk.Frame(main_status_bar, bg='#e8e8e8')
+        left_status.pack(side=tk.LEFT, padx=10, pady=8)
         
-        ttk.Label(status_row1, textvariable=self.status_var, 
-                 font=('Arial', 10, 'bold')).pack(side=tk.LEFT)
-        ttk.Label(status_row1, textvariable=self.camera_info_var, 
-                 font=('Arial', 9)).pack(side=tk.RIGHT)
+        # 狀態指示器
+        status_indicator = tk.Frame(left_status, bg='#e8e8e8')
+        status_indicator.pack(side=tk.LEFT)
         
-        # 狀態行2：性能統計
-        status_row2 = ttk.Frame(status_frame)
-        status_row2.pack(fill=tk.X, pady=(5, 0))
+        tk.Label(status_indicator, text="狀態:", 
+                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
         
-        ttk.Label(status_row2, textvariable=self.camera_fps_var, 
-                 font=('Arial', 9), foreground='green').pack(side=tk.LEFT)
-        ttk.Label(status_row2, textvariable=self.processing_fps_var, 
-                 font=('Arial', 9), foreground='blue').pack(side=tk.LEFT, padx=(20, 0))
-        ttk.Label(status_row2, textvariable=self.detection_fps_var, 
-                 font=('Arial', 9), foreground='purple').pack(side=tk.LEFT, padx=(20, 0))
+        self.status_display = tk.Label(status_indicator, textvariable=self.status_var,
+                                     font=('Arial', 9, 'bold'), 
+                                     bg='#e8e8e8', fg='#34c759')
+        self.status_display.pack(side=tk.LEFT, padx=(5, 15))
+        
+        # 相機信息
+        camera_info = tk.Frame(left_status, bg='#e8e8e8')
+        camera_info.pack(side=tk.LEFT)
+        
+        tk.Label(camera_info, text="相機:", 
+                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+        
+        self.camera_display = tk.Label(camera_info, textvariable=self.camera_info_var,
+                                     font=('Arial', 9), 
+                                     bg='#e8e8e8', fg='#666666')
+        self.camera_display.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # 中間性能統計 - 專業布局
+        center_stats = tk.Frame(main_status_bar, bg='#e8e8e8')
+        center_stats.pack(side=tk.LEFT, expand=True, padx=20, pady=8)
+        
+        # FPS統計區域
+        fps_container = tk.Frame(center_stats, bg='#e8e8e8')
+        fps_container.pack()
+        
+        # 相機FPS
+        camera_fps_frame = tk.Frame(fps_container, bg='#e8e8e8')
+        camera_fps_frame.pack(side=tk.LEFT, padx=(0, 20))
+        
+        tk.Label(camera_fps_frame, text="相機:", 
+                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+        camera_fps_display = tk.Label(camera_fps_frame, textvariable=self.camera_fps_var,
+                                     font=('Arial', 9, 'bold'), 
+                                     bg='#e8e8e8', fg='#34c759')
+        camera_fps_display.pack(side=tk.LEFT, padx=(3, 0))
+        
+        # 處理FPS
+        processing_fps_frame = tk.Frame(fps_container, bg='#e8e8e8')
+        processing_fps_frame.pack(side=tk.LEFT, padx=(0, 20))
+        
+        tk.Label(processing_fps_frame, text="處理:", 
+                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+        processing_fps_display = tk.Label(processing_fps_frame, textvariable=self.processing_fps_var,
+                                         font=('Arial', 9, 'bold'), 
+                                         bg='#e8e8e8', fg='#007aff')
+        processing_fps_display.pack(side=tk.LEFT, padx=(3, 0))
+        
+        # 檢測FPS
+        detection_fps_frame = tk.Frame(fps_container, bg='#e8e8e8')
+        detection_fps_frame.pack(side=tk.LEFT)
+        
+        tk.Label(detection_fps_frame, text="檢測:", 
+                font=('Arial', 9), bg='#e8e8e8', fg='#333333').pack(side=tk.LEFT)
+        detection_fps_display = tk.Label(detection_fps_frame, textvariable=self.detection_fps_var,
+                                        font=('Arial', 9, 'bold'), 
+                                        bg='#e8e8e8', fg='#af52de')
+        detection_fps_display.pack(side=tk.LEFT, padx=(3, 0))
+        
+        # 右側時間戳
+        right_status = tk.Frame(main_status_bar, bg='#e8e8e8')
+        right_status.pack(side=tk.RIGHT, padx=10, pady=8)
+        
+        import time
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.time_display = tk.Label(right_status, text=current_time,
+                                   font=('Arial', 9), 
+                                   bg='#e8e8e8', fg='#666666')
+        self.time_display.pack()
+        
+        # 定時更新時間
+        self.update_time_display()
+    
+    def update_time_display(self):
+        """更新時間顯示"""
+        try:
+            import time
+            current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+            if hasattr(self, 'time_display'):
+                self.time_display.config(text=current_time)
+            # 每秒更新一次時間
+            self.root.after(1000, self.update_time_display)
+        except Exception as e:
+            logging.debug(f"更新時間顯示錯誤: {str(e)}")
     
     # ==================== 事件處理 ====================
     
@@ -674,6 +991,7 @@ class MainView:
             
             elif event_type == 'camera_camera_connected':
                 self._on_camera_connected(data)
+                self.update_video_status("就緒")
             
             elif event_type == 'frame_processed':
                 self._on_frame_processed(data)
@@ -863,14 +1181,17 @@ class MainView:
     
     def auto_start_system(self):
         """一鍵啟動系統 - 自動檢測並啟動相機"""
+        self.update_video_status("獲取中")
         self.controller.auto_start_camera_system()
     
     def start_system(self):
         """啟動系統"""
+        self.update_video_status("獲取中")
         self.controller.start_system()
     
     def stop_system(self):
         """停止系統"""
+        self.update_video_status("就緒")
         self.controller.stop_system()
     
     def restart_system(self):
