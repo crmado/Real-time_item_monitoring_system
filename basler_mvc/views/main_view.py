@@ -87,16 +87,16 @@ class MainView:
     
     def create_ui(self):
         """創建響應式用戶界面 - 三欄布局"""
-        # 主容器 - Liquid Glass風格
+        # 主容器 - 緊湊布局，最大化視頻區域
         main_container = ttk.Frame(self.root, style='Apple.TFrame')
-        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         
         # 頂部工具欄（固定高度）
         self.create_top_toolbar(main_container)
         
         # 主要內容區域（三欄布局）
         content_frame = ttk.Frame(main_container)
-        content_frame.pack(fill=tk.BOTH, expand=True, pady=(3, 0))
+        content_frame.pack(fill=tk.BOTH, expand=True, pady=(1, 0))
         
         # 配置三欄權重
         content_frame.grid_columnconfigure(0, weight=20, minsize=200)  # 左側面板 20%
@@ -119,15 +119,15 @@ class MainView:
         self.root.after(100, self.initialize_display_status)
     
     def create_top_toolbar(self, parent):
-        """創建專業級工具欄 - 仿Basler pylon Viewer"""
-        # 主工具欄 - 專業設計
-        main_toolbar = tk.Frame(parent, bg='#f0f0f0', height=50)
-        main_toolbar.pack(fill=tk.X, padx=2, pady=(2, 5))
+        """創建緊湊專業工具欄 - 最大化中間區域"""
+        # 主工具欄 - 緊湊設計
+        main_toolbar = tk.Frame(parent, bg='#f0f0f0', height=35)
+        main_toolbar.pack(fill=tk.X, padx=1, pady=(1, 2))
         main_toolbar.pack_propagate(False)
         
         # 左側控制組
         left_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
-        left_controls.pack(side=tk.LEFT, padx=10, pady=8)
+        left_controls.pack(side=tk.LEFT, padx=8, pady=5)
         
         # 面板切換按鈕
         self.left_panel_btn = tk.Button(left_controls, text="◀", width=3, height=1,
@@ -148,7 +148,7 @@ class MainView:
         
         # 主要控制按鈕 - 專業樣式
         main_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
-        main_controls.pack(side=tk.LEFT, padx=10, pady=5)
+        main_controls.pack(side=tk.LEFT, padx=8, pady=3)
         
         # 🚀 一鍵啟動按鈕 - 醒目的藍色
         self.start_btn = tk.Button(main_controls, text="🚀 一鍵啟動", 
@@ -176,7 +176,7 @@ class MainView:
         
         # 相機控制組
         camera_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
-        camera_controls.pack(side=tk.LEFT, padx=10, pady=5)
+        camera_controls.pack(side=tk.LEFT, padx=8, pady=3)
         
         # 檢測相機按鈕
         self.detect_btn = tk.Button(camera_controls, text="🔍 檢測相機",
@@ -215,7 +215,7 @@ class MainView:
         
         # 右側工具組
         right_tools = tk.Frame(main_toolbar, bg='#f0f0f0')
-        right_tools.pack(side=tk.RIGHT, padx=10, pady=8)
+        right_tools.pack(side=tk.RIGHT, padx=8, pady=5)
         
         # 工具按鈕
         self.settings_btn = tk.Button(right_tools, text="⚙️", width=3, height=1,
@@ -309,195 +309,186 @@ class MainView:
         detection_check.pack(anchor=tk.W)
     
     def create_center_panel(self, parent):
-        """創建專業級相機顯示區域 - 仿Basler官方設計"""
-        # 中央面板容器
-        self.center_panel = ttk.Frame(parent, style='Apple.TFrame')
-        self.center_panel.grid(row=0, column=1, sticky="nsew", 
-                              padx=self.theme_manager.get_dimension('SPACING_MD'))
+        """創建滿版專業相機顯示區域 - 完全仿Basler pylon Viewer"""
+        # 中央面板容器 - 移除邊距，滿版顯示
+        self.center_panel = tk.Frame(parent, bg='#f0f0f0')
+        self.center_panel.grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
         
-        # 主視頻框架 - 專業相機界面
-        main_video_frame = ttk.LabelFrame(self.center_panel, text="📷 Basler acA640-300gm - 實時影像", 
-                                         style='Apple.TLabelframe')
-        main_video_frame.pack(fill=tk.BOTH, expand=True)
+        # 主視頻框架 - 緊湊標題
+        main_video_frame = tk.LabelFrame(self.center_panel, 
+                                        text="📷 Basler acA640-300gm - 實時影像", 
+                                        font=('Arial', 9, 'bold'),
+                                        fg='#333333', bg='#f0f0f0',
+                                        relief='solid', bd=1)
+        main_video_frame.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
         
-        # 圖像工具欄 - 仿Basler設計
-        self.create_image_toolbar(main_video_frame)
+        # 圖像工具欄 - 超緊湊設計
+        self.create_compact_image_toolbar(main_video_frame)
         
-        # 影像顯示容器 - 專業設計
+        # 影像顯示容器 - 滿版設計，最小邊距
         image_container = tk.Frame(main_video_frame, 
-                                  bg='#2c2c2c',  # 深色背景像專業軟件
+                                  bg='#2c2c2c',  # 深色背景
                                   relief='sunken', 
-                                  bd=2)
-        image_container.pack(fill=tk.BOTH, expand=True, 
-                           padx=3, pady=3)
+                                  bd=1)
+        image_container.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
         
-        # 視頻顯示區域 - 專業相機風格
+        # 視頻顯示區域 - 完全滿版
         self.video_label = tk.Label(image_container, 
                                    text="Basler acA640-300gm\n\n🎥 Camera Ready\n點擊開始獲取影像", 
                                    anchor=tk.CENTER, 
-                                   font=self.theme_manager.get_font(
-                                       self.theme_manager.theme.Typography.FONT_SIZE_BODY
-                                   ),
+                                   font=('Arial', 12),
                                    background='#1e1e1e',  # 深色背景
                                    foreground='#ffffff',   # 白色文字
                                    relief='flat',
                                    bd=0)
         self.video_label.pack(expand=True, fill=tk.BOTH)
-        
-        # 圖像信息狀態欄 - 仿Basler設計
-        self.create_image_status_bar(main_video_frame)
-        
-        # 底部性能統計欄
-        self.create_performance_bar(main_video_frame)
     
-    def create_image_toolbar(self, parent):
-        """創建圖像工具欄 - 仿Basler pylon Viewer"""
-        toolbar_frame = tk.Frame(parent, bg='#f0f0f0', height=35)
-        toolbar_frame.pack(fill=tk.X, padx=2, pady=(2, 0))
+        # 圖像信息狀態欄 - 超緊湊
+        self.create_compact_image_status_bar(main_video_frame)
+        
+        # 底部性能統計欄 - 緊湊版
+        self.create_compact_performance_bar(main_video_frame)
+    
+    def create_compact_image_toolbar(self, parent):
+        """創建超緊湊圖像工具欄 - 最小化空間占用"""
+        toolbar_frame = tk.Frame(parent, bg='#f0f0f0', height=25)
+        toolbar_frame.pack(fill=tk.X, padx=1, pady=0)
         toolbar_frame.pack_propagate(False)
         
-        # 左側圖像控制按鈕
+        # 左側工具按鈕 - 超緊湊
         left_tools = tk.Frame(toolbar_frame, bg='#f0f0f0')
-        left_tools.pack(side=tk.LEFT, padx=5, pady=3)
+        left_tools.pack(side=tk.LEFT, padx=3, pady=2)
         
-        # 縮放控制
-        self.zoom_fit_btn = tk.Button(left_tools, text="🔍", width=3, height=1,
-                                     font=('Arial', 10), relief='flat',
+        # 縮放控制 - 小型按鈕
+        self.zoom_fit_btn = tk.Button(left_tools, text="🔍", width=2, height=1,
+                                     font=('Arial', 8), relief='flat',
                                      bg='#e0e0e0', activebackground='#d0d0d0',
                                      command=self.zoom_fit)
         self.zoom_fit_btn.pack(side=tk.LEFT, padx=1)
         
-        self.zoom_100_btn = tk.Button(left_tools, text="1:1", width=3, height=1,
-                                     font=('Arial', 8), relief='flat',
+        self.zoom_100_btn = tk.Button(left_tools, text="1:1", width=2, height=1,
+                                     font=('Arial', 7), relief='flat',
                                      bg='#e0e0e0', activebackground='#d0d0d0',
                                      command=self.zoom_100)
         self.zoom_100_btn.pack(side=tk.LEFT, padx=1)
         
-        # 分隔線
-        separator1 = tk.Frame(toolbar_frame, bg='#c0c0c0', width=1)
-        separator1.pack(side=tk.LEFT, fill=tk.Y, padx=5)
-        
-        # 圖像工具
-        image_tools = tk.Frame(toolbar_frame, bg='#f0f0f0')
-        image_tools.pack(side=tk.LEFT, padx=5, pady=3)
-        
-        self.crosshair_btn = tk.Button(image_tools, text="✛", width=3, height=1,
-                                      font=('Arial', 10), relief='flat',
+        # 圖像工具 - 緊湊版
+        self.crosshair_btn = tk.Button(left_tools, text="✛", width=2, height=1,
+                                      font=('Arial', 8), relief='flat',
                                       bg='#e0e0e0', activebackground='#d0d0d0',
                                       command=self.toggle_crosshair)
         self.crosshair_btn.pack(side=tk.LEFT, padx=1)
         
-        self.roi_btn = tk.Button(image_tools, text="□", width=3, height=1,
-                                font=('Arial', 10), relief='flat',
+        self.roi_btn = tk.Button(left_tools, text="□", width=2, height=1,
+                                font=('Arial', 8), relief='flat',
                                 bg='#e0e0e0', activebackground='#d0d0d0',
                                 command=self.toggle_roi)
         self.roi_btn.pack(side=tk.LEFT, padx=1)
         
-        # 右側圖像信息
+        # 右側縮放信息 - 緊湊
         right_info = tk.Frame(toolbar_frame, bg='#f0f0f0')
-        right_info.pack(side=tk.RIGHT, padx=5, pady=5)
+        right_info.pack(side=tk.RIGHT, padx=3, pady=2)
         
-        # 縮放顯示
         self.zoom_label = tk.Label(right_info, text="100%", 
-                                  font=('Arial', 9), bg='#f0f0f0')
-        self.zoom_label.pack(side=tk.RIGHT, padx=5)
+                                  font=('Arial', 8), bg='#f0f0f0')
+        self.zoom_label.pack(side=tk.RIGHT)
     
-    def create_image_status_bar(self, parent):
-        """創建圖像信息狀態欄"""
-        status_frame = tk.Frame(parent, bg='#e8e8e8', height=25)
-        status_frame.pack(fill=tk.X, padx=2, pady=(0, 2))
+    def create_compact_image_status_bar(self, parent):
+        """創建超緊湊圖像信息狀態欄"""
+        status_frame = tk.Frame(parent, bg='#e8e8e8', height=18)
+        status_frame.pack(fill=tk.X, padx=1, pady=0)
         status_frame.pack_propagate(False)
         
-        # 左側圖像信息
+        # 左側圖像信息 - 緊湊布局
         left_info = tk.Frame(status_frame, bg='#e8e8e8')
-        left_info.pack(side=tk.LEFT, padx=8, pady=2)
+        left_info.pack(side=tk.LEFT, padx=5, pady=1)
         
         # 分辨率信息
         self.resolution_var = tk.StringVar(value="640 × 480")
         resolution_label = tk.Label(left_info, textvariable=self.resolution_var,
-                                   font=('Arial', 9), bg='#e8e8e8')
+                                   font=('Arial', 8), bg='#e8e8e8')
         resolution_label.pack(side=tk.LEFT)
         
         # 分隔符
-        sep1 = tk.Label(left_info, text=" | ", font=('Arial', 9), bg='#e8e8e8')
+        sep1 = tk.Label(left_info, text=" | ", font=('Arial', 8), bg='#e8e8e8')
         sep1.pack(side=tk.LEFT)
         
         # 像素格式
         self.pixel_format_var = tk.StringVar(value="Mono8")
         format_label = tk.Label(left_info, textvariable=self.pixel_format_var,
-                               font=('Arial', 9), bg='#e8e8e8')
+                               font=('Arial', 8), bg='#e8e8e8')
         format_label.pack(side=tk.LEFT)
         
         # 分隔符
-        sep2 = tk.Label(left_info, text=" | ", font=('Arial', 9), bg='#e8e8e8')
+        sep2 = tk.Label(left_info, text=" | ", font=('Arial', 8), bg='#e8e8e8')
         sep2.pack(side=tk.LEFT)
         
         # 位深度
         self.bit_depth_var = tk.StringVar(value="8 bit")
         depth_label = tk.Label(left_info, textvariable=self.bit_depth_var,
-                              font=('Arial', 9), bg='#e8e8e8')
+                              font=('Arial', 8), bg='#e8e8e8')
         depth_label.pack(side=tk.LEFT)
         
         # 右側狀態信息
         right_info = tk.Frame(status_frame, bg='#e8e8e8')
-        right_info.pack(side=tk.RIGHT, padx=8, pady=2)
+        right_info.pack(side=tk.RIGHT, padx=5, pady=1)
         
         # 獲取狀態
         self.acquisition_status_var = tk.StringVar(value="就緒")
         status_label = tk.Label(right_info, textvariable=self.acquisition_status_var,
-                               font=('Arial', 9), bg='#e8e8e8', fg='#007aff')
+                               font=('Arial', 8), bg='#e8e8e8', fg='#007aff')
         status_label.pack(side=tk.RIGHT)
     
-    def create_performance_bar(self, parent):
-        """創建底部性能統計欄"""
-        perf_frame = tk.Frame(parent, bg='#f8f9fa', height=30)
-        perf_frame.pack(fill=tk.X, padx=2, pady=(0, 2))
+    def create_compact_performance_bar(self, parent):
+        """創建超緊湊性能統計欄"""
+        perf_frame = tk.Frame(parent, bg='#f8f9fa', height=20)
+        perf_frame.pack(fill=tk.X, padx=1, pady=0)
         perf_frame.pack_propagate(False)
         
-        # 左側FPS信息 - 使用圖標
+        # 左側FPS信息 - 超緊湊
         fps_container = tk.Frame(perf_frame, bg='#f8f9fa')
-        fps_container.pack(side=tk.LEFT, padx=10, pady=5)
+        fps_container.pack(side=tk.LEFT, padx=5, pady=2)
         
-        # 相機FPS
+        # 相機FPS - 緊湊版
         camera_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
-        camera_fps_frame.pack(side=tk.LEFT, padx=(0, 15))
+        camera_fps_frame.pack(side=tk.LEFT, padx=(0, 8))
         
-        tk.Label(camera_fps_frame, text="📷", font=('Arial', 10), bg='#f8f9fa').pack(side=tk.LEFT)
+        tk.Label(camera_fps_frame, text="📷", font=('Arial', 8), bg='#f8f9fa').pack(side=tk.LEFT)
         camera_fps_label = tk.Label(camera_fps_frame, textvariable=self.camera_fps_var,
-                                   font=('Arial', 9, 'bold'), fg='#34c759', bg='#f8f9fa')
-        camera_fps_label.pack(side=tk.LEFT, padx=(2, 0))
+                                   font=('Arial', 8, 'bold'), fg='#34c759', bg='#f8f9fa')
+        camera_fps_label.pack(side=tk.LEFT, padx=(1, 0))
         
-        # 處理FPS
+        # 處理FPS - 緊湊版
         processing_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
-        processing_fps_frame.pack(side=tk.LEFT, padx=(0, 15))
+        processing_fps_frame.pack(side=tk.LEFT, padx=(0, 8))
         
-        tk.Label(processing_fps_frame, text="⚡", font=('Arial', 10), bg='#f8f9fa').pack(side=tk.LEFT)
+        tk.Label(processing_fps_frame, text="⚡", font=('Arial', 8), bg='#f8f9fa').pack(side=tk.LEFT)
         processing_fps_label = tk.Label(processing_fps_frame, textvariable=self.processing_fps_var,
-                                       font=('Arial', 9, 'bold'), fg='#007aff', bg='#f8f9fa')
-        processing_fps_label.pack(side=tk.LEFT, padx=(2, 0))
+                                       font=('Arial', 8, 'bold'), fg='#007aff', bg='#f8f9fa')
+        processing_fps_label.pack(side=tk.LEFT, padx=(1, 0))
         
-        # 檢測FPS
+        # 檢測FPS - 緊湊版
         detection_fps_frame = tk.Frame(fps_container, bg='#f8f9fa')
         detection_fps_frame.pack(side=tk.LEFT)
         
-        tk.Label(detection_fps_frame, text="🔍", font=('Arial', 10), bg='#f8f9fa').pack(side=tk.LEFT)
+        tk.Label(detection_fps_frame, text="🔍", font=('Arial', 8), bg='#f8f9fa').pack(side=tk.LEFT)
         detection_fps_label = tk.Label(detection_fps_frame, textvariable=self.detection_fps_var,
-                                      font=('Arial', 9, 'bold'), fg='#af52de', bg='#f8f9fa')
-        detection_fps_label.pack(side=tk.LEFT, padx=(2, 0))
+                                      font=('Arial', 8, 'bold'), fg='#af52de', bg='#f8f9fa')
+        detection_fps_label.pack(side=tk.LEFT, padx=(1, 0))
         
-        # 右側物件計數 - 專業顯示
+        # 右側物件計數 - 緊湊顯示
         count_container = tk.Frame(perf_frame, bg='#fff3cd', relief='solid', bd=1)
-        count_container.pack(side=tk.RIGHT, padx=10, pady=3)
+        count_container.pack(side=tk.RIGHT, padx=5, pady=1)
         
         count_inner = tk.Frame(count_container, bg='#fff3cd')
-        count_inner.pack(padx=8, pady=2)
+        count_inner.pack(padx=4, pady=1)
         
-        tk.Label(count_inner, text="檢測物件:", 
-                font=('Arial', 9), fg='#856404', bg='#fff3cd').pack(side=tk.LEFT)
+        tk.Label(count_inner, text="物件:", 
+                font=('Arial', 8), fg='#856404', bg='#fff3cd').pack(side=tk.LEFT)
         
         count_value = tk.Label(count_inner, textvariable=self.object_count_var, 
-                              font=('Arial', 11, 'bold'), fg='#d73527', bg='#fff3cd')
-        count_value.pack(side=tk.LEFT, padx=(5, 0))
+                              font=('Arial', 9, 'bold'), fg='#d73527', bg='#fff3cd')
+        count_value.pack(side=tk.LEFT, padx=(2, 0))
     
     # 圖像控制功能
     def zoom_fit(self):
@@ -608,7 +599,7 @@ class MainView:
         
         # 開始按鈕 - 醒目設計
         self.start_batch_btn = tk.Button(btn_container, text="▶ 開始",
-                                        font=('Arial', 9, 'bold'),
+                                      font=('Arial', 9, 'bold'),
                                         bg='#34c759', fg='white',
                                         activebackground='#28a745',
                                         relief='flat', borderwidth=0,
@@ -623,7 +614,7 @@ class MainView:
                                        activebackground='#e5e5ea',
                                        relief='solid', borderwidth=1,
                                        padx=12, pady=4,
-                                       state='disabled',
+                                      state='disabled',
                                        command=self.stop_batch)
         self.stop_batch_btn.pack(side=tk.RIGHT)
     
@@ -865,15 +856,15 @@ class MainView:
             logging.debug(f"初始化顯示狀態錯誤: {str(e)}")
     
     def create_status_panel(self, parent):
-        """創建專業級系統狀態欄 - 仿Basler pylon Viewer"""
-        # 主狀態欄 - 專業設計
-        main_status_bar = tk.Frame(parent, bg='#e8e8e8', height=40)
-        main_status_bar.pack(fill=tk.X, pady=(5, 0))
+        """創建緊湊專業系統狀態欄 - 最大化中間視頻區域"""
+        # 主狀態欄 - 緊湊設計
+        main_status_bar = tk.Frame(parent, bg='#e8e8e8', height=28)
+        main_status_bar.pack(fill=tk.X, pady=(2, 0))
         main_status_bar.pack_propagate(False)
         
         # 左側系統狀態
         left_status = tk.Frame(main_status_bar, bg='#e8e8e8')
-        left_status.pack(side=tk.LEFT, padx=10, pady=8)
+        left_status.pack(side=tk.LEFT, padx=8, pady=4)
         
         # 狀態指示器
         status_indicator = tk.Frame(left_status, bg='#e8e8e8')
@@ -901,7 +892,7 @@ class MainView:
         
         # 中間性能統計 - 專業布局
         center_stats = tk.Frame(main_status_bar, bg='#e8e8e8')
-        center_stats.pack(side=tk.LEFT, expand=True, padx=20, pady=8)
+        center_stats.pack(side=tk.LEFT, expand=True, padx=15, pady=4)
         
         # FPS統計區域
         fps_container = tk.Frame(center_stats, bg='#e8e8e8')
@@ -942,7 +933,7 @@ class MainView:
         
         # 右側時間戳
         right_status = tk.Frame(main_status_bar, bg='#e8e8e8')
-        right_status.pack(side=tk.RIGHT, padx=10, pady=8)
+        right_status.pack(side=tk.RIGHT, padx=8, pady=4)
         
         import time
         current_time = time.strftime("%Y-%m-%d %H:%M:%S")
