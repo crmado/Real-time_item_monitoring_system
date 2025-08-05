@@ -42,14 +42,14 @@ class CircleDetection(DetectionMethod):
     
     def __init__(self):
         """初始化圓形檢測"""
-        # 🚀 高性能優化參數（基於測試結果）
-        self.resize_factor = 0.5      # 圖像縮小50%提升4x性能
-        self.dp = 2.0                 # 增大dp減少計算量
-        self.min_dist = 50            # 增大最小距離
-        self.param1 = 100             # 提高閾值減少誤檢
-        self.param2 = 60              # 提高閾值
-        self.min_radius = 10          # 調整最小半徑
-        self.max_radius = 60          # 限制最大半徑
+        # 🚀 極速優化參數（針對實時處理）
+        self.resize_factor = 0.3      # 圖像縮小70%大幅提升性能
+        self.dp = 3.0                 # 進一步增大dp減少計算量
+        self.min_dist = 30            # 適度調整最小距離
+        self.param1 = 120             # 提高閾值減少計算
+        self.param2 = 70              # 提高閾值
+        self.min_radius = 8           # 調整最小半徑
+        self.max_radius = 50          # 限制最大半徑
         self.min_area = 100           # 調整面積範圍
         self.max_area = 5000
         self.blur_kernel = 3          # 使用更小的模糊核
@@ -235,13 +235,28 @@ class DetectionModel:
         self.current_method = self.available_methods['circle']
         self.method_name = 'circle'
         
-        # 檢測參數 - 高性能優化（基於測試結果）
+        # 數據源類型和對應參數
+        self.current_source_type = 'camera'  # camera, video
+        self.source_params = {
+            'camera': {
+                'min_area': 100,
+                'max_area': 5000,
+                'resize_factor': 0.5,  # 工業相機高精度模式
+                'high_performance_mode': True
+            },
+            'video': {
+                'min_area': 100,
+                'max_area': 5000,
+                'resize_factor': 0.5,  # 🎯 視頻回放也使用高精度（GPU加速補償）
+                'high_performance_mode': True,  # 🚀 啟用高性能模式
+                'gpu_optimized': True  # 🎯 視頻模式優先使用GPU
+            }
+        }
+        
+        # 檢測參數 - 根據當前數據源動態設定
         self.detection_params = {
-            'min_area': 100,    # 優化最小面積
-            'max_area': 5000,   # 優化最大面積  
             'enable_detection': True,
-            'resize_factor': 0.5,  # 圖像縮小50%處理
-            'high_performance_mode': True  # 啟用高性能模式
+            **self.source_params['camera']  # 預設使用相機參數
         }
         
         # 檢測結果
@@ -279,6 +294,134 @@ class DetectionModel:
             self.notify_observers('method_changed', method_name)
             return True
         return False
+    
+    def set_source_type(self, source_type: str, video_info: Dict[str, Any] = None) -> bool:
+        """設置數據源類型：camera 或 video，支持動態參數調整"""
+        if source_type not in ['camera', 'video']:
+            logging.error(f"不支持的數據源類型: {source_type}")
+            return False
+            
+        self.current_source_type = source_type
+        
+        if source_type == 'video' and video_info:
+            # 🎯 新功能：根據實際視頻數據動態調整參數
+            optimized_params = self._analyze_video_and_optimize_params(video_info)
+            source_params = optimized_params
+            
+            logging.info(f"🎬 根據視頻規格動態優化參數:")
+            logging.info(f"解析度: {video_info.get('width', 'N/A')}x{video_info.get('height', 'N/A')}")
+            logging.info(f"FPS: {video_info.get('fps', 'N/A'):.2f}")
+            logging.info(f"優化後參數: {optimized_params}")
+        else:
+            # 使用預設參數
+            source_params = self.source_params[source_type]
+            logging.info(f"使用預設參數: {source_params}")
+        
+        # 更新檢測參數
+        self.detection_params.update(source_params)
+        
+        # 同時更新當前檢測方法的參數
+        self.current_method.set_parameters(source_params)
+        
+        logging.info(f"數據源已切換為: {source_type}")
+        
+        self.notify_observers('source_type_changed', {
+            'source_type': source_type,
+            'params': source_params,
+            'video_info': video_info
+        })
+        
+        return True
+    
+    def _analyze_video_and_optimize_params(self, video_info: Dict[str, Any]) -> Dict[str, Any]:
+        """根據視頻實際數據分析並優化檢測參數"""
+        try:
+            # 獲取視頻實際規格
+            width = video_info.get('width', 640)
+            height = video_info.get('height', 480)
+            fps = video_info.get('fps', 30.0)
+            codec = video_info.get('codec', 'unknown')
+            total_frames = video_info.get('total_frames', 0)
+            
+            # 計算解析度等級
+            resolution_pixels = width * height
+            
+            # 🎯 根據解析度動態調整參數
+            if resolution_pixels >= 1920 * 1080:  # 1080p以上
+                resize_factor = 0.3  # 高解析度，大幅縮小
+                min_radius = 15
+                max_radius = 80
+                min_area = 200
+                max_area = 8000
+                logging.info("📺 高解析度視頻，使用優化參數")
+            elif resolution_pixels >= 1280 * 720:  # 720p
+                resize_factor = 0.4
+                min_radius = 10
+                max_radius = 60
+                min_area = 150
+                max_area = 6000
+                logging.info("📺 中解析度視頻，使用標準參數")
+            else:  # 480p及以下
+                resize_factor = 0.6
+                min_radius = 5
+                max_radius = 40
+                min_area = 80
+                max_area = 4000
+                logging.info("📺 低解析度視頻，使用精細參數")
+            
+            # 🎯 根據 FPS 調整性能參數
+            if fps >= 60:
+                # 高幀率，優先性能
+                dp = 3.0
+                param1 = 120
+                param2 = 80
+                logging.info(f"🚀 高幀率視頻 ({fps:.1f} fps)，優先性能")
+            elif fps >= 30:
+                # 標準幀率，平衡性能和精度
+                dp = 2.5
+                param1 = 100
+                param2 = 65
+                logging.info(f"📺 標準幀率視頻 ({fps:.1f} fps)，平衡模式")
+            else:
+                # 低幀率，優先精度
+                dp = 2.0
+                param1 = 80
+                param2 = 50
+                logging.info(f"🔍 低幀率視頻 ({fps:.1f} fps)，優先精度")
+            
+            # 🎯 根據編碼格式調整
+            blur_kernel = 3  # 預設
+            if codec.lower() in ['h264', 'h265', 'hevc']:
+                blur_kernel = 5  # 壓縮編碼，增加模糊以減少噪點
+                logging.info(f"🎥 壓縮編碼 ({codec})，調整模糊參數")
+            
+            # 🎯 組合優化參數
+            optimized_params = {
+                'min_area': min_area,
+                'max_area': max_area,
+                'resize_factor': resize_factor,
+                'high_performance_mode': True,
+                'gpu_optimized': True,
+                # CircleDetection 參數
+                'dp': dp,
+                'min_dist': int(30 * resize_factor),  # 按縮放比例調整
+                'param1': param1,
+                'param2': param2,
+                'min_radius': min_radius,
+                'max_radius': max_radius,
+                'blur_kernel': blur_kernel,
+                # 視頻規格信息用於記錄
+                'source_resolution': f"{width}x{height}",
+                'source_fps': fps,
+                'source_codec': codec
+            }
+            
+            return optimized_params
+            
+        except Exception as e:
+            logging.error(f"分析視頻參數失敗: {e}")
+            # 返回安全的預設參數
+            return self.source_params['video'].copy()
     
     def update_parameters(self, params: Dict[str, Any]) -> bool:
         """更新檢測參數"""
@@ -335,8 +478,15 @@ class DetectionModel:
                 avg_time = sum(self.detection_times) / len(self.detection_times)
                 self.detection_fps = 1.0 / avg_time if avg_time > 0 else 0
             
-            # 繪製檢測結果
-            result_frame = self._draw_detections(frame.copy(), objects)
+            # 🚀 性能優化：只在需要時複製幀
+            if len(objects) > 0:
+                # 有檢測結果時才複製和繪製
+                result_frame = self._draw_detections(frame.copy(), objects)
+            else:
+                # 無檢測結果時直接在原圖上繪製計數
+                result_frame = frame
+                cv2.putText(result_frame, f'Count: 0', 
+                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
             # 通知觀察者
             self.notify_observers('detection_completed', {

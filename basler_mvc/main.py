@@ -97,7 +97,10 @@ def show_startup_info():
 
 
 def main():
-    """主函數"""
+    """主函數 - 強化錯誤處理版本"""
+    controller = None
+    view = None
+    
     try:
         # 顯示啟動信息
         show_startup_info()
@@ -111,28 +114,33 @@ def main():
         # 設置日誌
         print("📝 初始化日誌系統...")
         setup_logging()
-        logging.info("Basler MVC 系統啟動")
+        logging.info("🚀 Basler MVC 系統啟動")
         
         # 創建 MVC 組件
         print("🏗️ 初始化 MVC 架構...")
         controller = MainController()
         view = MainView(controller)
         
-        logging.info("MVC 架構初始化完成")
+        logging.info("✅ MVC 架構初始化完成")
         print("✅ 系統初始化完成")
         print()
         
         # 檢測可用相機設備（但不自動啟動）
         print("🔍 檢測可用相機設備...")
-        detected_cameras = controller.detect_cameras()
-        if detected_cameras:
-            print(f"✅ 檢測到 {len(detected_cameras)} 台相機設備")
-            for i, camera in enumerate(detected_cameras):
-                status = "✅ 目標型號" if camera.get('is_target', False) else "⚠️ 其他型號"
-                print(f"   相機 {i+1}: {camera['model']} ({status})")
-            print("📌 請在界面中雙擊設備進行連接")
-        else:
-            print("⚠️ 未檢測到任何相機設備")
+        try:
+            detected_cameras = controller.detect_cameras()
+            if detected_cameras:
+                print(f"✅ 檢測到 {len(detected_cameras)} 台相機設備")
+                for i, camera in enumerate(detected_cameras):
+                    status = "✅ 目標型號" if camera.get('is_target', False) else "⚠️ 其他型號"
+                    print(f"   相機 {i+1}: {camera['model']} ({status})")
+                print("📌 請在界面中雙擊設備進行連接")
+            else:
+                print("⚠️ 未檢測到任何相機設備")
+                print("💡 提示：請檢查相機連接和驅動程序")
+        except Exception as camera_error:
+            logging.warning(f"相機檢測失敗: {str(camera_error)}")
+            print("⚠️ 相機檢測失敗，請檢查設備連接")
         
         print()
         print("🎮 啟動用戶界面...")
@@ -140,21 +148,46 @@ def main():
         # 運行應用程序
         view.run()
         
+        logging.info("✅ 應用程序正常退出")
         return 0
         
     except KeyboardInterrupt:
         print("\n❗ 用戶中斷程序")
-        logging.info("用戶中斷程序")
+        logging.info("⚠️ 用戶中斷程序")
         return 0
         
     except Exception as e:
         error_msg = f"系統啟動失敗: {str(e)}"
         print(f"❌ {error_msg}")
         logging.error(error_msg, exc_info=True)
+        
+        # 🩺 自動運行診斷（如果可能）
+        if controller:
+            try:
+                from .utils.system_diagnostics import print_quick_diagnostic
+                print("\n🔍 運行自動診斷...")
+                print_quick_diagnostic(controller)
+            except Exception as diag_error:
+                logging.debug(f"自動診斷失敗: {str(diag_error)}")
+        
+        return 1
+        
+    except:
+        # 捕獲任何其他異常
+        logging.critical("💥 發生未預期的嚴重錯誤", exc_info=True)
+        print("💥 發生嚴重錯誤，請檢查日誌文件")
         return 1
     
     finally:
-        logging.info("Basler MVC 系統關閉")
+        # 🧹 確保資源清理
+        try:
+            if controller:
+                logging.info("🧹 清理控制器資源...")
+                controller.cleanup()
+        except Exception as cleanup_error:
+            logging.warning(f"⚠️ 清理資源時出錯: {str(cleanup_error)}")
+        
+        logging.info("🏁 Basler MVC 系統關閉")
 
 
 if __name__ == "__main__":

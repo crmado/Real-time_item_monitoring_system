@@ -324,6 +324,140 @@ class MainView:
                                          variable=self.detection_enabled,
                                          command=self.on_detection_toggle)
         detection_check.pack(anchor=tk.W)
+        
+        # 視頻錄製和回放控制面板
+        self.create_video_control_panel()
+    
+    def create_video_control_panel(self):
+        """創建視頻錄製和回放控制面板"""
+        # 視頻控制主框架
+        video_frame = ttk.LabelFrame(self.left_panel, text="🎬 視頻控制", 
+                                   style='Apple.TLabelframe')
+        video_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 模式選擇區域
+        mode_frame = ttk.Frame(video_frame, style='Apple.TFrame')
+        mode_frame.pack(fill=tk.X, pady=(5, 8))
+        
+        ttk.Label(mode_frame, text="模式:", style='Apple.TLabel').pack(side=tk.LEFT)
+        
+        # 模式變數和單選按鈕
+        self.video_mode = tk.StringVar(value="live")
+        
+        modes = [
+            ("實時", "live"),
+            ("錄製", "recording"), 
+            ("回放", "playback")
+        ]
+        
+        mode_buttons_frame = ttk.Frame(mode_frame, style='Apple.TFrame')
+        mode_buttons_frame.pack(side=tk.RIGHT)
+        
+        for text, value in modes:
+            rb = ttk.Radiobutton(mode_buttons_frame, text=text, value=value,
+                               variable=self.video_mode, 
+                               command=self.on_video_mode_change)
+            rb.pack(side=tk.LEFT, padx=2)
+        
+        # 錄製控制區域
+        self.recording_frame = ttk.Frame(video_frame, style='Apple.TFrame')
+        self.recording_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # 檔名輸入
+        filename_frame = ttk.Frame(self.recording_frame, style='Apple.TFrame')
+        filename_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(filename_frame, text="檔名:", style='Apple.TLabel').pack(side=tk.LEFT)
+        
+        self.recording_filename = tk.StringVar(value=self.generate_recording_filename())
+        filename_entry = ttk.Entry(filename_frame, textvariable=self.recording_filename, 
+                                 width=15, font=('Arial', 9))
+        filename_entry.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # 錄製按鈕
+        record_button_frame = ttk.Frame(self.recording_frame, style='Apple.TFrame')
+        record_button_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        self.record_btn = tk.Button(record_button_frame, text="🔴 開始錄製",
+                                   font=('Arial', 10), bg='#ff4444', fg='white',
+                                   relief='solid', bd=1, padx=8, pady=4,
+                                   command=self.toggle_recording)
+        self.record_btn.pack(side=tk.LEFT)
+        
+        # 錄製狀態標籤
+        self.recording_status = tk.Label(record_button_frame, text="",
+                                       font=('Arial', 9), fg='#666666')
+        self.recording_status.pack(side=tk.RIGHT)
+        
+        # 回放控制區域
+        self.playback_frame = ttk.Frame(video_frame, style='Apple.TFrame')
+        self.playback_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # 檔案選擇
+        file_frame = ttk.Frame(self.playback_frame, style='Apple.TFrame')
+        file_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        file_btn = tk.Button(file_frame, text="選擇視頻", font=('Arial', 9),
+                           command=self.select_video_file, relief='solid', bd=1)
+        file_btn.pack(side=tk.LEFT)
+        
+        self.selected_video_path = tk.StringVar(value="未選擇")
+        video_label = tk.Label(file_frame, textvariable=self.selected_video_path,
+                             font=('Arial', 8), fg='#666666')
+        video_label.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
+        
+        # 播放控制按鈕
+        playback_controls = ttk.Frame(self.playback_frame, style='Apple.TFrame')
+        playback_controls.pack(fill=tk.X, pady=(0, 5))
+        
+        self.play_btn = tk.Button(playback_controls, text="▶️", font=('Arial', 10),
+                                 command=self.toggle_playback, relief='solid', bd=1, width=3)
+        self.play_btn.pack(side=tk.LEFT, padx=(0, 2))
+        
+        self.pause_btn = tk.Button(playback_controls, text="⏸️", font=('Arial', 10),
+                                  command=self.pause_playback, relief='solid', bd=1, width=3)
+        self.pause_btn.pack(side=tk.LEFT, padx=(0, 2))
+        
+        self.stop_btn = tk.Button(playback_controls, text="⏹️", font=('Arial', 10),
+                                 command=self.stop_playback, relief='solid', bd=1, width=3)
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 2))
+        
+        # 播放速度控制
+        speed_frame = ttk.Frame(playback_controls, style='Apple.TFrame')
+        speed_frame.pack(side=tk.RIGHT)
+        
+        tk.Label(speed_frame, text="速度:", font=('Arial', 9)).pack(side=tk.LEFT)
+        
+        self.playback_speed = tk.DoubleVar(value=1.0)
+        speed_scale = ttk.Scale(speed_frame, from_=0.1, to=3.0, variable=self.playback_speed,
+                              orient=tk.HORIZONTAL, length=60, command=self.on_speed_change)
+        speed_scale.pack(side=tk.LEFT, padx=(2, 0))
+        
+        # 進度條
+        progress_frame = ttk.Frame(self.playback_frame, style='Apple.TFrame')
+        progress_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        self.video_progress = tk.DoubleVar()
+        self.progress_scale = ttk.Scale(progress_frame, from_=0, to=1, 
+                                       variable=self.video_progress,
+                                       orient=tk.HORIZONTAL, 
+                                       command=self.on_progress_change)
+        self.progress_scale.pack(fill=tk.X)
+        
+        # 幀信息
+        info_frame = ttk.Frame(self.playback_frame, style='Apple.TFrame')
+        info_frame.pack(fill=tk.X)
+        
+        self.frame_info = tk.Label(info_frame, text="", font=('Arial', 8), fg='#666666')
+        self.frame_info.pack()
+        
+        # 初始化界面狀態
+        self.update_video_control_ui()
+        
+        # 狀態變數
+        self.is_recording = False
+        self.is_playing = False
+        self.video_loaded = False
     
     def create_center_panel(self, parent):
         """創建滿版專業相機顯示區域 - 完全仿Basler pylon Viewer"""
@@ -929,48 +1063,158 @@ class MainView:
     # ==================== 批次控制方法 ====================
     
     def start_batch(self):
-        """開始新批次"""
+        """開始新批次 - 支持視頻回放模式"""
         try:
-            if hasattr(self, 'batch_mode') and self.batch_mode != 'running':
-                self.batch_mode = 'running'
-                self.current_batch_count = 0
-                self.batch_start_time = time.time()
+            # 🎯 關鍵修復：檢查當前模式
+            current_mode = self.controller.get_current_mode() if hasattr(self.controller, 'get_current_mode') else 'live'
+            
+            # 檢查批次狀態
+            if hasattr(self, 'batch_mode') and self.batch_mode == 'running':
+                messagebox.showinfo("提示", "批次檢測已在運行中")
+                return
+            
+            # 模式專用檢查和處理
+            if current_mode == 'playback':
+                # 🎯 視頻回放模式檢查
+                if not hasattr(self, 'video_loaded') or not self.video_loaded:
+                    messagebox.showwarning("警告", "請先選擇並載入視頻檔案")
+                    return
                 
-                # 更新UI狀態
-                if hasattr(self, 'start_batch_btn'):
-                    self.start_batch_btn.config(state='disabled')
-                if hasattr(self, 'stop_batch_btn'):
-                    self.stop_batch_btn.config(state='normal')
-                
-                # 通知控制器開始批次檢測
+                # 啟動視頻回放檢測
                 if hasattr(self.controller, 'start_batch_detection'):
-                    self.controller.start_batch_detection()
-                    
-                logging.info(f"✅ 開始新批次，目標: {self.target_count_var.get()}")
+                    success = self.controller.start_batch_detection()
+                    if success:
+                        # 更新UI狀態
+                        self.batch_mode = 'running'
+                        self.current_batch_count = 0
+                        self.batch_start_time = time.time()
+                        
+                        if hasattr(self, 'start_batch_btn'):
+                            self.start_batch_btn.config(state='disabled', text="🔄 檢測中")
+                        if hasattr(self, 'stop_batch_btn'):
+                            self.stop_batch_btn.config(state='normal')
+                        
+                        logging.info(f"✅ 視頻回放批次檢測已啟動，目標: {self.target_count_var.get()}")
+                    else:
+                        messagebox.showerror("錯誤", "啟動視頻檢測失敗")
+                        return
+                        
+            elif current_mode == 'live':
+                # 📹 實時相機模式檢查
+                if not self.is_camera_connected:
+                    messagebox.showwarning("警告", "請先連接相機")
+                    return
+                
+                # 啟動相機檢測
+                if hasattr(self.controller, 'start_batch_detection'):
+                    success = self.controller.start_batch_detection()
+                    if success:
+                        # 更新UI狀態
+                        self.batch_mode = 'running'
+                        self.current_batch_count = 0
+                        self.batch_start_time = time.time()
+                        
+                        if hasattr(self, 'start_batch_btn'):
+                            self.start_batch_btn.config(state='disabled', text="🔄 檢測中")
+                        if hasattr(self, 'stop_batch_btn'):
+                            self.stop_batch_btn.config(state='normal')
+                        
+                        logging.info(f"✅ 相機批次檢測已啟動，目標: {self.target_count_var.get()}")
+                    else:
+                        messagebox.showerror("錯誤", "啟動相機檢測失敗")
+                        return
+                        
+            else:
+                messagebox.showinfo("提示", f"不支持的模式: {current_mode}")
+                return
                 
         except Exception as e:
-            logging.error(f"開始批次錯誤: {str(e)}")
+            logging.error(f"啟動批次檢測錯誤: {str(e)}")
+            messagebox.showerror("錯誤", f"啟動失敗: {str(e)}")
+            
+            # 復原按鈕狀態
+            if hasattr(self, 'start_batch_btn'):
+                self.start_batch_btn.config(state='normal', text="▶ 開始")
+            if hasattr(self, 'stop_batch_btn'):
+                self.stop_batch_btn.config(state='disabled')
     
     def stop_batch(self):
-        """停止當前批次"""
+        """停止當前批次 - 支持視頻回放模式"""
         try:
             if hasattr(self, 'batch_mode') and self.batch_mode == 'running':
                 self.batch_mode = 'idle'
                 
+                # 🔄 修復：正確恢原UI狀態和按鈕文字
+                if hasattr(self, 'start_batch_btn'):
+                    self.start_batch_btn.config(state='normal', text="▶ 開始")
+                if hasattr(self, 'stop_batch_btn'):
+                    self.stop_batch_btn.config(state='disabled')
+                
+                # 通知控制器停止檢測
+                if hasattr(self.controller, 'stop_batch_detection'):
+                    success = self.controller.stop_batch_detection()
+                    if success:
+                        logging.info(f"⏹️ 手動停止批次，當前計數: {getattr(self, 'current_batch_count', 0)}")
+                    else:
+                        logging.warning("停止批次檢測失敗")
+                
+        except Exception as e:
+            logging.error(f"停止批次錯誤: {str(e)}")
+            messagebox.showerror("錯誤", f"停止失敗: {str(e)}")
+            
+            # 確保恢原按鈕狀態
+            if hasattr(self, 'start_batch_btn'):
+                self.start_batch_btn.config(state='normal', text="▶ 開始")
+            if hasattr(self, 'stop_batch_btn'):
+                self.stop_batch_btn.config(state='disabled')
+    
+    def complete_batch(self):
+        """完成批次 - 達到目標數量時調用"""
+        try:
+            if hasattr(self, 'batch_mode') and self.batch_mode == 'running':
+                self.batch_mode = 'completed'
+                
                 # 更新UI狀態
                 if hasattr(self, 'start_batch_btn'):
-                    self.start_batch_btn.config(state='normal')
+                    self.start_batch_btn.config(state='normal', text="▶ 開始")
                 if hasattr(self, 'stop_batch_btn'):
                     self.stop_batch_btn.config(state='disabled')
                 
                 # 通知控制器停止檢測
                 if hasattr(self.controller, 'stop_batch_detection'):
                     self.controller.stop_batch_detection()
-                    
-                logging.info(f"⏹️ 手動停止批次，當前計數: {getattr(self, 'current_batch_count', 0)}")
+                
+                # 給出完成提示
+                final_count = getattr(self, 'current_batch_count', 0)
+                target = self.target_count_var.get()
+                elapsed_time = time.time() - getattr(self, 'batch_start_time', time.time())
+                
+                completion_msg = f"🎉 批次完成！\n\n"
+                completion_msg += f"目標數量: {target}\n"
+                completion_msg += f"實際計數: {final_count}\n"
+                completion_msg += f"耗時: {elapsed_time:.1f} 秒\n\n"
+                
+                if final_count >= target:
+                    completion_msg += "✅ 目標達成！"
+                else:
+                    completion_msg += "⚠️ 未達成目標"
+                
+                messagebox.showinfo("批次完成", completion_msg)
+                
+                # 更新統計
+                if hasattr(self, 'total_batches_today'):
+                    self.total_batches_today += 1
+                if hasattr(self, 'total_items_today'):
+                    self.total_items_today += final_count
+                
+                logging.info(f"🎉 批次完成 - 目標: {target}, 實際: {final_count}, 耗時: {elapsed_time:.1f}s")
+                
+                # 重置批次狀態
+                self.batch_mode = 'idle'
                 
         except Exception as e:
-            logging.error(f"停止批次錯誤: {str(e)}")
+            logging.error(f"完成批次錯誤: {str(e)}")
+            messagebox.showerror("錯誤", f"完成批次失敗: {str(e)}")
     
     def on_target_changed(self):
         """目標數量改變回調"""
@@ -1144,6 +1388,18 @@ class MainView:
             
             elif event_type.startswith('camera_') or event_type.startswith('detection_'):
                 self._update_status_display()
+            
+            # 視頻事件處理
+            elif event_type.startswith('recorder_') or event_type.startswith('player_'):
+                self.handle_video_events(event_type, data)
+            
+            elif event_type == 'mode_changed':
+                # 模式切換事件
+                mode = data.get('mode', 'live')
+                self.video_mode.set(mode)
+                self.update_video_control_ui()
+                description = data.get('description', mode)
+                self.status_var.set(f"模式: {description}")
                 
         except Exception as e:
             logging.error(f"處理事件錯誤: {str(e)}")
@@ -1295,21 +1551,36 @@ class MainView:
             logging.error(f"更新檢測品質錯誤: {str(e)}")
     
     def _update_status_display(self):
-        """更新狀態顯示 - 平滑FPS顯示"""
+        """更新狀態顯示 - 根據模式動態顯示"""
         try:
             status = self.controller.get_system_status()
+            current_mode = status.get('current_mode', 'live')
             
+            # 🎯 關鍵修復：根據系統模式顯示不同數據
+            if current_mode == 'playback':
+                # 視頻回放模式：顯示視頻相關數據
+                self._update_playback_status_display(status)
+            else:
+                # 實時相機模式：顯示相機數據
+                self._update_camera_status_display(status)
+            
+        except Exception as e:
+            logging.error(f"更新狀態顯示錯誤: {str(e)}")
+    
+    def _update_camera_status_display(self, status):
+        """更新相機模式狀態顯示 - 修正處理速度顯示"""
+        try:
             # 添加到歷史記錄
             self.fps_history['camera'].append(status['camera_fps'])
             self.fps_history['processing'].append(status['processing_fps'])
             self.fps_history['detection'].append(status['detection_fps'])
             
-            # 限制歷史記錄大小 (保持最近10個值)
+            # 限制歷史記錄大小
             for key in self.fps_history:
                 if len(self.fps_history[key]) > 10:
                     self.fps_history[key].pop(0)
             
-            # 每5次更新才刷新一次顯示 (降低刷新頻率)
+            # 每5次更新才刷新一次顯示
             self.fps_update_counter += 1
             if self.fps_update_counter >= 5:
                 self.fps_update_counter = 0
@@ -1319,21 +1590,132 @@ class MainView:
                 processing_avg = sum(self.fps_history['processing']) / len(self.fps_history['processing']) if self.fps_history['processing'] else 0
                 detection_avg = sum(self.fps_history['detection']) / len(self.fps_history['detection']) if self.fps_history['detection'] else 0
                 
-                # 更新顯示 - 仿Basler格式，防止4位數造成畫面異動
+                # 格式化顯示文字
                 camera_fps_text = f"{min(camera_avg, 999.0):.1f} fps" if camera_avg < 1000 else "999+ fps"
                 processing_fps_text = f"{min(processing_avg, 999.0):.1f} fps" if processing_avg < 1000 else "999+ fps"
                 detection_fps_text = f"{min(detection_avg, 999.0):.1f} fps" if detection_avg < 1000 else "999+ fps"
                 
-                # 計算大致的數據速率（假設每幀約86KB）
+                # 計算數據速率
                 data_rate = (camera_avg * 86) / 1024  # MB/s
                 data_rate_text = f"({data_rate:.1f} MB/s)" if data_rate < 1000 else "(999+ MB/s)"
                 
+                # 🚀 新的邏輯結構：
+                # 第一欄：工業相機運行幀率
+                # 第二欄：檢測處理幀率（每秒檢測幀數）
+                # 第三欄：有意義的關聯信息（處理效率、物件數等）
+                
+                # 計算處理效率（處理速度 / 相機速度）
+                processing_efficiency = (processing_avg / camera_avg * 100) if camera_avg > 0 else 0
+                efficiency_text = f"({processing_efficiency:.1f}%)"
+                
+                # 獲取物件計數信息
+                object_count = status.get('object_count', 0)
+                total_processed = status.get('processing_total_frames', 0)
+                
                 self.camera_fps_var.set(f"相機: {camera_fps_text} {data_rate_text}")
-                self.processing_fps_var.set(f"處理: {processing_fps_text}")
-                self.detection_fps_var.set(f"檢測: {detection_fps_text}")
+                self.processing_fps_var.set(f"處理: {processing_fps_text} {efficiency_text}")
+                self.detection_fps_var.set(f"物件: {object_count} / {total_processed}幀")
+                
+                # 🎯 記錄詳細資訊用於調試
+                logging.debug(f"📊 相機狀態 - 處理: {processing_avg:.1f}fps, 相機: {camera_avg:.1f}fps, 檢測: {detection_avg:.1f}fps")
+                
+        except Exception as e:
+            logging.error(f"更新相機狀態顯示錯誤: {str(e)}")
+    
+    def _update_playback_status_display(self, status):
+        """更新視頻回放模式狀態顯示 - 邏輯版本"""
+        try:
+            # 🎯 視頻回放專用狀態顯示
+            video_processing_fps = status.get('video_processing_fps', 0)  # 檢測處理幀率
+            detection_fps = status.get('detection_fps', 0)
+            video_fps = status.get('video_fps', 0)  # 視頻原始幀率
+            
+            # 🎬 視頻規格信息（用於參考）
+            video_info = status.get('video_info', {})
+            width = video_info.get('width', 0)
+            height = video_info.get('height', 0)
+            codec = video_info.get('codec', 'N/A')
+            
+            # 🎯 時間軸信息
+            time_format = status.get('time_format', '00:00 / 00:00')
+            video_progress = status.get('video_progress', 0)
+            
+            # 格式化顯示
+            processing_fps_text = f"{min(video_processing_fps, 999.0):.1f} fps" if video_processing_fps < 1000 else "999+ fps"
+            detection_fps_text = f"{min(detection_fps, 999.0):.1f} fps" if detection_fps < 1000 else "999+ fps"
+            
+            # 🚀 新顯示結構：第一欄顯示平均處理速度，不是視頻FPS
+            progress_text = f"({video_progress:.1f}%)"
+            
+            # 🎬 視頻規格信息作為參考
+            if width > 0 and height > 0:
+                spec_text = f"{width}x{height} {codec}"
+            else:
+                spec_text = f"{video_fps:.1f}fps"
+            
+            # 🚀 新的邏輯結構（回放模式）：
+            # 第一欄：視頻原始FPS（作為參考）
+            # 第二欄：檢測處理幀率（每秒檢測幀數）  
+            # 第三欄：時間軸 + 視頻規格
+            
+            # 獲取物件計數信息
+            object_count = status.get('object_count', 0)
+            total_processed = status.get('total_frames_processed', 0)
+            
+            self.camera_fps_var.set(f"視頻: {video_fps:.1f}fps {progress_text}")
+            self.processing_fps_var.set(f"處理: {processing_fps_text}")
+            self.detection_fps_var.set(f"{time_format} [{spec_text}]")
+            
+            # 🎯 記錄詳細資訊用於調試
+            logging.debug(f"📊 回放狀態 - 處理: {video_processing_fps:.1f}fps, 檢測: {detection_fps:.1f}fps")
             
         except Exception as e:
-            logging.error(f"更新狀態顯示錯誤: {str(e)}")
+            logging.error(f"更新視頻回放狀態顯示錯誤: {str(e)}")
+    
+    def _format_time(self, seconds: float) -> str:
+        """格式化時間顯示"""
+        if seconds < 0:
+            return "00:00"
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes:02d}:{secs:02d}"
+    
+    def _get_video_fps(self) -> float:
+        """獲取視頻 FPS 信息 - 使用實際視頻規格"""
+        try:
+            # 🎯 從 controller獲取實際視頻的 FPS
+            status = self.controller.get_system_status()
+            if status.get('current_mode') == 'playback':
+                actual_fps = status.get('video_fps', 0)
+                if actual_fps > 0:
+                    logging.debug(f"獲取實際視頻 FPS: {actual_fps:.2f}")
+                    return actual_fps
+                else:
+                    logging.warning(f"視頻FPS異常: {actual_fps}, 使用預設值")
+                    return 25.0  # 備用預設值
+            return 25.0  # 非回放模式預設值
+        except Exception as e:
+            logging.error(f"獲取視頻 FPS 失敗: {e}")
+            return 25.0  # 備用預設值
+            
+    # 注意：這個方法保留作為備用，主要使用frame_data中的fps
+    
+    def _format_video_spec(self, video_info: dict) -> str:
+        """格式化視頻規格信息顯示"""
+        try:
+            width = video_info.get('width', 0)
+            height = video_info.get('height', 0)
+            fps = video_info.get('fps', 0)
+            codec = video_info.get('codec', 'N/A')
+            
+            if width > 0 and height > 0:
+                return f"{width}x{height}@{fps:.0f}fps/{codec}"
+            elif fps > 0:
+                return f"{fps:.1f}fps"
+            else:
+                return "N/A"
+        except:
+            return "N/A"
     
     def _update_video_display(self):
         """更新視頻顯示"""
@@ -1413,47 +1795,105 @@ class MainView:
             self.device_listbox.insert(tk.END, "檢測失敗")
     
     def on_device_double_click(self, event):
-        """設備列表雙擊事件"""
+        """設備列表雙擊事件 - 線程安全版本"""
         try:
             selection = self.device_listbox.curselection()
             if not selection or not self.detected_cameras:
+                self.status_var.set("錯誤: 請選擇有效的設備")
                 return
                 
             selected_index = selection[0]
             if selected_index >= len(self.detected_cameras):
+                self.status_var.set("錯誤: 設備索引無效")
                 return
-                
-            # 如果已經連接其他設備，先斷開
-            if self.is_camera_connected:
-                self.disconnect_camera()
-                
-            # 連接選中的設備
-            self.selected_camera_index = selected_index
+            
             selected_camera = self.detected_cameras[selected_index]
+            camera_model = selected_camera['model']
             
-            self.status_var.set(f"狀態: 正在連接 {selected_camera['model']}...")
+            # 🔒 防止重複連接
+            if self.is_camera_connected and self.selected_camera_index == selected_index:
+                self.status_var.set(f"狀態: {camera_model} 已經連接")
+                return
             
-            # 嘗試連接 - 使用簡單的連接方法避免重複連接
-            success = self.controller.connect_camera(selected_index)
-            if success:
-                # 連接成功後啟動捕獲
-                if self.controller.start_capture():
-                    # 啟動處理循環
-                    self.controller._start_processing()
-                    
+            # 🛑 如果已經連接其他設備，先安全斷開
+            if self.is_camera_connected:
+                self.status_var.set("狀態: 斷開現有連接...")
+                self.disconnect_camera()
+                time.sleep(0.5)  # 確保斷開完成
+            
+            # 🔗 開始連接過程
+            self.selected_camera_index = selected_index
+            self.status_var.set(f"狀態: 正在連接 {camera_model}...")
+            
+            # 禁用相關按鈕防止重複操作
+            self._disable_connection_controls()
+            
+            try:
+                # 🎯 連接相機（控制器會自動處理線程安全）
+                success = self.controller.connect_camera(selected_index)
+                
+                if success:
+                    # ✅ 連接成功
                     self.is_camera_connected = True
                     self.connection_switch_on = True
+                    
+                    # 🚀 自動啟動捕獲（使用控制器的統一方法）
+                    capture_success = self.controller.start_capture()
+                    if capture_success:
+                        self.status_var.set(f"狀態: {camera_model} 已連接並開始捕獲")
+                        logging.info(f"✅ 設備連接並啟動成功: {camera_model}")
+                    else:
+                        self.status_var.set(f"狀態: {camera_model} 已連接，但啟動捕獲失敗")
+                        logging.warning(f"⚠️ 設備連接成功但捕獲失敗: {camera_model}")
+                    
+                    # 更新UI狀態
                     self.update_connection_ui()
                     self.update_device_list_ui()
-                    self.status_var.set(f"狀態: 已連接 {selected_camera['model']}")
+                    
                 else:
-                    self.status_var.set("錯誤: 啟動捕獲失敗")
-            else:
-                self.status_var.set("錯誤: 相機連接失敗")
+                    # ❌ 連接失敗
+                    self.status_var.set(f"錯誤: 無法連接 {camera_model}")
+                    logging.error(f"❌ 設備連接失敗: {camera_model}")
+                    
+                    # 重置狀態
+                    self.is_camera_connected = False
+                    self.connection_switch_on = False
+                    self.selected_camera_index = -1
+                    
+            finally:
+                # 恢復按鈕狀態
+                self._enable_connection_controls()
                 
         except Exception as e:
-            logging.error(f"設備雙擊連接錯誤: {str(e)}")
-            self.status_var.set("錯誤: 連接操作失敗")
+            logging.error(f"❌ 設備雙擊連接錯誤: {str(e)}")
+            self.status_var.set(f"錯誤: 連接操作失敗 - {str(e)}")
+            
+            # 確保狀態一致性
+            self.is_camera_connected = False
+            self.connection_switch_on = False
+            self.selected_camera_index = -1
+            self.update_connection_ui()
+            self._enable_connection_controls()
+    
+    def _disable_connection_controls(self):
+        """禁用連接相關控制"""
+        try:
+            if hasattr(self, 'connection_switch'):
+                self.connection_switch.config(state='disabled')
+            if hasattr(self, 'device_listbox'):
+                self.device_listbox.config(state='disabled')
+        except Exception as e:
+            logging.debug(f"禁用控制錯誤: {str(e)}")
+    
+    def _enable_connection_controls(self):
+        """啟用連接相關控制"""
+        try:
+            if hasattr(self, 'connection_switch'):
+                self.connection_switch.config(state='normal')
+            if hasattr(self, 'device_listbox'):
+                self.device_listbox.config(state='normal')
+        except Exception as e:
+            logging.debug(f"啟用控制錯誤: {str(e)}")
     
     def toggle_connection_switch(self):
         """切換連接開關"""
@@ -1728,3 +2168,242 @@ class MainView:
         except Exception as e:
             logging.error(f"關閉錯誤: {str(e)}")
             self.root.destroy()
+    
+    # ==================== 視頻控制事件處理 ====================
+    
+    def generate_recording_filename(self):
+        """生成錄製檔名"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"camera_rec_{timestamp}"
+    
+    def on_video_mode_change(self):
+        """視頻模式切換 - 添加檢查和用戶反饋"""
+        mode = self.video_mode.get()
+        
+        try:
+            # 🎯 關鍵修復：檢查是否有正在運行的批次檢測
+            if hasattr(self, 'batch_mode') and self.batch_mode == 'running':
+                result = messagebox.askyesno("確認", 
+                    f"當前有正在運行的批次檢測，\n切換到模式 '{mode}' 將停止檢測。\n\n是否繼續？")
+                if not result:
+                    # 用戶取消，恢原模式選擇
+                    current_mode = self.controller.get_current_mode()
+                    self.video_mode.set(current_mode)
+                    return
+                else:
+                    # 用戶確認，停止批次檢測
+                    self.stop_batch()
+            
+            # 嘗試切換模式
+            success = self.controller.switch_mode(mode)
+            
+            if success:
+                self.update_video_control_ui()
+                
+                # 給出用戶反饋
+                mode_names = {
+                    'live': '實時檢測模式',
+                    'recording': '錄製模式', 
+                    'playback': '視頻回放模式'
+                }
+                logging.info(f"✅ 已切換到: {mode_names.get(mode, mode)}")
+                
+                # 清理批次狀態（新模式下重新開始）
+                if hasattr(self, 'batch_mode'):
+                    self.batch_mode = 'idle'
+                if hasattr(self, 'current_batch_count'):
+                    self.current_batch_count = 0
+                    
+                # 更新批次顯示
+                if hasattr(self, 'batch_count_var'):
+                    self.batch_count_var.set("000")
+                if hasattr(self, 'progress_text'):
+                    self.progress_text.config(text=f"0 / {self.target_count_var.get()}")
+                if hasattr(self, 'batch_progress'):
+                    self.batch_progress.config(value=0)
+                    
+            else:
+                # 切換失敗，恢原原來的模式選擇
+                current_mode = self.controller.get_current_mode()
+                self.video_mode.set(current_mode)
+                messagebox.showerror("錯誤", f"切換到模式 '{mode}' 失敗")
+                
+        except Exception as e:
+            logging.error(f"視頻模式切換錯誤: {str(e)}")
+            messagebox.showerror("錯誤", f"模式切換失敗: {str(e)}")
+            
+            # 恢原原來的模式選擇
+            try:
+                current_mode = self.controller.get_current_mode()
+                self.video_mode.set(current_mode)
+            except:
+                pass
+        
+    def update_video_control_ui(self):
+        """更新視頻控制UI狀態"""
+        mode = self.video_mode.get()
+        
+        # 根據模式顯示/隱藏對應控制面板
+        if mode == "recording":
+            self.recording_frame.pack(fill=tk.X, pady=(0, 5))
+            self.playback_frame.pack_forget()
+        elif mode == "playback":
+            self.recording_frame.pack_forget()
+            self.playback_frame.pack(fill=tk.X, pady=(0, 5))
+        else:  # live
+            self.recording_frame.pack_forget()
+            self.playback_frame.pack_forget()
+    
+    def toggle_recording(self):
+        """切換錄製狀態"""
+        if not self.is_recording:
+            # 開始錄製
+            filename = self.recording_filename.get().strip()
+            if not filename:
+                messagebox.showerror("錯誤", "請輸入錄製檔名")
+                return
+                
+            success = self.controller.start_recording(filename)
+            if success:
+                self.is_recording = True
+                self.record_btn.config(text="⏹️ 停止錄製", bg='#ff9500')
+                self.recording_status.config(text="錄製中...", fg='#ff4444')
+        else:
+            # 停止錄製
+            info = self.controller.stop_recording()
+            self.is_recording = False
+            self.record_btn.config(text="🔴 開始錄製", bg='#ff4444')
+            self.recording_status.config(text="錄製完成", fg='#34c759')
+            
+            if info:
+                messagebox.showinfo("錄製完成", 
+                                  f"錄製完成！\n"
+                                  f"檔案: {info.get('filename', 'unknown')}\n"
+                                  f"幀數: {info.get('frames_recorded', 0)}\n"
+                                  f"時長: {info.get('duration', 0):.1f}秒")
+    
+    def select_video_file(self):
+        """選擇視頻文件"""
+        from tkinter import filedialog
+        filetypes = [
+            ("Video files", "*.avi *.mp4 *.mov *.mkv"),
+            ("AVI files", "*.avi"),
+            ("MP4 files", "*.mp4"),
+            ("All files", "*.*")
+        ]
+        
+        filename = filedialog.askopenfilename(
+            title="選擇視頻文件",
+            filetypes=filetypes
+        )
+        
+        if filename:
+            success = self.controller.load_video(filename)
+            if success:
+                import os
+                self.selected_video_path.set(os.path.basename(filename))
+                self.video_loaded = True
+                self.play_btn.config(state='normal')
+            else:
+                messagebox.showerror("錯誤", "無法加載視頻文件")
+    
+    def toggle_playback(self):
+        """切換播放狀態"""
+        if not self.video_loaded:
+            messagebox.showwarning("警告", "請先選擇視頻文件")
+            return
+            
+        if not self.is_playing:
+            # 開始播放
+            success = self.controller.start_video_playback()
+            if success:
+                self.is_playing = True
+                self.play_btn.config(text="⏸️")
+        else:
+            # 暫停播放
+            self.controller.pause_video_playback()
+            self.play_btn.config(text="▶️")
+    
+    def pause_playback(self):
+        """暫停播放"""
+        if self.is_playing:
+            self.controller.pause_video_playback()
+    
+    def stop_playback(self):
+        """停止播放"""
+        if self.is_playing:
+            self.controller.stop_video_playback()
+            self.is_playing = False
+            self.play_btn.config(text="▶️")
+            self.video_progress.set(0)
+            self.frame_info.config(text="")
+    
+    def on_speed_change(self, value):
+        """播放速度改變"""
+        speed = float(value)
+        self.controller.set_playback_speed(speed)
+    
+    def on_progress_change(self, value):
+        """進度條改變"""
+        if self.video_loaded:
+            progress = float(value)
+            self.controller.seek_video_to_progress(progress)
+    
+    def update_video_progress(self, progress, frame_number, total_frames, video_timestamp=None, fps=None):
+        """更新視頻播放進度 - 時間軸版本"""
+        self.video_progress.set(progress)
+        
+        # 🎯 關鍵修復：使用實際視頻規格顯示時間
+        if video_timestamp is not None and fps is not None and fps > 0:
+            # 使用實際視頻FPS計算時間
+            current_time = video_timestamp
+            total_time = total_frames / fps
+            
+            # 格式化時間顯示
+            current_time_str = self._format_time(current_time)
+            total_time_str = self._format_time(total_time)
+            
+            # 🚀 顯示時間格式（使用實際FPS: {fps:.1f}）
+            self.frame_info.config(text=f"時間: {current_time_str}/{total_time_str}")
+            
+            # 第一次顯示時記錄FPS信息
+            if frame_number == 1:
+                logging.info(f"🎬 視頻規格 - FPS: {fps:.2f}, 總時長: {total_time:.2f}秒")
+        else:
+            # 備用顯示：如果沒有時間信息，仍顯示幀數
+            self.frame_info.config(text=f"幀: {frame_number}/{total_frames}")
+            
+            # 警告：缺少FPS信息
+            if frame_number == 1:
+                logging.warning(f"⚠️ 視頻缺少FPS信息，使用幀數顯示: fps={fps}, timestamp={video_timestamp}")
+    
+    def handle_video_events(self, event_type, data):
+        """處理視頻相關事件 - 時間軸版本"""
+        try:
+            if event_type == 'player_frame_ready':
+                # 🎯 更新進度，使用實際視頻規格信息
+                progress = data.get('progress', 0)
+                frame_number = data.get('frame_number', 0)
+                total_frames = data.get('total_frames', 0)
+                video_timestamp = data.get('video_timestamp')  # 視頻時間戳
+                fps = data.get('fps')  # 🎯 直接從視頻數據獲取實際FPS
+                
+                # 🚀 使用實際視頻規格更新進度顯示
+                self.update_video_progress(progress, frame_number, total_frames, video_timestamp, fps)
+                
+                # 記錄實際使用的FPS值用於調試
+                if frame_number % 100 == 0 and fps:  # 每100幀記錄一次
+                    logging.debug(f"視頻規格 - FPS: {fps:.2f}, 幀 {frame_number}/{total_frames}")
+                
+            elif event_type == 'player_playback_finished':
+                self.is_playing = False
+                self.play_btn.config(text="▶️")
+                
+            elif event_type == 'recorder_recording_progress':
+                frames = data.get('frames_recorded', 0)
+                duration = data.get('duration', 0)
+                self.recording_status.config(text=f"錄製中... {frames}幀 {duration:.1f}s")
+                
+        except Exception as e:
+            logging.error(f"處理視頻事件錯誤: {str(e)}")
