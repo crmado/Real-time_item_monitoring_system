@@ -80,8 +80,14 @@ class MainView:
         # 相機參數
         self.exposure_var = None
         
-        # 初始化優化的主題管理器
+        # 初始化跨平台主題管理器
         self.theme_manager = ThemeManager(self.root, AppleTheme)
+        
+        # 記錄跨平台 UI 啟動資訊
+        logging.info(f"✅ 跨平台 UI 系統已啟用 - 平台: {self.theme_manager.ui_manager.platform_name}")
+        
+        # 🎨 統一配色系統 - 使用 option_add 設置全局樣式
+        self._setup_global_color_scheme()
         
         # 創建UI
         self.create_ui()
@@ -96,6 +102,121 @@ class MainView:
         self.controller.add_view_observer(self.on_controller_event)
         
         logging.info("主視圖初始化完成")
+    
+    def _setup_global_color_scheme(self):
+        """🎨 設置全局統一配色方案 - 使用 option_add 和 tk_setPalette"""
+        try:
+            # 獲取跨平台顏色
+            bg_primary = self.theme_manager.get_platform_color('background_primary')
+            bg_card = self.theme_manager.get_platform_color('background_card')
+            bg_secondary = self.theme_manager.get_platform_color('background_secondary')
+            text_primary = self.theme_manager.get_platform_color('text_primary')
+            text_secondary = self.theme_manager.get_platform_color('text_secondary')
+            primary_blue = self.theme_manager.get_platform_color('primary_blue')
+            border_light = self.theme_manager.get_platform_color('border_light')
+            
+            # 🌈 使用 tk_setPalette 設置全局調色板（這是關鍵！）
+            self.root.tk_setPalette(
+                background=bg_primary,
+                foreground=text_primary,
+                activeBackground=primary_blue,
+                activeForeground='white',
+                selectBackground=primary_blue,
+                selectForeground='white',
+                insertBackground=text_primary,
+                highlightBackground=border_light,
+                highlightColor=primary_blue
+            )
+            
+            # 🎯 使用 option_add 設置特定組件的詳細樣式
+            # Frame 樣式
+            self.root.option_add('*Frame.background', bg_card)
+            self.root.option_add('*Frame.relief', 'flat')
+            
+            # Button 樣式
+            self.root.option_add('*Button.background', primary_blue)
+            self.root.option_add('*Button.foreground', 'white')
+            self.root.option_add('*Button.activeBackground', '#0056cc')
+            self.root.option_add('*Button.relief', 'flat')
+            self.root.option_add('*Button.borderWidth', '0')
+            
+            # Label 樣式
+            self.root.option_add('*Label.background', bg_card)
+            self.root.option_add('*Label.foreground', text_primary)
+            
+            # Entry 樣式
+            self.root.option_add('*Entry.background', bg_card)
+            self.root.option_add('*Entry.foreground', text_primary)
+            self.root.option_add('*Entry.insertBackground', text_primary)
+            self.root.option_add('*Entry.selectBackground', primary_blue)
+            self.root.option_add('*Entry.selectForeground', 'white')
+            
+            # Listbox 樣式
+            self.root.option_add('*Listbox.background', bg_card)
+            self.root.option_add('*Listbox.foreground', text_primary)
+            self.root.option_add('*Listbox.selectBackground', primary_blue)
+            self.root.option_add('*Listbox.selectForeground', 'white')
+            
+            # LabelFrame 樣式
+            self.root.option_add('*LabelFrame.background', bg_card)
+            self.root.option_add('*LabelFrame.foreground', text_primary)
+            
+            # 設置根窗口背景
+            self.root.configure(background=bg_primary)
+            
+            # 🔧 強制修復 TTK 灰底問題（關鍵修復！）
+            self._force_fix_ttk_gray_background()
+            
+            logging.info(f"✅ 全局配色方案已設置 - 主色: {primary_blue}, 背景: {bg_primary}")
+            
+        except Exception as e:
+            logging.error(f"❌ 設置全局配色失敗: {str(e)}")
+    
+    def _force_fix_ttk_gray_background(self):
+        """🔧 強制修復 TTK 灰底問題"""
+        try:
+            # 獲取淺色配色
+            bg_card = self.theme_manager.get_platform_color('background_card')
+            bg_primary = self.theme_manager.get_platform_color('background_primary')
+            text_primary = self.theme_manager.get_platform_color('text_primary')
+            primary_blue = self.theme_manager.get_platform_color('primary_blue')
+            border_light = self.theme_manager.get_platform_color('border_light')
+            
+            # 強制覆蓋所有 TTK 默認樣式（這是關鍵！）
+            self.theme_manager.style.configure('TFrame', 
+                                             background=bg_card, 
+                                             relief='flat',
+                                             borderwidth=0)
+            
+            self.theme_manager.style.configure('TLabel', 
+                                             background=bg_card, 
+                                             foreground=text_primary)
+            
+            self.theme_manager.style.configure('TButton', 
+                                             background=primary_blue, 
+                                             foreground='white',
+                                             relief='flat',
+                                             borderwidth=0)
+            
+            self.theme_manager.style.configure('TEntry', 
+                                             fieldbackground=bg_card,
+                                             bordercolor=border_light)
+            
+            self.theme_manager.style.configure('TLabelframe', 
+                                             background=bg_card,
+                                             bordercolor=border_light)
+            
+            self.theme_manager.style.configure('TLabelframe.Label', 
+                                             background=bg_card, 
+                                             foreground=text_primary)
+            
+            # 設置全局默認樣式（最重要的一步！）
+            self.theme_manager.style.configure('.', background=bg_card)
+            
+            logging.info("🔧 TTK 灰底問題強制修復完成")
+            
+        except Exception as e:
+            logging.error(f"❌ TTK 修復失敗: {str(e)}")
     
     def create_ui(self):
         """創建響應式用戶界面 - 三欄布局"""
@@ -128,75 +249,87 @@ class MainView:
         self.root.after(100, self.initialize_display_status)
     
     def create_top_toolbar(self, parent):
-        """創建緊湊專業工具欄 - 最大化中間區域"""
-        # 主工具欄 - 緊湊設計
-        main_toolbar = tk.Frame(parent, bg='#f0f0f0', height=35)
+        """創建緊湊專業工具欄 - 使用跨平台配色"""
+        # 主工具欄 - 使用跨平台顏色
+        toolbar_bg = self.theme_manager.get_platform_color('background_primary')
+        main_toolbar = tk.Frame(parent, bg=toolbar_bg, height=35)
         main_toolbar.pack(fill=tk.X, padx=1, pady=(1, 2))
         main_toolbar.pack_propagate(False)
         
         # 左側控制組
-        left_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
+        left_controls = tk.Frame(main_toolbar, bg=toolbar_bg)
         left_controls.pack(side=tk.LEFT, padx=8, pady=5)
         
         # 移除不必要的面板切換按鈕 - 簡化界面
         
-        # 分隔線
-        sep1 = tk.Frame(main_toolbar, bg='#c0c0c0', width=1)
+        # 分隔線 - 使用跨平台邊框顏色
+        border_color = self.theme_manager.get_platform_color('border_light')
+        sep1 = tk.Frame(main_toolbar, bg=border_color, width=1)
         sep1.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        # 連接開關控制
-        connection_control = tk.Frame(main_toolbar, bg='#f0f0f0')
+        # 連接開關控制 - 使用跨平台背景
+        connection_control = tk.Frame(main_toolbar, bg=toolbar_bg)
         connection_control.pack(side=tk.LEFT, padx=8, pady=3)
         
-        # 連接開關按鈕（仿iOS開關樣式）
-        self.connection_switch_frame = tk.Frame(connection_control, bg='#f0f0f0')
+        # 連接開關按鈕框架 - 使用跨平台框架
+        self.connection_switch_frame = self.theme_manager.create_cross_platform_frame(
+            connection_control, frame_type="transparent"
+        )
         self.connection_switch_frame.pack(side=tk.LEFT)
         
-        tk.Label(self.connection_switch_frame, text="連線:", 
-                font=('Arial', 11), bg='#f0f0f0', fg='#333333').pack(side=tk.LEFT, padx=(0, 8))
+        # 使用跨平台標籤和安全文字處理
+        connection_label = self.theme_manager.create_cross_platform_label(
+            self.connection_switch_frame, 
+            self.theme_manager.get_safe_text("連線:"), 
+            label_type="body"
+        )
+        connection_label.pack(side=tk.LEFT, padx=(0, 8))
         
-        # 開關按鈕
-        self.connection_switch = tk.Button(self.connection_switch_frame,
-                                         text="○",
-                                         font=('Arial', 16),
-                                         bg='#e0e0e0', fg='#999999',
-                                         activebackground='#d0d0d0',
-                                  relief='flat', borderwidth=0,
-                                         width=3, height=1,
-                                         command=self.toggle_connection_switch)
+        # 使用跨平台開關按鈕
+        self.connection_switch = self.theme_manager.create_cross_platform_button(
+            self.connection_switch_frame,
+            "○",
+            command=self.toggle_connection_switch, 
+            button_type="secondary"
+        )
+        self.connection_switch.configure(width=3, height=1)
         self.connection_switch.pack(side=tk.LEFT)
         
         # 儲存開關狀態
         self.connection_switch_on = False
         
-        # 分隔線
-        sep2 = tk.Frame(main_toolbar, bg='#c0c0c0', width=1)
+        # 分隔線 - 使用跨平台邊框顏色
+        sep2 = tk.Frame(main_toolbar, bg=border_color, width=1)
         sep2.pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        # 啟動/停止控制組
-        start_controls = tk.Frame(main_toolbar, bg='#f0f0f0')
+        # 啟動/停止控制組 - 使用跨平台背景
+        start_controls = tk.Frame(main_toolbar, bg=toolbar_bg)
         start_controls.pack(side=tk.LEFT, padx=8, pady=3)
         
-        # 啟動處理按鈕（僅負責啟動/停止影像處理）
-        self.start_processing_btn = tk.Button(start_controls, text="▶️ 啟動處理",
-                                            font=('Arial', 12),
-                                   bg='#f2f2f7', fg='#007aff',
-                                   activebackground='#e5e5ea',
-                                   relief='solid', borderwidth=1,
-                                            padx=12, pady=6,
-                                            command=self.toggle_processing,
-                                            state='disabled')  # 初始禁用
+        # 使用跨平台啟動處理按鈕
+        self.start_processing_btn = self.theme_manager.create_cross_platform_button(
+            start_controls, 
+            self.theme_manager.get_safe_text("▶️ 啟動處理"),
+            command=self.toggle_processing,
+            button_type="primary"
+        )
+        self.start_processing_btn.configure(state='disabled', padx=12, pady=6)  # 初始禁用
         self.start_processing_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # 儲存處理狀態
         self.is_processing_active = False
         
-        # 檢測方法選擇
-        method_frame = tk.Frame(start_controls, bg='#f0f0f0')
+        # 檢測方法選擇 - 使用跨平台框架
+        method_frame = tk.Frame(start_controls, bg=toolbar_bg)
         method_frame.pack(side=tk.LEFT)
         
-        tk.Label(method_frame, text="檢測方法:", 
-                font=('Arial', 12), bg='#f0f0f0').pack(side=tk.LEFT, padx=(0, 5))  # 字體從9增大到12
+        # 使用跨平台標籤
+        method_label = self.theme_manager.create_cross_platform_label(
+            method_frame, 
+            self.theme_manager.get_safe_text("檢測方法:"),
+            label_type="body"
+        )
+        method_label.pack(side=tk.LEFT, padx=(0, 5))
         
         # 創建檢測方法下拉框 - 使用ttk保持一致性，字體增大
         self.detection_method = ttk.Combobox(method_frame, values=["circle"], 
@@ -206,15 +339,18 @@ class MainView:
         self.detection_method.pack(side=tk.LEFT)
         self.detection_method.bind('<<ComboboxSelected>>', self.on_method_changed)
         
-        # 右側工具組
-        right_tools = tk.Frame(main_toolbar, bg='#f0f0f0')
+        # 右側工具組 - 使用跨平台背景
+        right_tools = tk.Frame(main_toolbar, bg=toolbar_bg)
         right_tools.pack(side=tk.RIGHT, padx=8, pady=5)
         
-        # 工具按鈕 - 簡化版本，只保留設定按鈕
-        self.settings_btn = tk.Button(right_tools, text="⚙️", width=3, height=1,
-                                     font=('Arial', 14), relief='flat',
-                                     bg='#e0e0e0', activebackground='#d0d0d0',
-                                     command=self.open_parameter_dialog)
+        # 使用跨平台設定按鈕
+        self.settings_btn = self.theme_manager.create_cross_platform_button(
+            right_tools, 
+            "⚙️", 
+            command=self.open_parameter_dialog,
+            button_type="secondary"
+        )
+        self.settings_btn.configure(width=3, height=1)
         self.settings_btn.pack(side=tk.RIGHT, padx=1)
         
         # 移除不必要的性能報告和關於按鈕，簡化界面
@@ -230,49 +366,63 @@ class MainView:
                                      style='Apple.TLabelframe')
         device_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # 設備列表區域
-        device_list_frame = tk.Frame(device_frame, bg='#ffffff')
+        # 設備列表區域 - 使用跨平台背景
+        card_bg = self.theme_manager.get_platform_color('background_card')
+        device_list_frame = tk.Frame(device_frame, bg=card_bg)
         device_list_frame.pack(fill=tk.X, pady=(5, 8))
         
-        # 設備列表（用Listbox實現）
-        listbox_frame = tk.Frame(device_list_frame, bg='#ffffff', relief='sunken', bd=1)
+        # 設備列表（用Listbox實現）- 使用跨平台背景
+        border_color = self.theme_manager.get_platform_color('border_light')
+        listbox_frame = tk.Frame(device_list_frame, bg=card_bg, relief='sunken', bd=1)
         listbox_frame.pack(fill=tk.X, pady=(0, 5))
         
-        self.device_listbox = tk.Listbox(listbox_frame, 
-                                       height=3,
-                                       font=('Arial', 10),
-                                       bg='#ffffff', 
-                                       fg='#333333',
-                                       selectbackground='#007aff',
-                                       selectforeground='white',
-                                       activestyle='none',
-                                       borderwidth=0,
-                                       highlightthickness=0)
+        # 使用跨平台配色的列表框
+        text_color = self.theme_manager.get_platform_color('text_primary')
+        primary_color = self.theme_manager.get_platform_color('primary_blue')
+        
+        self.device_listbox = tk.Listbox(
+            listbox_frame,
+            height=3,
+            font=self.theme_manager.get_platform_font('primary', 10),
+            bg=card_bg,
+            fg=text_color,
+            selectbackground=primary_color,
+            selectforeground='white',
+            activestyle='none',
+            borderwidth=0,
+            highlightthickness=0
+        )
         self.device_listbox.pack(fill=tk.X, padx=2, pady=2)
         
         # 綁定雙擊事件
         self.device_listbox.bind('<Double-Button-1>', self.on_device_double_click)
         
         # 提示文字
-        hint_label = tk.Label(device_list_frame, 
-                            text="雙擊設備進行連接",
-                            font=('Arial', 9), 
-                            fg='#999999', bg='#ffffff')
+        # 使用跨平台提示標籤
+        hint_label = self.theme_manager.create_cross_platform_label(
+            device_list_frame, 
+            self.theme_manager.get_safe_text("雙擊設備進行連接"),
+            label_type="caption"
+        )
         hint_label.pack(anchor='w')
         
-        # 分隔線
-        separator = tk.Frame(device_frame, height=1, bg='#e0e0e0')
+        # 分隔線 - 使用跨平台邊框顏色
+        border_color = self.theme_manager.get_platform_color('border_light')
+        separator = tk.Frame(device_frame, height=1, bg=border_color)
         separator.pack(fill=tk.X, pady=(5, 5))
         
-        # 連接狀態顯示
-        status_frame = tk.Frame(device_frame, bg='#ffffff')
+        # 連接狀態顯示 - 使用跨平台背景
+        card_bg = self.theme_manager.get_platform_color('background_card')
+        status_frame = tk.Frame(device_frame, bg=card_bg)
         status_frame.pack(fill=tk.X, pady=(0, 8))
         
-        self.connection_status_label = tk.Label(status_frame, 
-                                              text="● 未連接", 
-                                              font=('Arial', 10),
-                                              fg='#ff3b30', 
-                                              bg='#ffffff')
+        # 使用跨平台狀態標籤
+        self.connection_status_label = self.theme_manager.create_cross_platform_status_display(
+            status_frame, status_type="error"
+        )
+        self.connection_status_label.configure(
+            text=self.theme_manager.get_safe_text("● 未連接")
+        )
         self.connection_status_label.pack(side=tk.LEFT)
         
         # 儲存連接狀態和設備列表
@@ -378,15 +528,20 @@ class MainView:
         record_button_frame = ttk.Frame(self.recording_frame, style='Apple.TFrame')
         record_button_frame.pack(fill=tk.X, pady=(0, 5))
         
-        self.record_btn = tk.Button(record_button_frame, text="🔴 開始錄製",
-                                   font=('Arial', 10), bg='#ff4444', fg='white',
-                                   relief='solid', bd=1, padx=8, pady=4,
-                                   command=self.toggle_recording)
+        # 使用跨平台錄製按鈕
+        self.record_btn = self.theme_manager.create_cross_platform_button(
+            record_button_frame, 
+            self.theme_manager.get_safe_text("🔴 開始錄製"),
+            command=self.toggle_recording,
+            button_type="danger"
+        )
+        self.record_btn.configure(padx=8, pady=4)
         self.record_btn.pack(side=tk.LEFT)
         
-        # 錄製狀態標籤
-        self.recording_status = tk.Label(record_button_frame, text="",
-                                       font=('Arial', 9), fg='#666666')
+        # 使用跨平台錄製狀態標籤
+        self.recording_status = self.theme_manager.create_cross_platform_label(
+            record_button_frame, "", label_type="caption"
+        )
         self.recording_status.pack(side=tk.RIGHT)
         
         # 回放控制區域
@@ -460,25 +615,33 @@ class MainView:
         self.video_loaded = False
     
     def create_center_panel(self, parent):
-        """創建滿版專業相機顯示區域 - 完全仿Basler pylon Viewer"""
-        # 中央面板容器 - 移除邊距，滿版顯示
-        self.center_panel = tk.Frame(parent, bg='#f0f0f0')
+        """創建滿版專業相機顯示區域 - 使用跨平台配色"""
+        # 中央面板容器 - 使用跨平台背景
+        primary_bg = self.theme_manager.get_platform_color('background_primary')
+        self.center_panel = tk.Frame(parent, bg=primary_bg)
         self.center_panel.grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
         
-        # 主視頻框架 - 緊湊標題
-        main_video_frame = tk.LabelFrame(self.center_panel, 
-                                        text="📷 Basler acA640-300gm - 實時影像", 
-                                        font=('Arial', 9, 'bold'),
-                                        fg='#333333', bg='#f0f0f0',
-                                        relief='solid', bd=1)
+        # 主視頻框架 - 使用跨平台標籤框架
+        main_video_frame = self.theme_manager.create_cross_platform_frame(
+            self.center_panel, frame_type="card"
+        )
         main_video_frame.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+        
+        # 標題標籤
+        title_label = self.theme_manager.create_cross_platform_label(
+            main_video_frame,
+            self.theme_manager.get_safe_text("📷 Basler acA640-300gm - 實時影像"),
+            label_type="subtitle"
+        )
+        title_label.pack(pady=(5, 0))
         
         # 圖像工具欄 - 超緊湊設計
         self.create_compact_image_toolbar(main_video_frame)
         
-        # 影像顯示容器 - 滿版設計，最小邊距
+        # 影像顯示容器 - 使用跨平台深色背景
+        secondary_bg = self.theme_manager.get_platform_color('background_secondary')
         image_container = tk.Frame(main_video_frame, 
-                                  bg='#2c2c2c',  # 深色背景
+                                  bg=secondary_bg,
                                   relief='sunken', 
                                   bd=1)
         image_container.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
@@ -501,67 +664,74 @@ class MainView:
         self.create_compact_performance_bar(main_video_frame)
     
     def create_compact_image_toolbar(self, parent):
-        """創建超緊湊圖像工具欄 - 最小化空間占用"""
-        toolbar_frame = tk.Frame(parent, bg='#f0f0f0', height=25)
+        """創建超緊湊圖像工具欄 - 使用跨平台配色"""
+        toolbar_bg = self.theme_manager.get_platform_color('background_primary')
+        toolbar_frame = tk.Frame(parent, bg=toolbar_bg, height=25)
         toolbar_frame.pack(fill=tk.X, padx=1, pady=0)
         toolbar_frame.pack_propagate(False)
         
         # 左側工具按鈕 - 超緊湊
-        left_tools = tk.Frame(toolbar_frame, bg='#f0f0f0')
+        left_tools = tk.Frame(toolbar_frame, bg=toolbar_bg)
         left_tools.pack(side=tk.LEFT, padx=3, pady=2)
         
-        # 縮放控制 - 小型按鈕
-        self.zoom_fit_btn = tk.Button(left_tools, text="🔍", width=2, height=1,
-                                     font=('Arial', 11), relief='flat',
-                                     bg='#e0e0e0', activebackground='#d0d0d0',
-                                     command=self.zoom_fit)
+        # 縮放控制 - 使用跨平台按鈕
+        self.zoom_fit_btn = self.theme_manager.create_cross_platform_button(
+            left_tools, "🔍", command=self.zoom_fit, button_type="secondary"
+        )
+        self.zoom_fit_btn.configure(width=2, height=1)
         self.zoom_fit_btn.pack(side=tk.LEFT, padx=1)
         
-        self.zoom_100_btn = tk.Button(left_tools, text="1:1", width=2, height=1,
-                                     font=('Arial', 7), relief='flat',
-                                     bg='#e0e0e0', activebackground='#d0d0d0',
-                                     command=self.zoom_100)
+        self.zoom_100_btn = self.theme_manager.create_cross_platform_button(
+            left_tools, "1:1", command=self.zoom_100, button_type="secondary"
+        )
+        self.zoom_100_btn.configure(width=2, height=1)
         self.zoom_100_btn.pack(side=tk.LEFT, padx=1)
         
-        # 圖像工具 - 緊湊版
-        self.crosshair_btn = tk.Button(left_tools, text="✛", width=2, height=1,
-                                      font=('Arial', 11), relief='flat',
-                                      bg='#e0e0e0', activebackground='#d0d0d0',
-                                      command=self.toggle_crosshair)
+        # 圖像工具 - 使用跨平台按鈕
+        self.crosshair_btn = self.theme_manager.create_cross_platform_button(
+            left_tools, "✛", command=self.toggle_crosshair, button_type="secondary"
+        )
+        self.crosshair_btn.configure(width=2, height=1)
         self.crosshair_btn.pack(side=tk.LEFT, padx=1)
         
-        self.roi_btn = tk.Button(left_tools, text="□", width=2, height=1,
-                                font=('Arial', 11), relief='flat',
-                                bg='#e0e0e0', activebackground='#d0d0d0',
-                                command=self.toggle_roi)
+        self.roi_btn = self.theme_manager.create_cross_platform_button(
+            left_tools, "□", command=self.toggle_roi, button_type="secondary"
+        )
+        self.roi_btn.configure(width=2, height=1)
         self.roi_btn.pack(side=tk.LEFT, padx=1)
         
-        # 右側縮放信息 - 緊湊
-        right_info = tk.Frame(toolbar_frame, bg='#f0f0f0')
+        # 右側縮放信息 - 使用跨平台框架
+        right_info = tk.Frame(toolbar_frame, bg=toolbar_bg)
         right_info.pack(side=tk.RIGHT, padx=3, pady=2)
         
-        self.zoom_label = tk.Label(right_info, text="100%", 
-                                  font=('Arial', 11), bg='#f0f0f0')
+        self.zoom_label = self.theme_manager.create_cross_platform_label(
+            right_info, "100%", label_type="body"
+        )
         self.zoom_label.pack(side=tk.RIGHT)
     
     def create_compact_image_status_bar(self, parent):
-        """創建超緊湊圖像信息狀態欄"""
-        status_frame = tk.Frame(parent, bg='#e8e8e8', height=18)
+        """創建超緊湊圖像信息狀態欄 - 使用跨平台配色"""
+        status_bg = self.theme_manager.get_platform_color('background_secondary')
+        status_frame = tk.Frame(parent, bg=status_bg, height=18)
         status_frame.pack(fill=tk.X, padx=1, pady=0)
         status_frame.pack_propagate(False)
         
         # 左側圖像信息 - 緊湊布局
-        left_info = tk.Frame(status_frame, bg='#e8e8e8')
+        left_info = tk.Frame(status_frame, bg=status_bg)
         left_info.pack(side=tk.LEFT, padx=5, pady=1)
         
-        # 分辨率信息
+        # 分辨率信息 - 使用跨平台標籤
         self.resolution_var = tk.StringVar(value="640 × 480")
-        resolution_label = tk.Label(left_info, textvariable=self.resolution_var,
-                                   font=('Arial', 11), bg='#e8e8e8')
+        resolution_label = self.theme_manager.create_cross_platform_label(
+            left_info, "", label_type="caption"
+        )
+        resolution_label.configure(textvariable=self.resolution_var)
         resolution_label.pack(side=tk.LEFT)
         
         # 分隔符
-        sep1 = tk.Label(left_info, text=" | ", font=('Arial', 11), bg='#e8e8e8')
+        sep1 = self.theme_manager.create_cross_platform_label(
+            left_info, " | ", label_type="caption"
+        )
         sep1.pack(side=tk.LEFT)
         
         # 像素格式

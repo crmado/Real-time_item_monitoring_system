@@ -10,10 +10,10 @@ class AppleTheme:
     class Colors:
         """Apple標準色彩系統"""
         
-        # 主要顏色
-        PRIMARY_BLUE = '#007aff'        # Apple藍 - 主要按鈕
-        PRIMARY_BLUE_HOVER = '#0056cc'  # 懸停狀態
-        PRIMARY_BLUE_PRESSED = '#004499' # 按下狀態
+        # 主要顏色 - 🎨 優化對比度版本
+        PRIMARY_BLUE = '#0051D5'        # 優化後Apple藍 - 主要按鈕 (對比度6.69:1)
+        PRIMARY_BLUE_HOVER = '#0040B8'  # 懸停狀態 (更深)
+        PRIMARY_BLUE_PRESSED = '#003399' # 按下狀態
         
         # 成功/狀態顏色
         SUCCESS_GREEN = '#34c759'       # Apple綠 - 成功狀態
@@ -21,22 +21,22 @@ class AppleTheme:
         ERROR_RED = '#ff3b30'          # Apple紅 - 錯誤/強調
         INFO_PURPLE = '#af52de'        # Apple紫 - 信息
         
-        # 背景顏色
-        BACKGROUND_PRIMARY = '#f5f5f7'  # 主背景 - 淺灰
-        BACKGROUND_CARD = '#ffffff'     # 卡片背景 - 純白
-        BACKGROUND_SECONDARY = '#f8f9fa' # 次要背景
-        BACKGROUND_INPUT = '#ffffff'    # 輸入框背景
+        # 背景顏色 - 🎨 優化統一版本
+        BACKGROUND_PRIMARY = '#F8F9FA'  # 主背景 - 統一淺灰 (與分析器一致)
+        BACKGROUND_CARD = '#FFFFFF'     # 卡片背景 - 純白
+        BACKGROUND_SECONDARY = '#F2F2F7' # 次要背景
+        BACKGROUND_INPUT = '#FFFFFF'    # 輸入框背景
         
-        # 文字顏色
+        # 文字顏色 - 🎨 優化對比度版本
         TEXT_PRIMARY = '#1d1d1f'       # 主要文字 - 深色
-        TEXT_SECONDARY = '#86868b'     # 次要文字 - 中灰
+        TEXT_SECONDARY = '#6D6D70'     # 次要文字 - 優化後中灰 (對比度5.16:1)
         TEXT_TERTIARY = '#c7c7cc'      # 三級文字 - 淺灰
-        TEXT_ACCENT = '#007aff'        # 強調文字 - 藍色
+        TEXT_ACCENT = '#0051D5'        # 強調文字 - 優化後藍色
         
-        # 邊框顏色
-        BORDER_LIGHT = '#e5e5e7'       # 淺色邊框
-        BORDER_MEDIUM = '#c7c7cc'      # 中等邊框
-        BORDER_DARK = '#8e8e93'        # 深色邊框
+        # 邊框顏色 - 🎨 優化對比度版本 v3 (達到WCAG標準)
+        BORDER_LIGHT = '#6D6D70'       # 淺色邊框 - 符合AA標準 (對比度5.16:1)
+        BORDER_MEDIUM = '#48484A'      # 中等邊框 - 更深
+        BORDER_DARK = '#2C2C2E'        # 深色邊框 - 最深
         
         # 互動狀態顏色
         HOVER_BACKGROUND = '#f2f2f7'   # 懸停背景
