@@ -14,11 +14,11 @@ def show_menu():
     print("=" * 50)
     print("請選擇界面版本：")
     print()
-    print("1. 🎨 CustomTkinter 優化版本 (推薦)")
+    print("1. 🎨 CustomTkinter 明亮版本 (推薦)")
+    print("   - 明亮清晰背景，整體清楚易讀")
     print("   - 大幅改善字體大小，特別是即時統計")
-    print("   - 簡潔活潑的配色方案") 
-    print("   - 完整功能 + 優化視覺效果")
-    print("   - 解決跨平台顯示模糊問題")
+    print("   - 專業配色方案，簡潔活潑") 
+    print("   - 解決跨平台顯示問題")
     print()
     print("2. 🔧 原始 tkinter 版本")
     print("   - 傳統界面")
@@ -55,10 +55,10 @@ def main():
                     else:
                         continue
                 
-                # 啟動 CustomTkinter 優化版本
+                # 啟動 CustomTkinter 明亮版本
                 try:
                     from basler_mvc.controllers.main_controller import MainController
-                    from basler_mvc.views.main_view_ctk_optimized import MainView
+                    from basler_mvc.views.main_view_ctk_bright import MainView
                     
                     print("🏗️ 初始化系統...")
                     controller = MainController()

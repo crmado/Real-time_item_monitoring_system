@@ -15,8 +15,8 @@ sys.path.insert(0, str(project_root))
 # 導入 MVC 組件
 try:
     from basler_mvc.controllers.main_controller import MainController
-    # 使用 CustomTkinter 優化配色版本解決顯示問題
-    from basler_mvc.views.main_view_ctk_optimized import MainView
+    # 使用 CustomTkinter 明亮清晰版本解決顯示問題
+    from basler_mvc.views.main_view_ctk_bright import MainView
     print("✅ 使用 CustomTkinter 高清顯示版本")
 except ImportError as e:
     print(f"導入錯誤: {str(e)}")
