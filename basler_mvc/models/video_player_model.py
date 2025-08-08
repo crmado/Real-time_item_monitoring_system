@@ -353,7 +353,7 @@ class VideoPlayerModel:
             'video_duration': video_duration,      # 視頻總時長（秒）
             'current_time': current_time,          # 當前播放時間（秒）
             'remaining_time': max(0, video_duration - current_time),  # 剩餘時間（秒）
-            'time_format': f"{int(current_time//60):02d}:{int(current_time%60):02d} / {int(video_duration//60):02d}:{int(video_duration%60):02d}"
+            'time_format': f"{int(current_time)//60:02d}:{int(current_time)%60:02d} / {int(video_duration)//60:02d}:{int(video_duration)%60:02d}"
         }
     
     def release(self):

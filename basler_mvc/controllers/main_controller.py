@@ -296,9 +296,18 @@ class MainController:
     
     def toggle_detection(self, enabled: bool):
         """開啟/關閉檢測"""
-        self.detection_model.update_parameters({'enable_detection': enabled})
-        status = '檢測已開啟' if enabled else '檢測已關閉'
-        self.notify_views('system_status', status)
+        try:
+            success = self.detection_model.update_parameters({'enable_detection': enabled})
+            if success:
+                status = '檢測已開啟' if enabled else '檢測已關閉'
+                self.notify_views('system_status', status)
+                logging.info(f"✅ 檢測開關已設置為: {enabled}")
+            else:
+                logging.error(f"❌ 檢測參數更新失敗")
+                self.notify_views('system_error', '檢測開關設置失敗')
+        except Exception as e:
+            logging.error(f"❌ 切換檢測開關時出錯: {str(e)}")
+            self.notify_views('system_error', f'檢測開關錯誤: {str(e)}')
     
     def set_exposure_time(self, exposure_us: float) -> bool:
         """設置相機曝光時間"""

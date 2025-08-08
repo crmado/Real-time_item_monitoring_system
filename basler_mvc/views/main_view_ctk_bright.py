@@ -1342,8 +1342,15 @@ class MainView:
     
     def toggle_detection(self):
         """切換檢測開關"""
-        enabled = self.enable_detection_var.get()
-        self.controller.toggle_detection(enabled)
+        try:
+            enabled = self.enable_detection_var.get()
+            self.controller.toggle_detection(enabled)
+            logging.info(f"✅ 檢測開關已切換為: {'開啟' if enabled else '關閉'}")
+        except Exception as e:
+            logging.error(f"❌ 切換檢測開關時出錯: {str(e)}")
+            # 重置開關狀態
+            self.enable_detection_var.set(not self.enable_detection_var.get())
+            messagebox.showerror("錯誤", f"切換檢測開關失敗: {str(e)}")
     
     def open_settings(self):
         """開啟設定"""
@@ -1536,7 +1543,7 @@ class MainView:
         try:
             current_mode = self.mode_var.get()
             
-            # 📹 檢測按鈕邏輯
+            # 📹 檢測按鈕邏輯 - 添加屬性檢查避免初始化順序問題
             can_detect = False
             detect_tooltip = ""
             
@@ -1549,25 +1556,28 @@ class MainView:
             elif current_mode == "playback" and not self.video_loaded:
                 detect_tooltip = "需要選擇視頻檔案才能開始檢測"
             
-            # 更新檢測按鈕
-            if can_detect and not self.is_detecting:
-                self.start_detection_btn.configure(
-                    state="normal",
-                    fg_color=ColorScheme.SUCCESS_GREEN,
-                    text="▶ 開始檢測"
-                )
-            elif not can_detect:
-                self.start_detection_btn.configure(
-                    state="disabled",
-                    fg_color="#666666",  # 灰色
-                    text="❌ 無影像源"
-                )
+            # 🔧 檢查按鈕是否已創建，避免初始化順序問題
+            if hasattr(self, 'start_detection_btn') and self.start_detection_btn is not None:
+                # 更新開始檢測按鈕
+                if can_detect and not self.is_detecting:
+                    self.start_detection_btn.configure(
+                        state="normal",
+                        fg_color=ColorScheme.SUCCESS_GREEN,
+                        text="▶ 開始檢測"
+                    )
+                elif not can_detect:
+                    self.start_detection_btn.configure(
+                        state="disabled",
+                        fg_color="#666666",  # 灰色
+                        text="❌ 無影像源"
+                    )
             
             # 停止檢測按鈕
-            if self.is_detecting:
-                self.stop_detection_btn.configure(state="normal")
-            else:
-                self.stop_detection_btn.configure(state="disabled")
+            if hasattr(self, 'stop_detection_btn') and self.stop_detection_btn is not None:
+                if self.is_detecting:
+                    self.stop_detection_btn.configure(state="normal")
+                else:
+                    self.stop_detection_btn.configure(state="disabled")
             
             # 🎬 視頻播放按鈕邏輯（回放模式）
             if hasattr(self, 'play_btn'):
