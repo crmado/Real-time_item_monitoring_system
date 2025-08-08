@@ -554,6 +554,39 @@ class MainView:
         )
         self.stop_btn.pack(side="left", padx=2)
         
+        # 🎯 新增：視頻進度條
+        progress_frame = ctk.CTkFrame(self.playback_frame, fg_color="transparent")
+        progress_frame.pack(fill="x", padx=12, pady=(8, 8))
+        
+        ctk.CTkLabel(
+            progress_frame, 
+            text="播放進度:", 
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(anchor="w")
+        
+        # 進度條
+        self.video_progress = tk.DoubleVar(value=0.0)
+        self.progress_slider = ctk.CTkSlider(
+            progress_frame,
+            from_=0.0,
+            to=1.0,
+            variable=self.video_progress,
+            command=self.on_progress_changed,
+            progress_color=ColorScheme.SUCCESS_GREEN,
+            button_color=ColorScheme.SUCCESS_GREEN
+        )
+        self.progress_slider.pack(fill="x", pady=(5, 5))
+        
+        # 時間顯示
+        self.time_label = ctk.CTkLabel(
+            progress_frame, 
+            text="00:00 / 00:00",
+            font=ctk.CTkFont(size=FontSizes.SMALL, family="monospace"),
+            text_color=ColorScheme.TEXT_ACCENT
+        )
+        self.time_label.pack()
+        
         # 播放速度
         speed_frame = ctk.CTkFrame(self.playback_frame, fg_color="transparent")
         speed_frame.pack(fill="x", padx=12, pady=(8, 12))
@@ -588,10 +621,16 @@ class MainView:
         # 初始化狀態
         self.is_recording = False
         self.is_playing = False
+        self.is_detecting = False
+        self.camera_connected = False
+        self.video_loaded = False
         
         # 隐藏錄製和回放框架（預設為實時模式）
         self.recording_frame.pack_forget()
         self.playback_frame.pack_forget()
+        
+        # 初始化按鈕狀態
+        self.update_button_states()
     
     def create_center_panel(self, parent):
         """創建中央視頻面板"""
@@ -831,29 +870,33 @@ class MainView:
         buttons_container = ctk.CTkFrame(button_frame, fg_color="transparent")
         buttons_container.pack(pady=15)
         
-        ctk.CTkButton(
+        # 🎯 增強檢測按鈕 - 添加狀態指示
+        self.start_detection_btn = ctk.CTkButton(
             buttons_container,
-            text="▶ 開始",
+            text="▶ 開始檢測",
             command=self.start_detection,
             height=35,
-            width=90,
+            width=110,
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             fg_color=ColorScheme.SUCCESS_GREEN,
             hover_color="#047857",
             text_color="white"
-        ).pack(side="left", padx=5)
+        )
+        self.start_detection_btn.pack(side="left", padx=5)
         
-        ctk.CTkButton(
+        self.stop_detection_btn = ctk.CTkButton(
             buttons_container,
-            text="⏸ 停止",
+            text="⏸ 停止檢測",
             command=self.stop_detection,
             height=35,
-            width=90,
+            width=110,
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             fg_color=ColorScheme.ERROR_RED,
             hover_color="#b91c1c",
-            text_color="white"
-        ).pack(side="left", padx=5)
+            text_color="white",
+            state="disabled"  # 初始為禁用狀態
+        )
+        self.stop_detection_btn.pack(side="left", padx=5)
         
         # 重置按鈕
         ctk.CTkButton(
@@ -1181,14 +1224,103 @@ class MainView:
         self.display_size = (int(640 * factor), int(480 * factor))
     
     def start_detection(self):
-        """開始檢測"""
-        if self.controller.start_batch_detection():
-            logging.info("批次檢測已啟動")
+        """開始檢測 - 增強視覺反饋"""
+        try:
+            # 🎯 更新內部狀態
+            self.is_detecting = True
+            
+            # 🎯 更新按鈕狀態
+            self.start_detection_btn.configure(
+                text="🔄 檢測中...", 
+                state="disabled",
+                fg_color=ColorScheme.WARNING_ORANGE
+            )
+            self.stop_detection_btn.configure(state="normal")
+            
+            # 更新狀態顯示
+            self.status_var.set("狀態: 正在啟動檢測...")
+            
+            # 重置計數
+            self.object_count_var.set("000")
+            
+            # 啟動檢測
+            success = self.controller.start_batch_detection()
+            
+            if success:
+                self.start_detection_btn.configure(
+                    text="✅ 檢測運行中",
+                    fg_color=ColorScheme.SUCCESS_GREEN
+                )
+                self.status_var.set("狀態: 檢測已啟動，正在處理...")
+                logging.info("✅ 批次檢測已啟動")
+            else:
+                # 啟動失敗，還原狀態
+                self.is_detecting = False
+                self.start_detection_btn.configure(
+                    text="▶ 開始檢測",
+                    state="normal",
+                    fg_color=ColorScheme.SUCCESS_GREEN
+                )
+                self.stop_detection_btn.configure(state="disabled")
+                self.status_var.set("狀態: 檢測啟動失敗")
+                logging.error("❌ 批次檢測啟動失敗")
+                # 更新按鈕狀態
+                self.update_button_states()
+                
+        except Exception as e:
+            logging.error(f"啟動檢測時出錯: {str(e)}")
+            # 出錯時還原狀態
+            self.is_detecting = False
+            self.start_detection_btn.configure(
+                text="▶ 開始檢測",
+                state="normal", 
+                fg_color=ColorScheme.SUCCESS_GREEN
+            )
+            self.stop_detection_btn.configure(state="disabled")
+            self.status_var.set("狀態: 檢測啟動出錯")
+            self.update_button_states()
     
     def stop_detection(self):
-        """停止檢測"""
-        if self.controller.stop_batch_detection():
-            logging.info("批次檢測已停止")
+        """停止檢測 - 增強視覺反饋"""
+        try:
+            # 🎯 更新內部狀態
+            self.is_detecting = False
+            
+            # 🎯 更新按鈕狀態
+            self.stop_detection_btn.configure(
+                text="🔄 停止中...",
+                state="disabled"
+            )
+            self.status_var.set("狀態: 正在停止檢測...")
+            
+            # 停止檢測
+            success = self.controller.stop_batch_detection()
+            
+            # 還原按鈕狀態
+            self.start_detection_btn.configure(
+                text="▶ 開始檢測",
+                state="normal",
+                fg_color=ColorScheme.SUCCESS_GREEN
+            )
+            self.stop_detection_btn.configure(
+                text="⏸ 停止檢測",
+                state="disabled"
+            )
+            
+            if success:
+                self.status_var.set("狀態: 檢測已停止")
+                logging.info("✅ 批次檢測已停止")
+            else:
+                self.status_var.set("狀態: 檢測停止失敗")
+                logging.error("❌ 批次檢測停止失敗")
+            
+            # 🎯 重要：更新所有按鈕狀態
+            self.update_button_states()
+            
+        except Exception as e:
+            logging.error(f"停止檢測時出錯: {str(e)}")
+            self.status_var.set("狀態: 停止檢測出錯")
+            self.update_button_states()
     
     def reset_count(self):
         """重置計數"""
@@ -1343,6 +1475,22 @@ class MainView:
                         self.progress_bar.set(progress)
                         self.progress_label.configure(text=f"{count} / {target}")
                 
+                # 🎯 更新視頻播放進度
+                if 'progress' in data and hasattr(self, 'video_progress'):
+                    progress = data['progress']
+                    self._updating_progress = True
+                    try:
+                        self.video_progress.set(progress)
+                    finally:
+                        self._updating_progress = False
+                
+                # 🎯 更新時間顯示
+                if 'timestamp' in data and hasattr(self, 'time_label'):
+                    timestamp = data.get('timestamp', 0)
+                    video_status = self.controller.get_video_player_status()
+                    time_format = video_status.get('time_format', '00:00 / 00:00')
+                    self.time_label.configure(text=time_format)
+                
                 # 使用控制器的FPS更新
                 if 'processing_fps' in data:
                     fps = data['processing_fps']
@@ -1364,12 +1512,113 @@ class MainView:
             elif event_type == 'system_error':
                 if data:
                     self.status_var.set(f"錯誤: {data}")
+            
+            # 🎯 新增：相機連接狀態事件
+            elif event_type == 'camera_connected':
+                self.camera_connected = True
+                logging.info("✅ 相機已連接")
+                self.status_var.set("狀態: 相機已連接，可以開始檢測")
+                self.update_button_states()
+                
+            elif event_type == 'camera_disconnected':
+                self.camera_connected = False
+                logging.info("❌ 相機已斷開")
+                self.status_var.set("狀態: 相機已斷開連接")
+                self.update_button_states()
                     
         except Exception as e:
             logging.error(f"處理控制器事件錯誤: {str(e)}")
     
     # 新增的功能方法
     
+    def update_button_states(self):
+        """🎯 統一的按鈕狀態管理 - 根據系統狀態智能啟用/禁用按鈕"""
+        try:
+            current_mode = self.mode_var.get()
+            
+            # 📹 檢測按鈕邏輯
+            can_detect = False
+            detect_tooltip = ""
+            
+            if current_mode == "live" and self.camera_connected:
+                can_detect = True
+            elif current_mode == "playback" and self.video_loaded:
+                can_detect = True
+            elif current_mode == "live" and not self.camera_connected:
+                detect_tooltip = "需要連接相機才能開始檢測"
+            elif current_mode == "playback" and not self.video_loaded:
+                detect_tooltip = "需要選擇視頻檔案才能開始檢測"
+            
+            # 更新檢測按鈕
+            if can_detect and not self.is_detecting:
+                self.start_detection_btn.configure(
+                    state="normal",
+                    fg_color=ColorScheme.SUCCESS_GREEN,
+                    text="▶ 開始檢測"
+                )
+            elif not can_detect:
+                self.start_detection_btn.configure(
+                    state="disabled",
+                    fg_color="#666666",  # 灰色
+                    text="❌ 無影像源"
+                )
+            
+            # 停止檢測按鈕
+            if self.is_detecting:
+                self.stop_detection_btn.configure(state="normal")
+            else:
+                self.stop_detection_btn.configure(state="disabled")
+            
+            # 🎬 視頻播放按鈕邏輯（回放模式）
+            if hasattr(self, 'play_btn'):
+                if current_mode == "playback":
+                    if self.video_loaded:
+                        self.play_btn.configure(state="normal")
+                    else:
+                        self.play_btn.configure(
+                            state="disabled",
+                            text="❌ 無視頻"
+                        )
+                        
+            # 🎥 錄製按鈕邏輯（實時模式）
+            if hasattr(self, 'record_button'):
+                if current_mode == "live" and self.camera_connected and not self.is_recording:
+                    self.record_button.configure(
+                        state="normal",
+                        text="🔴 開始錄製",
+                        fg_color=ColorScheme.ERROR_RED
+                    )
+                elif current_mode == "live" and not self.camera_connected:
+                    self.record_button.configure(
+                        state="disabled",
+                        text="❌ 無相機",
+                        fg_color="#666666"
+                    )
+                elif current_mode != "live":
+                    self.record_button.configure(
+                        state="disabled", 
+                        text="⛔ 僅限實時模式",
+                        fg_color="#666666"
+                    )
+                elif self.is_recording:
+                    # 錄製中狀態
+                    self.record_button.configure(
+                        state="normal",
+                        text="⏹ 停止錄製",
+                        fg_color=ColorScheme.WARNING_ORANGE
+                    )
+            
+            # 📊 狀態提示更新
+            if not self.camera_connected and not self.video_loaded:
+                self.status_var.set("狀態: 請連接相機或選擇視頻檔案")
+            elif current_mode == "live" and not self.camera_connected:
+                self.status_var.set("狀態: 請連接相機以開始檢測")
+            elif current_mode == "playback" and not self.video_loaded:
+                self.status_var.set("狀態: 請選擇視頻檔案以開始回放")
+                
+        except Exception as e:
+            logging.error(f"更新按鈕狀態時出錯: {str(e)}")
+
     def update_fps_display(self, fps_type, fps_value):
         """控制FPS顯示更新頻率和格式 - 美觀版本"""
         import time
@@ -1488,6 +1737,9 @@ class MainView:
         
         # 通知控制器
         success = self.controller.switch_mode(mode)
+        
+        # 🎯 重要：切換模式後更新按鈕狀態
+        self.update_button_states()
         if success:
             logging.info(f"系統模式已切換為: {mode}")
     
@@ -1522,7 +1774,20 @@ class MainView:
         if filename:
             import os
             self.playback_file.set(os.path.basename(filename))
-            self.controller.set_playback_file(filename)
+            success = self.controller.set_playback_file(filename)
+            
+            # 🎯 更新視頻加載狀態
+            if success:
+                self.video_loaded = True
+                logging.info(f"✅ 視頻檔案已加載: {filename}")
+                self.status_var.set("狀態: 視頻檔案已加載，可以開始回放")
+            else:
+                self.video_loaded = False
+                logging.error(f"❌ 視頻檔案加載失敗: {filename}")
+                self.status_var.set("狀態: 視頻檔案加載失敗")
+            
+            # 🎯 重要：更新按鈕狀態
+            self.update_button_states()
     
     def toggle_playback(self):
         """切換播放狀態"""
@@ -1561,6 +1826,17 @@ class MainView:
         speed_val = float(speed)
         self.speed_label.configure(text=f"{speed_val:.1f}x")
         self.controller.set_playback_speed(speed_val)
+    
+    def on_progress_changed(self, progress):
+        """進度條變化 - 用戶拖拽進度條"""
+        if hasattr(self, '_updating_progress') and self._updating_progress:
+            return  # 避免循環更新
+            
+        progress_val = float(progress)
+        # 跳轉到指定進度
+        success = self.controller.seek_video_to_progress(progress_val)
+        if success:
+            logging.info(f"用戶跳轉到進度: {progress_val*100:.1f}%")
     
     def run(self):
         """運行主循環"""

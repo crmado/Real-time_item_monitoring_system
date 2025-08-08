@@ -158,7 +158,7 @@ class DetectionProcessor:
                 return True
                 
             except queue.Full:
-                logging.error(f"幀 {frame_number}: 隊列已滿，提交失敗")
+                # 🎯 靜默處理：同步模式下隊列滿也是正常的
                 self.processing_semaphore.release()  # 釋放信號量
                 return False
             except Exception as e:
@@ -176,9 +176,7 @@ class DetectionProcessor:
                 })
                 return True
             except queue.Full:
-                # 🎯 優化：視頻回放時隊列滿是正常情況，降低日誌級別
-                if frame_number % 50 == 0:  # 只有每50幀記錄一次
-                    logging.debug(f"幀 {frame_number} 提交失敗（隊列滿）")
+                # 🎯 完全靜默處理：視頻回放時跳過部分幀是正常的
                 return False
     
     def _processing_worker(self):

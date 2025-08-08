@@ -153,11 +153,12 @@ class MainController:
                 'source': 'video'
             }
             
-            # 非阻塞提交（確保不丟幀）
+            # 🎯 非阻塞提交（視頻回放模式優化）
             success = self.detection_processor.submit_frame(frame, frame_info)
             
-            if not success:
-                logging.warning(f"幀 {frame_info['frame_number']} 提交失敗")
+            # 🎯 靜默處理：視頻回放時跳過部分幀是正常的，不記錄警告
+            if not success and frame_info['frame_number'] % 100 == 0:  # 只有每100幀記錄一次調試信息
+                logging.debug(f"幀 {frame_info['frame_number']} 跳過（處理器忙碌）")
             
         except Exception as e:
             logging.error(f"提交檢測幀失敗: {str(e)}")
