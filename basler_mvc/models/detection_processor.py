@@ -38,15 +38,15 @@ class DetectionProcessor:
         # 線程池
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         
-        # 🎯 算法調整模式：同步隊列確保每幀都被處理
-        self.frame_queue = queue.Queue(maxsize=self.max_workers * 2)  # 限制隊列大小防止堆積
+        # 🎯 優化隊列配置：視頻回放模式需要更大的緩衝區
+        self.frame_queue = queue.Queue(maxsize=self.max_workers * 8)  # 增加隊列大小以處理視頻回放
         
         # 結果隊列（UI消費）
-        self.result_queue = queue.Queue(maxsize=20)  # 適度限制UI隊列大小
+        self.result_queue = queue.Queue(maxsize=50)  # 增加結果隊列大小
         
-        # 同步控制
-        self.sync_mode = True  # 算法調整模式預設開啟同步
-        self.processing_semaphore = threading.Semaphore(self.max_workers * 2)  # 控制並發處理數量
+        # 同步控制 - 為視頻回放優化
+        self.sync_mode = False  # 🎯 預設使用非同步模式，減少阻塞
+        self.processing_semaphore = threading.Semaphore(self.max_workers * 4)  # 增加並發許可數
         
         # 統計資料
         self.total_frames_processed = 0
@@ -137,19 +137,23 @@ class DetectionProcessor:
         if self.sync_mode:
             # 🎯 同步模式：等待直到可以提交
             try:
-                # 獲取信號量（阻塞等待）
-                acquired = self.processing_semaphore.acquire(timeout=30.0)  # 最多等待30秒
+                # 🎯 優化視頻回放：非阻塞提交
+                acquired = self.processing_semaphore.acquire(blocking=False)  # 非阻塞獲取信號量
                 if not acquired:
-                    logging.error(f"幀 {frame_number}: 等待處理器超時（30s）")
+                    # 使用非阻塞模式，直接跳過該幀
                     return False
                 
-                # 阻塞提交（確保被接受）
-                self.frame_queue.put({
-                    'frame': frame.copy(),  # 複製幀避免併發問題
-                    'frame_info': frame_info,
-                    'submit_time': time.time(),
-                    'semaphore': self.processing_semaphore  # 傳遞信號量用於釋放
-                }, timeout=10.0)
+                # 非阻塞提交（視頻回放模式優化）
+                try:
+                    self.frame_queue.put_nowait({
+                        'frame': frame.copy(),  # 複製幀避免併發問題
+                        'frame_info': frame_info,
+                        'submit_time': time.time(),
+                        'semaphore': self.processing_semaphore  # 傳遞信號量用於釋放
+                    })
+                except queue.Full:
+                    self.processing_semaphore.release()  # 隊列滿時釋放信號量
+                    return False
                 
                 return True
                 
@@ -172,7 +176,9 @@ class DetectionProcessor:
                 })
                 return True
             except queue.Full:
-                logging.warning(f"幀 {frame_number} 提交失敗")
+                # 🎯 優化：視頻回放時隊列滿是正常情況，降低日誌級別
+                if frame_number % 50 == 0:  # 只有每50幀記錄一次
+                    logging.debug(f"幀 {frame_number} 提交失敗（隊列滿）")
                 return False
     
     def _processing_worker(self):
@@ -277,13 +283,13 @@ class DetectionProcessor:
                 frame_number = result['frame_info'].get('frame_number', 0)
                 object_count = result['object_count']
                 
-                # 🚀 UI更新策略：降低頻率但不影響檢測
+                # 🚀 優化UI更新策略：確保重要檢測結果都能顯示
                 current_time = time.time()
                 should_update_ui = (
                     frame_number == 1 or  # 第一幀
-                    object_count > 0 or  # 有檢測結果
-                    ui_update_counter % 10 == 0 or  # 每10個結果
-                    (current_time - last_ui_update) > 0.5  # 至少0.5秒更新一次
+                    object_count > 0 or  # 🎯 有檢測結果時總是更新（重要！）
+                    ui_update_counter % 5 == 0 or  # 每5個結果更新一次（提高頻率）
+                    (current_time - last_ui_update) > 0.3  # 至少0.3秒更新一次（提高頻率）
                 )
                 
                 if should_update_ui:

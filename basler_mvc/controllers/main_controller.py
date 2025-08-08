@@ -458,18 +458,18 @@ class MainController:
     def start_batch_detection(self):
         """開始批次檢測模式 - 支持視頻回放模式"""
         try:
-            # 🎯 關鍵修復：根據模式啟動不同的檢測處理器
+            # 🎯 優化：根據模式啟動不同的檢測處理器
             if self.current_mode == 'playback':
-                # 🎯 視頻回放模式：啟動同步檢測處理器
+                # 🎯 視頻回放模式：使用非同步模式避免提交失敗
                 if not self.detection_processor.is_processing:
-                    # 設置為同步模式（算法調整用途）
-                    self.detection_processor.set_sync_mode(True)
+                    # 🎯 修復：使用非同步模式，提高視頻回放流暢度
+                    self.detection_processor.set_sync_mode(False)
                     self.detection_processor.start_processing()
-                    logging.info("✅ 視頻回放同步檢測已啟動")
+                    logging.info("✅ 視頻回放非同步檢測已啟動（避免幀提交失敗）")
                 else:
-                    # 確保已在運行的處理器也是同步模式
-                    self.detection_processor.set_sync_mode(True)
-                    logging.info("🔄 視頻回放檢測處理器已在運行（切換為同步模式）")
+                    # 確保已在運行的處理器也是非同步模式
+                    self.detection_processor.set_sync_mode(False)
+                    logging.info("🔄 視頻回放檢測處理器已在運行（切換為非同步模式）")
                 return True
                 
             elif self.current_mode == 'live':
