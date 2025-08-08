@@ -1539,6 +1539,55 @@ class MainView:
                 logging.info("❌ 相機已斷開")
                 self.status_var.set("狀態: 相機已斷開連接")
                 self.update_button_states()
+            
+            # 🎯 新增：視頻播放器事件處理
+            elif event_type == 'player_video_loaded':
+                self.video_loaded = True
+                if data:
+                    video_name = data.get('filename', '未知視頻')
+                    logging.info(f"✅ 視頻已加載: {video_name}")
+                    self.status_var.set(f"狀態: 視頻已加載 - {video_name}")
+                else:
+                    logging.info("✅ 視頻已加載")
+                    self.status_var.set("狀態: 視頻已加載，可以開始回放")
+                self.update_button_states()
+                
+            elif event_type == 'player_playback_finished':
+                logging.info("🏁 視頻播放完成")
+                self.status_var.set("狀態: 視頻播放完成")
+                self.is_playing = False
+                if hasattr(self, 'play_btn'):
+                    self.play_btn.configure(text="▶️")
+                # 注意：播放完成後視頻仍然加載，只是停止播放
+                # 不要設置 self.video_loaded = False
+            
+            elif event_type == 'player_playback_started':
+                logging.info("▶️ 視頻播放已開始")
+                self.status_var.set("狀態: 視頻播放中")
+                self.is_playing = True
+                if hasattr(self, 'play_btn'):
+                    self.play_btn.configure(text="⏸️")
+            
+            elif event_type == 'player_playback_paused':
+                logging.info("⏸️ 視頻播放已暫停")
+                self.status_var.set("狀態: 視頻播放已暫停")
+                self.is_playing = False
+                if hasattr(self, 'play_btn'):
+                    self.play_btn.configure(text="▶️")
+                    
+            elif event_type == 'player_playback_resumed':
+                logging.info("▶️ 視頻播放已恢復")
+                self.status_var.set("狀態: 視頻播放中")
+                self.is_playing = True
+                if hasattr(self, 'play_btn'):
+                    self.play_btn.configure(text="⏸️")
+                    
+            elif event_type == 'player_playback_stopped':
+                logging.info("⏹️ 視頻播放已停止")
+                self.status_var.set("狀態: 視頻播放已停止")
+                self.is_playing = False
+                if hasattr(self, 'play_btn'):
+                    self.play_btn.configure(text="▶️")
                     
         except Exception as e:
             logging.error(f"處理控制器事件錯誤: {str(e)}")
@@ -1793,23 +1842,18 @@ class MainView:
             self.playback_file.set(os.path.basename(filename))
             success = self.controller.set_playback_file(filename)
             
-            # 🎯 更新視頻加載狀態
-            if success:
-                self.video_loaded = True
-                logging.info(f"✅ 視頻檔案已加載: {filename}")
-                self.status_var.set("狀態: 視頻檔案已加載，可以開始回放")
-            else:
+            # 🎯 注意：視頻加載狀態將通過 player_video_loaded 事件更新
+            # 不需要在這裡手動設置 self.video_loaded
+            if not success:
+                logging.error(f"❌ 視頻檔案設置失敗: {filename}")
+                self.status_var.set("狀態: 視頻檔案設置失敗")
                 self.video_loaded = False
-                logging.error(f"❌ 視頻檔案加載失敗: {filename}")
-                self.status_var.set("狀態: 視頻檔案加載失敗")
-            
-            # 🎯 重要：更新按鈕狀態
-            self.update_button_states()
+                self.update_button_states()
     
     def toggle_playback(self):
         """切換播放狀態"""
-        # 🎯 修復：檢查是否已選擇視頻檔案
-        if self.playback_file.get() == "未選擇檔案":
+        # 🎯 修復：檢查視頻是否已加載（不只是檔案名稱）
+        if not self.video_loaded or self.playback_file.get() == "未選擇檔案":
             messagebox.showwarning("警告", "請先選擇視頻檔案")
             return
             
@@ -1818,12 +1862,15 @@ class MainView:
             if success:
                 self.is_playing = True
                 self.play_btn.configure(text="⏸️")
+                logging.info("✅ 視頻播放已開始")
             else:
                 messagebox.showerror("錯誤", "視頻播放啟動失敗，請檢查檔案是否有效")
+                logging.error("❌ 視頻播放啟動失敗")
         else:
             self.controller.pause_video_playback()
             self.is_playing = False
             self.play_btn.configure(text="▶️")
+            logging.info("⏸️ 視頻播放已暫停")
     
     def pause_playback(self):
         """暫停回放"""
