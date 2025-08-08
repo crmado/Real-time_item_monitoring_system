@@ -48,11 +48,11 @@ class MainView:
         # 簡化的面板配置 - 固定顯示所有面板
         self.panels_width_ratio = {'left': 0.2, 'center': 0.6, 'right': 0.2}
         
-        # UI 變量
+        # UI 變量 - 美觀的FPS顯示格式
         self.status_var = tk.StringVar(value="狀態: 系統就緒")
-        self.camera_fps_var = tk.StringVar(value="相機: 0 FPS")
-        self.processing_fps_var = tk.StringVar(value="處理: 0 FPS")
-        self.detection_fps_var = tk.StringVar(value="檢測: 0 FPS")
+        self.camera_fps_var = tk.StringVar(value="相機: 0 fps(0.0 MB/s)")
+        self.processing_fps_var = tk.StringVar(value="處理: 0 fps")
+        self.detection_fps_var = tk.StringVar(value="檢測: 0 fps")
         self.object_count_var = tk.StringVar(value="物件: 0")
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
         self.method_var = tk.StringVar(value="circle")

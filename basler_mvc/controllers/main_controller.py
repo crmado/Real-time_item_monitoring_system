@@ -374,6 +374,29 @@ class MainController:
         """加載視頻用於回放"""
         return self.video_player.load_video(video_path)
     
+    def set_playback_file(self, file_path: str) -> bool:
+        """設置回放檔案路徑"""
+        try:
+            # 🎯 修復：確保切換到回放模式並加載視頻
+            if self.current_mode != 'playback':
+                success = self.switch_mode('playback')
+                if not success:
+                    logging.error("無法切換到回放模式")
+                    return False
+            
+            # 加載視頻檔案
+            success = self.load_video(file_path)
+            if success:
+                logging.info(f"✅ 視頻檔案已加載: {file_path}")
+            else:
+                logging.error(f"❌ 視頻檔案加載失敗: {file_path}")
+            
+            return success
+            
+        except Exception as e:
+            logging.error(f"設置回放檔案失敗: {str(e)}")
+            return False
+    
     def start_video_playback(self) -> bool:
         """開始視頻回放"""
         if self.current_mode != 'playback':

@@ -86,10 +86,10 @@ class MainView:
         
         # UI 變量 - 修正FPS顯示格式
         self.status_var = tk.StringVar(value="狀態: 系統就緒")
-        # 固定寬度的FPS顯示（預的6位數空間）
-        self.camera_fps_var = tk.StringVar(value="相機:   0.0")
-        self.processing_fps_var = tk.StringVar(value="處理:   0.0")
-        self.detection_fps_var = tk.StringVar(value="檢測:   0.0")
+        # 美觀的FPS顯示格式 - 包含中文標籤
+        self.camera_fps_var = tk.StringVar(value="相機: 0 fps(0.0 MB/s)")
+        self.processing_fps_var = tk.StringVar(value="處理: 0 fps")
+        self.detection_fps_var = tk.StringVar(value="檢測: 0 fps")
         self.object_count_var = tk.StringVar(value="000")
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
         self.method_var = tk.StringVar(value="circle")
@@ -708,13 +708,13 @@ class MainView:
         fps_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
         fps_frame.pack(side="right", padx=20, pady=8)
         
-        # 固定寬度的FPS顯示標籤
+        # 固定寬度的FPS顯示標籤 - 加寬以容納新格式
         self.camera_fps_display = ctk.CTkLabel(
             fps_frame,
             textvariable=self.camera_fps_var,
             text_color=ColorScheme.TEXT_SUCCESS,
             font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
-            width=80,  # 固定寬度
+            width=160,  # 🎯 加寬以容納 "相機: 280 fps(82.5 MB/s)" 格式
             anchor="w"  # 左對齊
         )
         self.camera_fps_display.pack(side="left", padx=5)
@@ -724,7 +724,7 @@ class MainView:
             textvariable=self.processing_fps_var,
             text_color=ColorScheme.TEXT_ACCENT,
             font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
-            width=80,  # 固定寬度
+            width=90,  # 🎯 適度寬度用於 "處理: 280 fps" 格式
             anchor="w"  # 左對齊
         )
         self.processing_fps_display.pack(side="left", padx=5)
@@ -734,8 +734,8 @@ class MainView:
             textvariable=self.detection_fps_var,
             text_color=ColorScheme.PURPLE_ACCENT,
             font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
-            width=80,  # 固定寬度
-            anchor="w"  # 左小齊
+            width=90,  # 🎯 適度寬度用於 "處理: 280 fps" 格式
+            anchor="w"  # 左對齊
         )
         self.detection_fps_display.pack(side="left", padx=5)
     
@@ -1371,7 +1371,7 @@ class MainView:
     # 新增的功能方法
     
     def update_fps_display(self, fps_type, fps_value):
-        """控制FPS顯示更新頻率和格式"""
+        """控制FPS顯示更新頻率和格式 - 美觀版本"""
         import time
         current_time = time.time()
         
@@ -1381,22 +1381,36 @@ class MainView:
         
         self.last_fps_update = current_time
         
-        # 固定格式顯示（預的6位數空間）
-        if fps_value < 10:
-            fps_str = f"  {fps_value:.1f}"
-        elif fps_value < 100:
-            fps_str = f" {fps_value:.1f}"
-        elif fps_value < 1000:
-            fps_str = f"{fps_value:.1f}"
-        else:
-            fps_str = f"{fps_value:.0f}"  # 超過1000時不顯示小數
-        
-        if fps_type == 'camera':
-            self.camera_fps_var.set(f"相機:{fps_str}")
+        # 🎯 美觀格式：中文標籤 + 數字 fps(MB/s)
+        if fps_type == 'camera' and fps_value > 0:
+            # Basler acA640-300gm: 640x480 Mono8 = 307,200 bytes per frame
+            bytes_per_frame = 640 * 480 * 1  # Mono8 = 1 byte per pixel
+            bytes_per_second = bytes_per_frame * fps_value
+            mb_per_second = bytes_per_second / (1024 * 1024)  # Convert to MB/s
+            
+            # 格式化顯示（包含中文標籤）
+            if fps_value >= 100:
+                display_text = f"相機: {fps_value:.0f} fps({mb_per_second:.1f} MB/s)"
+            else:
+                display_text = f"相機: {fps_value:.1f} fps({mb_per_second:.1f} MB/s)"
+            
+            self.camera_fps_var.set(display_text)
+            
         elif fps_type == 'processing':
-            self.processing_fps_var.set(f"處理:{fps_str}")
+            # 處理FPS（包含中文標籤）
+            if fps_value >= 100:
+                display_text = f"處理: {fps_value:.0f} fps"
+            else:
+                display_text = f"處理: {fps_value:.1f} fps"
+            self.processing_fps_var.set(display_text)
+            
         elif fps_type == 'detection':
-            self.detection_fps_var.set(f"檢測:{fps_str}")
+            # 檢測FPS（包含中文標籤）
+            if fps_value >= 100:
+                display_text = f"檢測: {fps_value:.0f} fps"
+            else:
+                display_text = f"檢測: {fps_value:.1f} fps"
+            self.detection_fps_var.set(display_text)
     
     def adjust_exposure(self, delta):
         """調整曝光時間"""
@@ -1512,11 +1526,18 @@ class MainView:
     
     def toggle_playback(self):
         """切換播放狀態"""
+        # 🎯 修復：檢查是否已選擇視頻檔案
+        if self.playback_file.get() == "未選擇檔案":
+            messagebox.showwarning("警告", "請先選擇視頻檔案")
+            return
+            
         if not self.is_playing:
             success = self.controller.start_video_playback()
             if success:
                 self.is_playing = True
                 self.play_btn.configure(text="⏸️")
+            else:
+                messagebox.showerror("錯誤", "視頻播放啟動失敗，請檢查檔案是否有效")
         else:
             self.controller.pause_video_playback()
             self.is_playing = False

@@ -51,11 +51,11 @@ class MainView:
         self.root.minsize(1200, 900)  # 設置最小尺寸確保所有元素可見
         self.root.resizable(True, True)
         
-        # UI 變量
+        # UI 變量 - 美觀的FPS顯示格式
         self.status_var = tk.StringVar(value="狀態: 系統就緒")
-        self.camera_fps_var = tk.StringVar(value="相機: 0 FPS")
-        self.processing_fps_var = tk.StringVar(value="處理: 0 FPS")
-        self.detection_fps_var = tk.StringVar(value="檢測: 0 FPS")
+        self.camera_fps_var = tk.StringVar(value="相機: 0 fps(0.0 MB/s)")
+        self.processing_fps_var = tk.StringVar(value="處理: 0 fps")
+        self.detection_fps_var = tk.StringVar(value="檢測: 0 fps")
         self.object_count_var = tk.StringVar(value="000")
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
         self.method_var = tk.StringVar(value="circle")
@@ -887,19 +887,33 @@ class MainView:
                         self.progress_bar.set(progress)
                         self.progress_label.configure(text=f"{count} / {target}")
                 
-                # 更新 FPS
+                # 更新 FPS - 美觀格式
                 if 'processing_fps' in data:
                     fps = data['processing_fps']
-                    self.processing_fps_var.set(f"處理: {fps:.1f} FPS")
+                    if fps >= 100:
+                        self.processing_fps_var.set(f"處理: {fps:.0f} fps")
+                    else:
+                        self.processing_fps_var.set(f"處理: {fps:.1f} fps")
                 
                 if 'detection_fps' in data:
                     fps = data['detection_fps']
-                    self.detection_fps_var.set(f"檢測: {fps:.1f} FPS")
+                    if fps >= 100:
+                        self.detection_fps_var.set(f"檢測: {fps:.0f} fps")
+                    else:
+                        self.detection_fps_var.set(f"檢測: {fps:.1f} fps")
                     
             elif event_type == 'camera_stats_updated':
                 if data and 'current_fps' in data:
                     fps = data['current_fps']
-                    self.camera_fps_var.set(f"相機: {fps:.1f} FPS")
+                    # 計算數據傳輸速率
+                    bytes_per_frame = 640 * 480 * 1  # Mono8
+                    bytes_per_second = bytes_per_frame * fps
+                    mb_per_second = bytes_per_second / (1024 * 1024)
+                    
+                    if fps >= 100:
+                        self.camera_fps_var.set(f"相機: {fps:.0f} fps({mb_per_second:.1f} MB/s)")
+                    else:
+                        self.camera_fps_var.set(f"相機: {fps:.1f} fps({mb_per_second:.1f} MB/s)")
                     
             elif event_type == 'system_status':
                 if data:

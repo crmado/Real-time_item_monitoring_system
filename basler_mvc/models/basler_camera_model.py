@@ -43,11 +43,12 @@ class BaslerCameraModel:
         self.latest_frame = None
         self.frame_queue = queue.Queue(maxsize=3)  # 減少緩存以降低記憶體使用
         
-        # 性能統計
+        # 性能統計 - 🎯 優化FPS計算準確性
         self.total_frames = 0
         self.start_time = None
         self.current_fps = 0.0
-        self.frame_times = deque(maxlen=100)
+        # 🎯 減少窗口大小，使用最近60幀計算更準確的實時FPS（約2秒窗口@280fps）
+        self.frame_times = deque(maxlen=60)
         
         # 相機資訊
         self.camera_info = {}
@@ -591,15 +592,20 @@ class BaslerCameraModel:
             self.total_frames += 1
             self.frame_times.append(current_time)
             
-            # 限制列表大小，防止記憶體洩漏
-            if len(self.frame_times) > 200:  # 保持最新200個時間戳
-                self.frame_times.pop(0)
-            
-            # 計算實時 FPS
-            if len(self.frame_times) >= 2:
-                time_span = self.frame_times[-1] - self.frame_times[0]
+            # 🎯 優化FPS計算 - 使用較短的時間窗口獲得更準確的實時FPS
+            if len(self.frame_times) >= 10:  # 最少10幀才開始計算
+                # 使用最近30幀計算更準確的短期FPS（約0.1秒窗口@280fps）
+                recent_count = min(30, len(self.frame_times))
+                time_span = self.frame_times[-1] - self.frame_times[-recent_count]
                 if time_span > 0:
-                    self.current_fps = (len(self.frame_times) - 1) / time_span
+                    self.current_fps = (recent_count - 1) / time_span
+                    
+                    # 🎯 限制FPS範圍以確保合理性（acA640-300gm理論最大約300fps）
+                    if self.current_fps > 320:  # 超過理論最大值，可能是計算誤差
+                        # 使用更大的窗口重新計算
+                        full_span = self.frame_times[-1] - self.frame_times[0]
+                        if full_span > 0:
+                            self.current_fps = (len(self.frame_times) - 1) / full_span
                     
         # 定期通知觀察者（優化頻率以提高性能）
         if self.total_frames % 50 == 0:  # 每50幀通知一次以減少開銷
