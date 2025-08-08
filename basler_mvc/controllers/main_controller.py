@@ -414,11 +414,26 @@ class MainController:
     
     def start_video_playback(self) -> bool:
         """開始視頻回放"""
+        # 🔧 診斷：檢查模式和視頻狀態
         if self.current_mode != 'playback':
-            self.notify_views('system_error', '請先切換到回放模式')
+            logging.error(f"❌ 視頻播放啟動失敗: 當前模式為 {self.current_mode}，需要切換到回放模式")
+            self.notify_views('system_error', f'當前模式: {self.current_mode}，需要切換到回放模式')
+            return False
+        
+        # 檢查視頻是否已加載
+        if not hasattr(self.video_player, 'video_capture') or not self.video_player.video_capture:
+            logging.error("❌ 視頻播放啟動失敗: 沒有視頻檔案已加載")
+            self.notify_views('system_error', '請先選擇視頻檔案')
             return False
             
-        return self.video_player.start_playback()
+        success = self.video_player.start_playback()
+        if not success:
+            logging.error("❌ 視頻播放器啟動失敗")
+            self.notify_views('system_error', '視頻播放器啟動失敗')
+        else:
+            logging.info("✅ 視頻播放已啟動")
+        
+        return success
     
     def pause_video_playback(self):
         """暫停/恢復視頻回放"""

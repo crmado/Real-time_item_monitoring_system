@@ -108,7 +108,17 @@ class VideoPlayerModel:
     
     def start_playback(self) -> bool:
         """開始播放"""
-        if not self.video_capture or self.is_playing:
+        # 🔧 診斷：詳細的錯誤日誌
+        if not self.video_capture:
+            logging.error("❌ 視頻播放啟動失敗: 沒有視頻捕獲對象")
+            return False
+        
+        if not self.video_capture.isOpened():
+            logging.error("❌ 視頻播放啟動失敗: 視頻檔案未正確開啟")
+            return False
+            
+        if self.is_playing:
+            logging.warning("⚠️ 視頻播放啟動失敗: 視頻已在播放中")
             return False
             
         self.is_playing = True

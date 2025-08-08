@@ -1597,6 +1597,11 @@ class MainView:
     def update_button_states(self):
         """🎯 統一的按鈕狀態管理 - 根據系統狀態智能啟用/禁用按鈕"""
         try:
+            # 🔧 安全檢查：確保UI組件存在且有效
+            if not hasattr(self, 'root') or not self.root or not self.root.winfo_exists():
+                logging.debug("UI組件不存在，跳過按鈕狀態更新")
+                return
+                
             current_mode = self.mode_var.get()
             
             # 📹 檢測按鈕邏輯 - 添加屬性檢查避免初始化順序問題
@@ -1612,39 +1617,54 @@ class MainView:
             elif current_mode == "playback" and not self.video_loaded:
                 detect_tooltip = "需要選擇視頻檔案才能開始檢測"
             
-            # 🔧 檢查按鈕是否已創建，避免初始化順序問題
-            if hasattr(self, 'start_detection_btn') and self.start_detection_btn is not None:
-                # 更新開始檢測按鈕
-                if can_detect and not self.is_detecting:
-                    self.start_detection_btn.configure(
-                        state="normal",
-                        fg_color=ColorScheme.SUCCESS_GREEN,
-                        text="▶ 開始檢測"
-                    )
-                elif not can_detect:
-                    self.start_detection_btn.configure(
-                        state="disabled",
-                        fg_color="#666666",  # 灰色
-                        text="❌ 無影像源"
-                    )
+            # 🔧 安全檢查按鈕並更新狀態
+            if (hasattr(self, 'start_detection_btn') and 
+                self.start_detection_btn is not None and 
+                self.start_detection_btn.winfo_exists()):
+                try:
+                    # 更新開始檢測按鈕
+                    if can_detect and not self.is_detecting:
+                        self.start_detection_btn.configure(
+                            state="normal",
+                            fg_color=ColorScheme.SUCCESS_GREEN,
+                            text="▶ 開始檢測"
+                        )
+                    elif not can_detect:
+                        self.start_detection_btn.configure(
+                            state="disabled",
+                            fg_color="#666666",  # 灰色
+                            text="❌ 無影像源"
+                        )
+                except Exception as e:
+                    logging.debug(f"更新開始檢測按鈕失敗: {str(e)}")
             
             # 停止檢測按鈕
-            if hasattr(self, 'stop_detection_btn') and self.stop_detection_btn is not None:
-                if self.is_detecting:
-                    self.stop_detection_btn.configure(state="normal")
-                else:
-                    self.stop_detection_btn.configure(state="disabled")
+            if (hasattr(self, 'stop_detection_btn') and 
+                self.stop_detection_btn is not None and 
+                self.stop_detection_btn.winfo_exists()):
+                try:
+                    if self.is_detecting:
+                        self.stop_detection_btn.configure(state="normal")
+                    else:
+                        self.stop_detection_btn.configure(state="disabled")
+                except Exception as e:
+                    logging.debug(f"更新停止檢測按鈕失敗: {str(e)}")
             
             # 🎬 視頻播放按鈕邏輯（回放模式）
-            if hasattr(self, 'play_btn'):
-                if current_mode == "playback":
-                    if self.video_loaded:
-                        self.play_btn.configure(state="normal")
-                    else:
-                        self.play_btn.configure(
-                            state="disabled",
-                            text="❌ 無視頻"
-                        )
+            if (hasattr(self, 'play_btn') and 
+                self.play_btn is not None and 
+                self.play_btn.winfo_exists()):
+                try:
+                    if current_mode == "playback":
+                        if self.video_loaded:
+                            self.play_btn.configure(state="normal")
+                        else:
+                            self.play_btn.configure(
+                                state="disabled",
+                                text="❌ 無視頻"
+                            )
+                except Exception as e:
+                    logging.debug(f"更新播放按鈕失敗: {str(e)}")
                         
             # 🎥 錄製按鈕邏輯（實時模式）
             if hasattr(self, 'record_button'):
@@ -1840,6 +1860,14 @@ class MainView:
         if filename:
             import os
             self.playback_file.set(os.path.basename(filename))
+            
+            # 🔧 關鍵修復：確保UI模式與控制器同步
+            # 選擇視頻檔案時自動切換到回放模式
+            if self.mode_var.get() != "playback":
+                logging.info("📺 選擇視頻檔案，自動切換到回放模式")
+                self.mode_var.set("playback")
+                self.change_mode()  # 觸發模式切換
+            
             success = self.controller.set_playback_file(filename)
             
             # 🎯 注意：視頻加載狀態將通過 player_video_loaded 事件更新
