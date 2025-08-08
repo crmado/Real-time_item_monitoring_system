@@ -527,32 +527,25 @@ class MainView:
         control_buttons = ctk.CTkFrame(playback_controls, fg_color="transparent")
         control_buttons.pack()
         
+        # 🎥 簡化影片控制：只保留播放/暫停按鈕
         self.play_btn = ctk.CTkButton(
-            control_buttons, text="▶️", width=30, height=30,
-            command=self.toggle_playback,
+            control_buttons, text="▶️", width=40, height=32,
+            command=self.toggle_playback,  # 使用現有的方法
             font=ctk.CTkFont(size=FontSizes.BODY),
             fg_color=ColorScheme.SUCCESS_GREEN,
             hover_color="#047857"
         )
-        self.play_btn.pack(side="left", padx=2)
+        self.play_btn.pack(side="left", padx=4)
         
-        self.pause_btn = ctk.CTkButton(
-            control_buttons, text="⏸️", width=30, height=30,
-            command=self.pause_playback,
-            font=ctk.CTkFont(size=FontSizes.BODY),
-            fg_color=ColorScheme.WARNING_ORANGE,
-            hover_color="#b45309"
-        )
-        self.pause_btn.pack(side="left", padx=2)
-        
+        # 添加停止按鈕
         self.stop_btn = ctk.CTkButton(
-            control_buttons, text="⏹️", width=30, height=30,
-            command=self.stop_playback,
+            control_buttons, text="⏹️", width=40, height=32,
+            command=self.stop_playback,  # 使用現有的方法
             font=ctk.CTkFont(size=FontSizes.BODY),
             fg_color=ColorScheme.ERROR_RED,
             hover_color="#b91c1c"
         )
-        self.stop_btn.pack(side="left", padx=2)
+        self.stop_btn.pack(side="left", padx=4)
         
         # 🎯 新增：視頻進度條
         progress_frame = ctk.CTkFrame(self.playback_frame, fg_color="transparent")
@@ -1543,6 +1536,11 @@ class MainView:
             # 🎯 新增：視頻播放器事件處理
             elif event_type == 'player_video_loaded':
                 self.video_loaded = True
+                # 🔧 重要：重置播放狀態，確保UI與實際狀態同步
+                self.is_playing = False
+                if hasattr(self, 'play_btn'):
+                    self.play_btn.configure(text="▶️")
+                    
                 if data:
                     video_name = data.get('filename', '未知視頻')
                     logging.info(f"✅ 視頻已加載: {video_name}")
@@ -1597,9 +1595,19 @@ class MainView:
     def update_button_states(self):
         """🎯 統一的按鈕狀態管理 - 根據系統狀態智能啟用/禁用按鈕"""
         try:
-            # 🔧 安全檢查：確保UI組件存在且有效
-            if not hasattr(self, 'root') or not self.root or not self.root.winfo_exists():
-                logging.debug("UI組件不存在，跳過按鈕狀態更新")
+            # 🔧 更嚴格的安全檢查：確保UI組件存在且有效
+            if not hasattr(self, 'root') or not self.root:
+                logging.debug("UI根組件不存在，跳過按鈕狀態更新")
+                return
+                
+            try:
+                # 檢查root是否還存在
+                if not self.root.winfo_exists():
+                    logging.debug("UI根組件已銷毀，跳過按鈕狀態更新")
+                    return
+            except:
+                # winfo_exists() 本身可能會拋出異常如果應用已銷毀
+                logging.debug("UI應用已銷毀，跳過按鈕狀態更新")
                 return
                 
             current_mode = self.mode_var.get()
@@ -1617,11 +1625,10 @@ class MainView:
             elif current_mode == "playback" and not self.video_loaded:
                 detect_tooltip = "需要選擇視頻檔案才能開始檢測"
             
-            # 🔧 安全檢查按鈕並更新狀態
-            if (hasattr(self, 'start_detection_btn') and 
-                self.start_detection_btn is not None and 
-                self.start_detection_btn.winfo_exists()):
-                try:
+            # 🔧 簡化的按鈕更新邏輯，避免winfo_exists調用
+            try:
+                if (hasattr(self, 'start_detection_btn') and 
+                    self.start_detection_btn is not None):
                     # 更新開始檢測按鈕
                     if can_detect and not self.is_detecting:
                         self.start_detection_btn.configure(
@@ -1635,26 +1642,23 @@ class MainView:
                             fg_color="#666666",  # 灰色
                             text="❌ 無影像源"
                         )
-                except Exception as e:
-                    logging.debug(f"更新開始檢測按鈕失敗: {str(e)}")
+            except Exception as e:
+                logging.debug(f"更新開始檢測按鈕失敗: {str(e)}")
             
             # 停止檢測按鈕
-            if (hasattr(self, 'stop_detection_btn') and 
-                self.stop_detection_btn is not None and 
-                self.stop_detection_btn.winfo_exists()):
-                try:
+            try:
+                if (hasattr(self, 'stop_detection_btn') and 
+                    self.stop_detection_btn is not None):
                     if self.is_detecting:
                         self.stop_detection_btn.configure(state="normal")
                     else:
                         self.stop_detection_btn.configure(state="disabled")
-                except Exception as e:
-                    logging.debug(f"更新停止檢測按鈕失敗: {str(e)}")
+            except Exception as e:
+                logging.debug(f"更新停止檢測按鈕失敗: {str(e)}")
             
             # 🎬 視頻播放按鈕邏輯（回放模式）
-            if (hasattr(self, 'play_btn') and 
-                self.play_btn is not None and 
-                self.play_btn.winfo_exists()):
-                try:
+            try:
+                if (hasattr(self, 'play_btn') and self.play_btn is not None):
                     if current_mode == "playback":
                         if self.video_loaded:
                             self.play_btn.configure(state="normal")
@@ -1663,8 +1667,8 @@ class MainView:
                                 state="disabled",
                                 text="❌ 無視頻"
                             )
-                except Exception as e:
-                    logging.debug(f"更新播放按鈕失敗: {str(e)}")
+            except Exception as e:
+                logging.debug(f"更新播放按鈕失敗: {str(e)}")
                         
             # 🎥 錄製按鈕邏輯（實時模式）
             if hasattr(self, 'record_button'):
@@ -1879,26 +1883,52 @@ class MainView:
                 self.update_button_states()
     
     def toggle_playback(self):
-        """切換播放狀態"""
+        """🎬 影片播放/暫停控制（不影響檢測功能）"""
         # 🎯 修復：檢查視頻是否已加載（不只是檔案名稱）
         if not self.video_loaded or self.playback_file.get() == "未選擇檔案":
             messagebox.showwarning("警告", "請先選擇視頻檔案")
             return
+        
+        # 🔧 關鍵修復：檢查實際視頻播放器狀態，而不是UI狀態
+        try:
+            # 從控制器獲取實際播放狀態
+            actual_playback_status = self.controller.get_video_playback_status()
+            actual_is_playing = actual_playback_status.get('is_playing', False)
+            actual_is_paused = actual_playback_status.get('is_paused', False)
             
-        if not self.is_playing:
-            success = self.controller.start_video_playback()
-            if success:
-                self.is_playing = True
-                self.play_btn.configure(text="⏸️")
-                logging.info("✅ 視頻播放已開始")
+            logging.debug(f"🎯 狀態檢查 - UI狀態: {self.is_playing}, 實際播放: {actual_is_playing}, 實際暫停: {actual_is_paused}")
+            
+            # 🔧 同步UI狀態與實際狀態
+            if self.is_playing != actual_is_playing:
+                logging.warning(f"⚠️ 檢測到狀態不同步，正在修復: UI={self.is_playing}, 實際={actual_is_playing}")
+                self.is_playing = actual_is_playing
+                self.play_btn.configure(text="⏸️" if actual_is_playing else "▶️")
+            
+            # 根據實際狀態決定操作
+            if not actual_is_playing:
+                # 視頻未在播放，嘗試開始播放
+                success = self.controller.start_video_playback()
+                if success:
+                    # 成功開始播放後，狀態會通過事件更新
+                    logging.info("🎬 影片播放已開始（檢測功能不受影響）")
+                else:
+                    # 播放失敗，確保UI狀態正確
+                    self.is_playing = False
+                    self.play_btn.configure(text="▶️")
+                    messagebox.showerror("錯誤", "視頻播放啟動失敗，請檢查檔案是否有效")
+                    logging.error("❌ 視頻播放啟動失敗")
             else:
-                messagebox.showerror("錯誤", "視頻播放啟動失敗，請檢查檔案是否有效")
-                logging.error("❌ 視頻播放啟動失敗")
-        else:
-            self.controller.pause_video_playback()
+                # 視頻正在播放，暫停它
+                self.controller.pause_video_playback()
+                logging.info("⏸️ 視頻播放已暫停")
+                # 暫停後的狀態會通過事件更新
+                
+        except Exception as e:
+            logging.error(f"切換播放狀態時出錯: {str(e)}")
+            # 發生錯誤時，嘗試同步狀態
             self.is_playing = False
             self.play_btn.configure(text="▶️")
-            logging.info("⏸️ 視頻播放已暫停")
+            messagebox.showerror("錯誤", f"播放控制出錯: {str(e)}")
     
     def pause_playback(self):
         """暫停回放"""

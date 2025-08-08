@@ -3,7 +3,9 @@
     "allow": [
       "Bash(python:*)",
       "Bash(awk:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }

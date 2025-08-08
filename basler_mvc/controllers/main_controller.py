@@ -443,6 +443,10 @@ class MainController:
         """停止視頻回放"""
         self.video_player.stop_playback()
     
+    def get_video_playback_status(self) -> dict:
+        """獲取視頻播放狀態"""
+        return self.video_player.get_playback_status()
+    
     def seek_video_to_frame(self, frame_number: int) -> bool:
         """跳轉到指定幀"""
         return self.video_player.seek_to_frame(frame_number)

@@ -55,23 +55,59 @@ class VideoPlayerModel:
     def load_video(self, video_path: str) -> bool:
         """加載視頻"""
         try:
-            # 停止當前播放
-            self.stop_playback()
+            # 🔧 確保完全重置播放狀態
+            if self.is_playing:
+                self.stop_playback()
+                # 等待播放線程完全停止
+                if hasattr(self, 'playback_thread') and self.playback_thread:
+                    self.playback_thread.join(timeout=2.0)
+            
+            # 強制重置所有狀態變量
+            self.is_playing = False
+            self.is_paused = False
+            self.current_frame_number = 0
             
             # 釋放舊的視頻捕獲
             if self.video_capture:
                 self.video_capture.release()
                 
+            # 🔧 針對AVI等格式的兼容性改進
             self.video_capture = cv2.VideoCapture(video_path)
+            
+            # 嘗試多種後端以提高AVI兼容性
             if not self.video_capture.isOpened():
-                logging.error(f"無法打開視頻: {video_path}")
-                return False
+                logging.warning(f"使用預設後端無法打開視頻，嘗試其他後端: {video_path}")
+                self.video_capture.release()
                 
-            # 獲取視頻信息
+                # 嘗試使用FFMPEG後端
+                self.video_capture = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+                if not self.video_capture.isOpened():
+                    logging.error(f"無法打開視頻檔案: {video_path}")
+                    logging.error("請確認視頻檔案格式受支援（推薦使用MP4格式）")
+                    return False
+                else:
+                    logging.info("✅ 使用FFMPEG後端成功開啟視頻")
+            else:
+                logging.info("✅ 使用預設後端成功開啟視頻")
+                
+            # 獲取視頻信息並進行驗證
             self.total_frames = int(self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
             self.fps = self.video_capture.get(cv2.CAP_PROP_FPS)
             width = int(self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # 🔧 驗證視頻參數的有效性
+            if self.total_frames <= 0:
+                logging.error(f"❌ 無效的幀數: {self.total_frames}")
+                return False
+            
+            if self.fps <= 0:
+                logging.warning(f"⚠️ 無效的FPS: {self.fps}, 設置為預設值25fps")
+                self.fps = 25.0  # 設置預設FPS
+            
+            if width <= 0 or height <= 0:
+                logging.error(f"❌ 無效的解析度: {width}x{height}")
+                return False
             
             self.current_frame_number = 0
             self.current_video_path = video_path
@@ -159,14 +195,20 @@ class VideoPlayerModel:
             self.is_paused = False
             self.stop_event.set()
             
-            if self.playback_thread and self.playback_thread.is_alive():
-                self.playback_thread.join(timeout=1.0)
+            # 🔧 確保播放線程完全停止
+            if hasattr(self, 'playback_thread') and self.playback_thread and self.playback_thread.is_alive():
+                self.playback_thread.join(timeout=2.0)
+                if self.playback_thread.is_alive():
+                    logging.warning("⚠️ 播放線程停止超時")
+            
+            # 🔧 重置播放線程引用
+            self.playback_thread = None\n            \n            # 🔧 修復：停止播放時重置到開頭\n            self.current_frame_number = 0\n            if self.video_capture:\n                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
             
             self.notify_observers('playback_stopped', {
                 'current_frame': self.current_frame_number
             })
             
-            logging.info("視頻播放停止")
+            logging.info("✅ 視頻播放已完全停止")
     
     def _playback_loop(self):
         """播放循環 - 嚴格按秒數時間軸播放"""
