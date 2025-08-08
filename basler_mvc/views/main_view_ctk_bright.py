@@ -1410,6 +1410,8 @@ class MainView:
     def update_connection_ui(self):
         """更新連接狀態UI"""
         if hasattr(self.controller, 'camera_model') and self.controller.camera_model.is_connected:
+            # 🔧 修復：更新相機連接狀態變量
+            self.camera_connected = True
             self.connection_status.configure(
                 text="● 已連接", 
                 text_color=ColorScheme.TEXT_SUCCESS
@@ -1417,12 +1419,17 @@ class MainView:
             self.camera_info_var.set("相機: 已連接")
             self.start_processing_btn.configure(state="normal")
         else:
+            # 🔧 修復：更新相機連接狀態變量
+            self.camera_connected = False
             self.connection_status.configure(
                 text="● 未連接", 
                 text_color=ColorScheme.TEXT_ERROR
             )
             self.camera_info_var.set("相機: 未連接")
             self.start_processing_btn.configure(state="disabled")
+        
+        # 🎯 重要：更新按鈕狀態以反映新的連接狀態
+        self.update_button_states()
     
     def initialize_display_status(self):
         """初始化顯示狀態"""

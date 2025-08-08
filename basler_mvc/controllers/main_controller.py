@@ -79,8 +79,13 @@ class MainController:
     
     def _on_camera_event(self, event_type: str, data: Any = None):
         """處理相機事件"""
-        # 轉發到視圖
-        self.notify_views(f"camera_{event_type}", data)
+        # 🔧 修復：避免重複添加 camera_ 前綴
+        if event_type.startswith('camera_'):
+            # 如果已經有前綴，直接轉發
+            self.notify_views(event_type, data)
+        else:
+            # 如果沒有前綴，添加前綴
+            self.notify_views(f"camera_{event_type}", data)
         
         # 特殊處理
         if event_type == 'capture_started':
@@ -505,14 +510,15 @@ class MainController:
     def stop_batch_detection(self):
         """停止批次檢測模式 - 支持視頻回放模式"""
         try:
-            # 🎯 關鍵修復：根據模式停止不同的檢測處理器
+            # 🎯 關鍵修復：根據模式停止不同的檢測處理器，但不影響視頻播放
             if self.current_mode == 'playback':
-                # 視頻回放模式：停止檢測處理器
+                # 視頻回放模式：只停止檢測處理器，保持視頻播放繼續
                 if self.detection_processor.is_processing:
                     self.detection_processor.stop_processing()
-                    logging.info("⏹️ 視頻回放批次檢測已停止")
+                    logging.info("⏹️ 視頻回放批次檢測已停止 - 視頻播放繼續")
                 else:
                     logging.info("💭 視頻回放檢測處理器未運行")
+                # 🔧 重要：不要停止視頻播放器，讓用戶繼續控制視頻
                 return True
                 
             elif self.current_mode == 'live':
