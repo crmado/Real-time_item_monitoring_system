@@ -84,14 +84,19 @@ class MainView:
         self.root.minsize(1400, 1000)
         self.root.resizable(True, True)
         
-        # UI 變量
+        # UI 變量 - 修正FPS顯示格式
         self.status_var = tk.StringVar(value="狀態: 系統就緒")
-        self.camera_fps_var = tk.StringVar(value="相機: 0 FPS")
-        self.processing_fps_var = tk.StringVar(value="處理: 0 FPS")
-        self.detection_fps_var = tk.StringVar(value="檢測: 0 FPS")
+        # 固定寬度的FPS顯示（預的6位數空間）
+        self.camera_fps_var = tk.StringVar(value="相機:   0.0")
+        self.processing_fps_var = tk.StringVar(value="處理:   0.0")
+        self.detection_fps_var = tk.StringVar(value="檢測:   0.0")
         self.object_count_var = tk.StringVar(value="000")
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
         self.method_var = tk.StringVar(value="circle")
+        
+        # FPS刷新控制
+        self.last_fps_update = 0
+        self.fps_update_interval = 1.0  # 1秒更新一次
         
         # 相機參數變量
         self.exposure_var = tk.DoubleVar(value=1000.0)
@@ -288,17 +293,60 @@ class MainView:
             text_color=ColorScheme.TEXT_ACCENT
         ).pack(pady=(0, 10))
         
-        # 曝光時間設置
+        # 曝光時間設置 - 增強版
         exposure_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
         exposure_frame.pack(fill="x", padx=12, pady=(0, 15))
         
+        # 標題和輸入框
+        exp_label_frame = ctk.CTkFrame(exposure_frame, fg_color="transparent")
+        exp_label_frame.pack(fill="x", padx=12, pady=(12, 5))
+        
         ctk.CTkLabel(
-            exposure_frame, 
+            exp_label_frame, 
             text="曝光時間 (μs)", 
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(pady=(12, 5))
+        ).pack(side="left")
         
+        # 右側輸入控件組
+        exp_input_frame = ctk.CTkFrame(exp_label_frame, fg_color="transparent")
+        exp_input_frame.pack(side="right")
+        
+        # 數字輸入框
+        self.exposure_entry = ctk.CTkEntry(
+            exp_input_frame, 
+            textvariable=self.exposure_var,
+            width=80, height=28,
+            justify="center",
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            fg_color=ColorScheme.BG_CARD,
+            text_color=ColorScheme.TEXT_PRIMARY
+        )
+        self.exposure_entry.pack(side="left")
+        self.exposure_entry.bind('<Return>', self.on_exposure_entry_changed)
+        self.exposure_entry.bind('<FocusOut>', self.on_exposure_entry_changed)
+        
+        # 箭頭按鈕
+        exp_arrow_frame = ctk.CTkFrame(exp_input_frame, fg_color="transparent")
+        exp_arrow_frame.pack(side="left", padx=(5, 0))
+        
+        ctk.CTkButton(
+            exp_arrow_frame, text="▲", width=20, height=14,
+            command=lambda: self.adjust_exposure(100),
+            font=ctk.CTkFont(size=10),
+            fg_color=ColorScheme.ACCENT_BLUE,
+            hover_color=ColorScheme.PRIMARY_BLUE
+        ).pack()
+        
+        ctk.CTkButton(
+            exp_arrow_frame, text="▼", width=20, height=14,
+            command=lambda: self.adjust_exposure(-100),
+            font=ctk.CTkFont(size=10),
+            fg_color=ColorScheme.ACCENT_BLUE,
+            hover_color=ColorScheme.PRIMARY_BLUE
+        ).pack()
+        
+        # 滑動條
         self.exposure_slider = ctk.CTkSlider(
             exposure_frame,
             from_=100,
@@ -310,14 +358,6 @@ class MainView:
             fg_color=ColorScheme.BG_CARD
         )
         self.exposure_slider.pack(fill="x", padx=12, pady=5)
-        
-        self.exposure_label = ctk.CTkLabel(
-            exposure_frame, 
-            text="1000.0",
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_SUCCESS
-        )
-        self.exposure_label.pack(pady=(0, 12))
         
         # 即時檢測開關
         self.enable_detection_var = tk.BooleanVar(value=True)
@@ -392,6 +432,166 @@ class MainView:
             hover_color=ColorScheme.BG_ACCENT
         )
         self.mode_playback.pack(anchor="w", padx=25, pady=(3, 15))
+        
+        # 錄製控件區域
+        self.recording_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        # 預設隱藏，根據模式顯示
+        
+        # 檔名輸入
+        filename_frame = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
+        filename_frame.pack(fill="x", padx=12, pady=(12, 8))
+        
+        ctk.CTkLabel(
+            filename_frame, 
+            text="檔名:", 
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(anchor="w")
+        
+        self.recording_filename = tk.StringVar(value=self.generate_recording_filename())
+        filename_entry = ctk.CTkEntry(
+            filename_frame, 
+            textvariable=self.recording_filename,
+            width=180, height=28,
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            fg_color=ColorScheme.BG_CARD,
+            text_color=ColorScheme.TEXT_PRIMARY
+        )
+        filename_entry.pack(fill="x", pady=(5, 0))
+        
+        # 錄製按鈕和狀態
+        record_control_frame = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
+        record_control_frame.pack(fill="x", padx=12, pady=(8, 12))
+        
+        self.record_button = ctk.CTkButton(
+            record_control_frame,
+            text="● 錄製",
+            command=self.toggle_recording,
+            height=32,
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            fg_color=ColorScheme.ERROR_RED,
+            hover_color="#b91c1c",
+            text_color="white"
+        )
+        self.record_button.pack(fill="x", pady=(0, 8))
+        
+        self.recording_status = ctk.CTkLabel(
+            record_control_frame,
+            text="未錄製",
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            text_color=ColorScheme.TEXT_SECONDARY
+        )
+        self.recording_status.pack()
+        
+        # 回放控件區域
+        self.playback_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        # 預設隱藏，根據模式顯示
+        
+        # 檔案選擇
+        file_frame = ctk.CTkFrame(self.playback_frame, fg_color="transparent")
+        file_frame.pack(fill="x", padx=12, pady=(12, 8))
+        
+        ctk.CTkLabel(
+            file_frame, 
+            text="視頻檔案:", 
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(anchor="w")
+        
+        file_select_frame = ctk.CTkFrame(file_frame, fg_color="transparent")
+        file_select_frame.pack(fill="x", pady=(5, 0))
+        
+        self.playback_file = tk.StringVar(value="未選擇檔案")
+        self.file_label = ctk.CTkLabel(
+            file_select_frame,
+            textvariable=self.playback_file,
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            text_color=ColorScheme.TEXT_SECONDARY
+        )
+        self.file_label.pack(side="left", fill="x", expand=True)
+        
+        ctk.CTkButton(
+            file_select_frame,
+            text="瀏覽",
+            command=self.select_playback_file,
+            width=60, height=24,
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            fg_color=ColorScheme.ACCENT_BLUE,
+            hover_color=ColorScheme.PRIMARY_BLUE
+        ).pack(side="right", padx=(5, 0))
+        
+        # 播放控件
+        playback_controls = ctk.CTkFrame(self.playback_frame, fg_color="transparent")
+        playback_controls.pack(fill="x", padx=12, pady=(8, 8))
+        
+        control_buttons = ctk.CTkFrame(playback_controls, fg_color="transparent")
+        control_buttons.pack()
+        
+        self.play_btn = ctk.CTkButton(
+            control_buttons, text="▶️", width=30, height=30,
+            command=self.toggle_playback,
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            fg_color=ColorScheme.SUCCESS_GREEN,
+            hover_color="#047857"
+        )
+        self.play_btn.pack(side="left", padx=2)
+        
+        self.pause_btn = ctk.CTkButton(
+            control_buttons, text="⏸️", width=30, height=30,
+            command=self.pause_playback,
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            fg_color=ColorScheme.WARNING_ORANGE,
+            hover_color="#b45309"
+        )
+        self.pause_btn.pack(side="left", padx=2)
+        
+        self.stop_btn = ctk.CTkButton(
+            control_buttons, text="⏹️", width=30, height=30,
+            command=self.stop_playback,
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            fg_color=ColorScheme.ERROR_RED,
+            hover_color="#b91c1c"
+        )
+        self.stop_btn.pack(side="left", padx=2)
+        
+        # 播放速度
+        speed_frame = ctk.CTkFrame(self.playback_frame, fg_color="transparent")
+        speed_frame.pack(fill="x", padx=12, pady=(8, 12))
+        
+        ctk.CTkLabel(
+            speed_frame, 
+            text="播放速度:", 
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(anchor="w")
+        
+        self.playback_speed = tk.DoubleVar(value=1.0)
+        speed_slider = ctk.CTkSlider(
+            speed_frame,
+            from_=0.1,
+            to=3.0,
+            variable=self.playback_speed,
+            command=self.on_speed_changed,
+            progress_color=ColorScheme.PURPLE_ACCENT,
+            button_color=ColorScheme.PURPLE_ACCENT
+        )
+        speed_slider.pack(fill="x", pady=(5, 5))
+        
+        self.speed_label = ctk.CTkLabel(
+            speed_frame, 
+            text="1.0x",
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            text_color=ColorScheme.TEXT_ACCENT
+        )
+        self.speed_label.pack()
+        
+        # 初始化狀態
+        self.is_recording = False
+        self.is_playing = False
+        
+        # 隐藏錄製和回放框架（預設為實時模式）
+        self.recording_frame.pack_forget()
+        self.playback_frame.pack_forget()
     
     def create_center_panel(self, parent):
         """創建中央視頻面板"""
@@ -508,29 +708,36 @@ class MainView:
         fps_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
         fps_frame.pack(side="right", padx=20, pady=8)
         
+        # 固定寬度的FPS顯示標籤
         self.camera_fps_display = ctk.CTkLabel(
             fps_frame,
             textvariable=self.camera_fps_var,
             text_color=ColorScheme.TEXT_SUCCESS,
-            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold")
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
+            width=80,  # 固定寬度
+            anchor="w"  # 左對齊
         )
-        self.camera_fps_display.pack(side="left", padx=8)
+        self.camera_fps_display.pack(side="left", padx=5)
         
         self.processing_fps_display = ctk.CTkLabel(
             fps_frame,
             textvariable=self.processing_fps_var,
             text_color=ColorScheme.TEXT_ACCENT,
-            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold")
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
+            width=80,  # 固定寬度
+            anchor="w"  # 左對齊
         )
-        self.processing_fps_display.pack(side="left", padx=8)
+        self.processing_fps_display.pack(side="left", padx=5)
         
         self.detection_fps_display = ctk.CTkLabel(
             fps_frame,
             textvariable=self.detection_fps_var,
             text_color=ColorScheme.PURPLE_ACCENT,
-            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold")
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
+            width=80,  # 固定寬度
+            anchor="w"  # 左小齊
         )
-        self.detection_fps_display.pack(side="left", padx=8)
+        self.detection_fps_display.pack(side="left", padx=5)
     
     def create_right_panel(self, parent):
         """創建右側檢測面板"""
@@ -672,17 +879,60 @@ class MainView:
         params_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_SECONDARY)
         params_frame.pack(fill="x", padx=12, pady=(0, 15))
         
-        # 最小面積
+        # 最小面積 - 增強版
         min_area_container = ctk.CTkFrame(params_frame, fg_color="transparent")
         min_area_container.pack(fill="x", padx=12, pady=(15, 10))
         
+        # 標題和輸入框
+        min_label_frame = ctk.CTkFrame(min_area_container, fg_color="transparent")
+        min_label_frame.pack(fill="x", pady=(0, 5))
+        
         ctk.CTkLabel(
-            min_area_container, 
+            min_label_frame, 
             text="最小面積", 
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(pady=(5, 3))
+        ).pack(side="left")
         
+        # 右側輸入控件組
+        min_input_frame = ctk.CTkFrame(min_label_frame, fg_color="transparent")
+        min_input_frame.pack(side="right")
+        
+        # 數字輸入框
+        self.min_area_entry = ctk.CTkEntry(
+            min_input_frame, 
+            textvariable=self.min_area_var,
+            width=60, height=28,
+            justify="center",
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            fg_color=ColorScheme.BG_CARD,
+            text_color=ColorScheme.TEXT_PRIMARY
+        )
+        self.min_area_entry.pack(side="left")
+        self.min_area_entry.bind('<Return>', self.on_min_area_entry_changed)
+        self.min_area_entry.bind('<FocusOut>', self.on_min_area_entry_changed)
+        
+        # 箭頭按鈕
+        arrow_frame = ctk.CTkFrame(min_input_frame, fg_color="transparent")
+        arrow_frame.pack(side="left", padx=(5, 0))
+        
+        ctk.CTkButton(
+            arrow_frame, text="▲", width=20, height=14,
+            command=lambda: self.adjust_min_area(10),
+            font=ctk.CTkFont(size=10),
+            fg_color=ColorScheme.SUCCESS_GREEN,
+            hover_color="#047857"
+        ).pack()
+        
+        ctk.CTkButton(
+            arrow_frame, text="▼", width=20, height=14,
+            command=lambda: self.adjust_min_area(-10),
+            font=ctk.CTkFont(size=10),
+            fg_color=ColorScheme.SUCCESS_GREEN,
+            hover_color="#047857"
+        ).pack()
+        
+        # 滑動條
         self.min_area_slider = ctk.CTkSlider(
             min_area_container,
             from_=10,
@@ -695,25 +945,60 @@ class MainView:
         )
         self.min_area_slider.pack(fill="x", padx=8, pady=3)
         
-        self.min_area_label = ctk.CTkLabel(
-            min_area_container, 
-            text="100",
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_SUCCESS
-        )
-        self.min_area_label.pack(pady=(3, 8))
-        
-        # 最大面積
+        # 最大面積 - 增強版
         max_area_container = ctk.CTkFrame(params_frame, fg_color="transparent")
-        max_area_container.pack(fill="x", padx=12, pady=(0, 15))
+        max_area_container.pack(fill="x", padx=12, pady=(10, 15))
+        
+        # 標題和輸入框
+        max_label_frame = ctk.CTkFrame(max_area_container, fg_color="transparent")
+        max_label_frame.pack(fill="x", pady=(0, 5))
         
         ctk.CTkLabel(
-            max_area_container, 
+            max_label_frame, 
             text="最大面積", 
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(pady=(5, 3))
+        ).pack(side="left")
         
+        # 右側輸入控件組
+        max_input_frame = ctk.CTkFrame(max_label_frame, fg_color="transparent")
+        max_input_frame.pack(side="right")
+        
+        # 數字輸入框
+        self.max_area_entry = ctk.CTkEntry(
+            max_input_frame, 
+            textvariable=self.max_area_var,
+            width=60, height=28,
+            justify="center",
+            font=ctk.CTkFont(size=FontSizes.BODY),
+            fg_color=ColorScheme.BG_CARD,
+            text_color=ColorScheme.TEXT_PRIMARY
+        )
+        self.max_area_entry.pack(side="left")
+        self.max_area_entry.bind('<Return>', self.on_max_area_entry_changed)
+        self.max_area_entry.bind('<FocusOut>', self.on_max_area_entry_changed)
+        
+        # 箭頭按鈕
+        arrow_frame2 = ctk.CTkFrame(max_input_frame, fg_color="transparent")
+        arrow_frame2.pack(side="left", padx=(5, 0))
+        
+        ctk.CTkButton(
+            arrow_frame2, text="▲", width=20, height=14,
+            command=lambda: self.adjust_max_area(100),
+            font=ctk.CTkFont(size=10),
+            fg_color=ColorScheme.WARNING_ORANGE,
+            hover_color="#b45309"
+        ).pack()
+        
+        ctk.CTkButton(
+            arrow_frame2, text="▼", width=20, height=14,
+            command=lambda: self.adjust_max_area(-100),
+            font=ctk.CTkFont(size=10),
+            fg_color=ColorScheme.WARNING_ORANGE,
+            hover_color="#b45309"
+        ).pack()
+        
+        # 滑動條
         self.max_area_slider = ctk.CTkSlider(
             max_area_container,
             from_=1000,
@@ -725,14 +1010,6 @@ class MainView:
             fg_color=ColorScheme.BG_CARD
         )
         self.max_area_slider.pack(fill="x", padx=8, pady=3)
-        
-        self.max_area_label = ctk.CTkLabel(
-            max_area_container, 
-            text="5000",
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_WARNING
-        )
-        self.max_area_label.pack(pady=(3, 8))
         
         # 即時統計區域 - 重點改善！
         stats_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_ACCENT)
@@ -1066,18 +1343,19 @@ class MainView:
                         self.progress_bar.set(progress)
                         self.progress_label.configure(text=f"{count} / {target}")
                 
+                # 使用控制器的FPS更新
                 if 'processing_fps' in data:
                     fps = data['processing_fps']
-                    self.processing_fps_var.set(f"處理: {fps:.1f} FPS")
+                    self.update_fps_display('processing', fps)
                 
                 if 'detection_fps' in data:
                     fps = data['detection_fps']
-                    self.detection_fps_var.set(f"檢測: {fps:.1f} FPS")
+                    self.update_fps_display('detection', fps)
                     
             elif event_type == 'camera_stats_updated':
                 if data and 'current_fps' in data:
                     fps = data['current_fps']
-                    self.camera_fps_var.set(f"相機: {fps:.1f} FPS")
+                    self.update_fps_display('camera', fps)
                     
             elif event_type == 'system_status':
                 if data:
@@ -1089,6 +1367,179 @@ class MainView:
                     
         except Exception as e:
             logging.error(f"處理控制器事件錯誤: {str(e)}")
+    
+    # 新增的功能方法
+    
+    def update_fps_display(self, fps_type, fps_value):
+        """控制FPS顯示更新頻率和格式"""
+        import time
+        current_time = time.time()
+        
+        # 只有超過更新間隔才更新顯示
+        if current_time - self.last_fps_update < self.fps_update_interval:
+            return
+        
+        self.last_fps_update = current_time
+        
+        # 固定格式顯示（預的6位數空間）
+        if fps_value < 10:
+            fps_str = f"  {fps_value:.1f}"
+        elif fps_value < 100:
+            fps_str = f" {fps_value:.1f}"
+        elif fps_value < 1000:
+            fps_str = f"{fps_value:.1f}"
+        else:
+            fps_str = f"{fps_value:.0f}"  # 超過1000時不顯示小數
+        
+        if fps_type == 'camera':
+            self.camera_fps_var.set(f"相機:{fps_str}")
+        elif fps_type == 'processing':
+            self.processing_fps_var.set(f"處理:{fps_str}")
+        elif fps_type == 'detection':
+            self.detection_fps_var.set(f"檢測:{fps_str}")
+    
+    def adjust_exposure(self, delta):
+        """調整曝光時間"""
+        current = self.exposure_var.get()
+        new_value = max(100, min(10000, current + delta))
+        self.exposure_var.set(new_value)
+        self.on_exposure_changed(new_value)
+    
+    def on_exposure_entry_changed(self, event=None):
+        """曝光時間輸入框變化回調"""
+        try:
+            exposure = self.exposure_var.get()
+            if exposure < 100 or exposure > 10000:
+                self.exposure_var.set(max(100, min(10000, exposure)))
+                return
+            self.on_exposure_changed(exposure)
+        except (ValueError, TypeError):
+            self.exposure_var.set(1000)  # 預設值
+    
+    def adjust_min_area(self, delta):
+        """調整最小面積"""
+        current = self.min_area_var.get()
+        new_value = max(1, min(1000, current + delta))
+        self.min_area_var.set(new_value)
+        self.update_detection_params(new_value)
+    
+    def adjust_max_area(self, delta):
+        """調整最大面積"""
+        current = self.max_area_var.get()
+        new_value = max(1000, min(10000, current + delta))
+        self.max_area_var.set(new_value)
+        self.update_detection_params(new_value)
+    
+    def on_min_area_entry_changed(self, event=None):
+        """最小面積輸入框變化回調"""
+        try:
+            min_area = self.min_area_var.get()
+            if min_area < 1 or min_area > 1000:
+                self.min_area_var.set(max(1, min(1000, min_area)))
+                return
+            self.update_detection_params(min_area)
+        except (ValueError, TypeError):
+            self.min_area_var.set(100)  # 預設值
+    
+    def on_max_area_entry_changed(self, event=None):
+        """最大面積輸入框變化回調"""
+        try:
+            max_area = self.max_area_var.get()
+            if max_area < 1000 or max_area > 10000:
+                self.max_area_var.set(max(1000, min(10000, max_area)))
+                return
+            self.update_detection_params(max_area)
+        except (ValueError, TypeError):
+            self.max_area_var.set(5000)  # 預設值
+    
+    def generate_recording_filename(self):
+        """產生錄製檔案名稱"""
+        import datetime
+        now = datetime.datetime.now()
+        return f"recording_{now.strftime('%Y%m%d_%H%M%S')}.avi"
+    
+    def change_mode(self):
+        """更改系統模式"""
+        mode = self.mode_var.get()
+        
+        # 隱藏所有面板
+        self.recording_frame.pack_forget()
+        self.playback_frame.pack_forget()
+        
+        # 根據模式顯示對應的面板
+        if mode == "recording":
+            self.recording_frame.pack(fill="x", padx=12, pady=(0, 15))
+        elif mode == "playback":
+            self.playback_frame.pack(fill="x", padx=12, pady=(0, 15))
+        
+        # 通知控制器
+        success = self.controller.switch_mode(mode)
+        if success:
+            logging.info(f"系統模式已切換為: {mode}")
+    
+    def toggle_recording(self):
+        """切換錄製狀態"""
+        if not self.is_recording:
+            # 開始錄製
+            filename = self.recording_filename.get().strip()
+            if not filename:
+                self.recording_status.configure(text="錯誤: 請輸入檔名")
+                return
+            
+            success = self.controller.start_recording(filename)
+            if success:
+                self.is_recording = True
+                self.record_button.configure(text="⏹ 停止錄製")
+                self.recording_status.configure(text="錄製中...", text_color=ColorScheme.ERROR_RED)
+        else:
+            # 停止錄製
+            info = self.controller.stop_recording()
+            self.is_recording = False
+            self.record_button.configure(text="● 錄製")
+            self.recording_status.configure(text="錄製完成", text_color=ColorScheme.SUCCESS_GREEN)
+    
+    def select_playback_file(self):
+        """選擇回放檔案"""
+        from tkinter import filedialog
+        filename = filedialog.askopenfilename(
+            title="選擇視頻檔案",
+            filetypes=[("Video files", "*.mp4 *.avi *.mov *.mkv")]
+        )
+        if filename:
+            import os
+            self.playback_file.set(os.path.basename(filename))
+            self.controller.set_playback_file(filename)
+    
+    def toggle_playback(self):
+        """切換播放狀態"""
+        if not self.is_playing:
+            success = self.controller.start_video_playback()
+            if success:
+                self.is_playing = True
+                self.play_btn.configure(text="⏸️")
+        else:
+            self.controller.pause_video_playback()
+            self.is_playing = False
+            self.play_btn.configure(text="▶️")
+    
+    def pause_playback(self):
+        """暫停回放"""
+        if self.is_playing:
+            self.controller.pause_video_playback()
+            self.is_playing = False
+            self.play_btn.configure(text="▶️")
+    
+    def stop_playback(self):
+        """停止回放"""
+        self.controller.stop_video_playback()
+        self.is_playing = False
+        self.play_btn.configure(text="▶️")
+    
+    def on_speed_changed(self, speed):
+        """播放速度變化"""
+        speed_val = float(speed)
+        self.speed_label.configure(text=f"{speed_val:.1f}x")
+        self.controller.set_playback_speed(speed_val)
     
     def run(self):
         """運行主循環"""
