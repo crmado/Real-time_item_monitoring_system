@@ -30,6 +30,9 @@ class MainController:
         self.video_recorder = VideoRecorderModel()
         self.video_player = VideoPlayerModel()
         
+        # 🔧 設置錄製器到相機模型（依賴注入）
+        self.camera_model.set_video_recorder(self.video_recorder)
+        
         # 🚀 高性能檢測處理器（專用於視頻回放）
         self.detection_processor = DetectionProcessor(self.detection_model)
         
@@ -272,22 +275,121 @@ class MainController:
         self.notify_views('system_status', '相機已斷開')
     
     def start_capture(self) -> bool:
-        """開始捕獲"""
-        if not self.camera_model.is_connected:
-            self.notify_views('system_error', '請先連接相機')
+        """開始捕獲/處理 - 根據當前模式"""
+        try:
+            logging.info(f"🚀 開始處理 - 模式: {self.current_mode}")
+            
+            if self.current_mode == 'live':
+                # 實時模式：只啟動相機
+                if not self.camera_model.is_connected:
+                    self.notify_views('system_error', '請先連接相機')
+                    return False
+                
+                success = self.camera_model.start_capture()
+                if success:
+                    self.is_running = True
+                    self._start_processing()  # 啟動處理循環
+                    self.notify_views('system_status', '實時處理已啟動')
+                    logging.info("✅ 實時模式處理已啟動")
+                else:
+                    logging.error("❌ 實時模式相機啟動失敗")
+                return success
+                
+            elif self.current_mode == 'recording':
+                # 錄製模式：相機+錄製同時啟動
+                if not self.camera_model.is_connected:
+                    self.notify_views('system_error', '請先連接相機')
+                    return False
+                
+                # 第一步：啟動相機
+                camera_success = self.camera_model.start_capture()
+                if not camera_success:
+                    logging.error("❌ 錄製模式相機啟動失敗")
+                    self.notify_views('system_error', '相機啟動失敗')
+                    return False
+                    
+                # 第二步：啟動錄製（使用預設檔名）
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                default_filename = f"recording_{timestamp}"
+                recording_success = self.camera_model.start_recording(default_filename)
+                
+                if recording_success:
+                    self.is_running = True
+                    self._start_processing()  # 啟動處理循環
+                    self.notify_views('system_status', '錄製處理已啟動')
+                    logging.info("✅ 錄製模式已啟動 - 相機+錄製+處理")
+                    return True
+                else:
+                    # 錄製失敗，回滾相機
+                    logging.error("❌ 錄製啟動失敗，停止相機")
+                    self.camera_model.stop_capture()
+                    self.notify_views('system_error', '錄製啟動失敗')
+                    return False
+                    
+            elif self.current_mode == 'playback':
+                # 回放模式：啟動視頻播放
+                success = self.video_player.start_playback()
+                if success:
+                    self.is_running = True
+                    self._start_processing()  # 啟動處理循環
+                    self.notify_views('system_status', '回放處理已啟動')
+                    logging.info("✅ 回放模式處理已啟動")
+                else:
+                    logging.error("❌ 回放模式啟動失敗")
+                    self.notify_views('system_error', '視頻播放啟動失敗')
+                return success
+                
+            else:
+                logging.error(f"未知的模式: {self.current_mode}")
+                self.notify_views('system_error', f'未知模式: {self.current_mode}')
+                return False
+                
+        except Exception as e:
+            logging.error(f"開始捕獲錯誤: {str(e)}")
+            self.notify_views('system_error', f'處理啟動失敗: {str(e)}')
             return False
-        
-        success = self.camera_model.start_capture()
-        if success:
-            self.is_running = True
-            self.notify_views('system_status', '開始捕獲')
-        return success
     
     def stop_capture(self):
-        """停止捕獲"""
-        self.camera_model.stop_capture()
-        self.is_running = False
-        self.notify_views('system_status', '停止捕獲')
+        """停止捕獲/處理 - 根據當前模式"""
+        try:
+            logging.info(f"🛑 停止處理 - 模式: {self.current_mode}")
+            
+            # 首先停止處理循環
+            if self.is_processing:
+                self._stop_processing()
+            
+            if self.current_mode == 'live':
+                # 實時模式：停止相機捕獲
+                self.camera_model.stop_capture()
+                self.notify_views('system_status', '實時處理已停止')
+                logging.info("✅ 實時模式處理已停止")
+                
+            elif self.current_mode == 'recording':
+                # 錄製模式：停止錄製+相機
+                # 先停止錄製
+                if self.camera_model.is_recording():
+                    recording_info = self.camera_model.stop_recording()
+                    if recording_info:
+                        logging.info(f"✅ 錄製已完成: {recording_info.get('filename', 'unknown')}")
+                
+                # 再停止相機
+                self.camera_model.stop_capture()
+                self.notify_views('system_status', '錄製處理已停止')
+                logging.info("✅ 錄製模式處理已停止")
+                
+            elif self.current_mode == 'playback':
+                # 回放模式：停止視頻播放
+                self.video_player.stop_playback()
+                self.notify_views('system_status', '回放處理已停止')
+                logging.info("✅ 回放模式處理已停止")
+            
+            # 重置運行狀態
+            self.is_running = False
+            
+        except Exception as e:
+            logging.error(f"停止捕獲錯誤: {str(e)}")
+            self.notify_views('system_error', f'處理停止失敗: {str(e)}')
     
     # ==================== 檢測控制 ====================
     
@@ -527,9 +629,11 @@ class MainController:
             return False
     
     def stop_batch_detection(self):
-        """停止批次檢測模式 - 支持視頻回放模式"""
+        """停止批次檢測模式 - 正確的線程清理版本"""
         try:
-            # 🎯 關鍵修復：根據模式停止不同的檢測處理器，但不影響視頻播放
+            logging.info(f"🛑 開始停止批次檢測 (模式: {self.current_mode})")
+            
+            # 🎯 關鍵修復：根據模式停止不同的檢測處理器
             if self.current_mode == 'playback':
                 # 視頻回放模式：只停止檢測處理器，保持視頻播放繼續
                 if self.detection_processor.is_processing:
@@ -541,9 +645,37 @@ class MainController:
                 return True
                 
             elif self.current_mode == 'live':
-                # 實時相機模式：無需特殊處理（相機持續運行）
-                logging.info("⏹️ 相機批次檢測模式已停止")
-                return True
+                # 🔧 實時相機模式：必須停止相機捕獲線程
+                success = True
+                
+                # 停止相機捕獲
+                if self.camera_model and self.camera_model.is_grabbing:
+                    logging.info("🎥 停止相機捕獲線程...")
+                    self.camera_model.stop_capture()
+                    
+                    # 🔧 確認捕獲是否真正停止
+                    import time
+                    time.sleep(0.5)  # 給線程時間清理
+                    
+                    if self.camera_model.is_grabbing:
+                        logging.warning("⚠️ 相機捕獲未完全停止")
+                        success = False
+                    else:
+                        logging.info("✅ 相機捕獲已完全停止")
+                else:
+                    logging.info("💭 相機捕獲未在運行")
+                
+                # 停止主處理循環
+                if self.is_processing:
+                    logging.info("🔄 停止主處理循環...")
+                    self._stop_processing()
+                
+                if success:
+                    logging.info("✅ 實時模式批次檢測已完全停止")
+                else:
+                    logging.error("❌ 實時模式停止存在問題")
+                
+                return success
                 
             else:
                 logging.warning(f"不支持的模式: {self.current_mode}")

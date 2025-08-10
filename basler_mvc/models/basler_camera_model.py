@@ -400,6 +400,20 @@ class BaslerCameraModel:
             self.stop_capture()
             time.sleep(1.0)  # 確保完全停止
             
+        # 🔧 額外檢查：確保沒有殘留線程
+        if hasattr(self, 'capture_thread') and self.capture_thread and self.capture_thread.is_alive():
+            logging.warning("檢測到殘留捕獲線程，等待清理...")
+            self.capture_thread.join(timeout=2.0)
+            if self.capture_thread.is_alive():
+                logging.error("殘留線程未能清理，強制清除引用")
+            self.capture_thread = None
+            
+        # 🔧 清理活動線程標記，並創建新的線程標識
+        if not hasattr(self, '_thread_generation'):
+            self._thread_generation = 0
+        self._thread_generation += 1  # 增加線程世代編號
+        self._active_capture_thread = None
+            
         try:
             # 雙重檢查相機狀態
             if not self.camera or not self.camera.IsOpen():
@@ -435,9 +449,11 @@ class BaslerCameraModel:
             time.sleep(0.5)  # 縮短等待時間，但仍確保穩定
             
             # 🧵 啟動單一抓取線程
+            # 🔧 創建線程時記錄世代編號
+            current_generation = self._thread_generation
             self.capture_thread = threading.Thread(
-                target=self._capture_loop, 
-                name="BaslerCaptureThread",
+                target=lambda: self._capture_loop(current_generation), 
+                name=f"BaslerCaptureThread-G{current_generation}",
                 daemon=True
             )
             self.capture_thread.start()
@@ -467,10 +483,13 @@ class BaslerCameraModel:
             self.notify_observers('capture_error', str(e))
             return False
             
-    def _capture_loop(self):
+    def _capture_loop(self, generation=None):
         """高性能捕獲循環 - 強化錯誤處理版本"""
         thread_name = threading.current_thread().name
-        logging.info(f"[{thread_name}] 🚀 進入相機捕獲循環")
+        logging.info(f"[{thread_name}] 🚀 進入相機捕獲循環 (世代: {generation})")
+        
+        # 🔧 記錄線程的世代編號
+        thread_generation = generation if generation is not None else getattr(self, '_thread_generation', 0)
         
         consecutive_errors = 0
         max_consecutive_errors = 50  # 連續錯誤上限
@@ -483,9 +502,10 @@ class BaslerCameraModel:
                     logging.warning(f"[{thread_name}] 相機已停止抓取，安全退出循環")
                     break
                 
-                # 🎯 關鍵修復：添加線程檢查，防止多線程衝突
-                if hasattr(self, '_active_capture_thread') and self._active_capture_thread != threading.current_thread():
-                    logging.warning(f"[{thread_name}] 檢測到其他活動捕獲線程，退出當前線程")
+                # 🎯 使用世代編號檢查線程是否過期
+                current_system_generation = getattr(self, '_thread_generation', 0)
+                if thread_generation < current_system_generation:
+                    logging.warning(f"[{thread_name}] 線程世代過期 (線程:{thread_generation} < 系統:{current_system_generation})，退出線程")
                     break
                 
                 # 設置當前線程為活動線程
@@ -494,7 +514,8 @@ class BaslerCameraModel:
                 # 🛡️ 使用更短的超時時間，提高響應性
                 grab_result = None
                 try:
-                    grab_result = self.camera.RetrieveResult(500, pylon.TimeoutHandling_Return)
+                    # 🔧 更短超時，讓線程能更快響應停止信號
+                    grab_result = self.camera.RetrieveResult(100, pylon.TimeoutHandling_Return)
                 except Exception as retrieve_error:
                     # 🔥 關鍵修復：特別處理 "already a thread waiting" 錯誤
                     error_str = str(retrieve_error)
@@ -670,23 +691,35 @@ class BaslerCameraModel:
                 except Exception as e:
                     logging.error(f"❌ 停止相機抓取失敗: {str(e)}")
             
-            # 🧵 第二步：安全等待線程停止
+            # 🧵 第二步：強化線程停止機制
             if hasattr(self, 'capture_thread') and self.capture_thread:
                 if self.capture_thread.is_alive():
                     thread_name = getattr(self.capture_thread, 'name', 'Unknown')
                     logging.info(f"⏳ 等待捕獲線程停止... [{thread_name}]")
                     
-                    # 使用較短的超時時間，避免長時間阻塞
-                    self.capture_thread.join(timeout=2.0)
+                    # 🔧 第一次等待：較短超時
+                    self.capture_thread.join(timeout=1.0)
                     
                     if self.capture_thread.is_alive():
-                        logging.warning(f"⚠️ 捕獲線程未能在2秒內停止 [{thread_name}]")
-                        # 不強制終止，讓它自然結束
+                        # 🔧 第二次等待：更強制的方式
+                        logging.warning(f"⚠️ 捕獲線程未能在1秒內停止，等待更長時間... [{thread_name}]")
+                        self.capture_thread.join(timeout=3.0)
+                        
+                        if self.capture_thread.is_alive():
+                            logging.error(f"❌ 捕獲線程未能在4秒內停止 [{thread_name}]，強制清理")
+                            # 🔥 強制清理：設置標記讓線程自己退出
+                            self._active_capture_thread = None
+                        else:
+                            logging.info(f"✅ 捕獲線程延遲停止 [{thread_name}]")
                     else:
                         logging.info(f"✅ 捕獲線程已停止 [{thread_name}]")
                         
-                # 清理線程引用
+                # 🔧 無論如何都清理線程引用
                 self.capture_thread = None
+                
+            # 🔧 額外的清理：確保活動線程標記被清除
+            if hasattr(self, '_active_capture_thread'):
+                self._active_capture_thread = None
                 
             # 🧹 第三步：安全清空幀隊列
             self._safe_clear_frame_queue()

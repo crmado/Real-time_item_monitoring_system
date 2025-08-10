@@ -202,7 +202,12 @@ class VideoPlayerModel:
                     logging.warning("⚠️ 播放線程停止超時")
             
             # 🔧 重置播放線程引用
-            self.playback_thread = None\n            \n            # 🔧 修復：停止播放時重置到開頭\n            self.current_frame_number = 0\n            if self.video_capture:\n                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self.playback_thread = None
+            
+            # 🔧 修復：停止播放時重置到開頭
+            self.current_frame_number = 0
+            if self.video_capture:
+                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
             
             self.notify_observers('playback_stopped', {
                 'current_frame': self.current_frame_number

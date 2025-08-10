@@ -25,7 +25,9 @@ class VideoRecorderModel:
         self.output_path = Path("recordings")
         self.fps = 30  # 預設FPS（將從相機動態獲取實際配置）
         self.camera_configured_fps = None  # 儲存相機配置的FPS
-        self.codec = cv2.VideoWriter_fourcc(*'XVID')
+        
+        # 🔧 使用更可靠的編碼器 - MP4V 比 XVID 更通用
+        self.codec = cv2.VideoWriter_fourcc(*'mp4v')
         self.current_filename = None
         self.frames_recorded = 0
         
@@ -105,14 +107,42 @@ class VideoRecorderModel:
                 
                 logging.info(f"🎬 開始工業相機錄製 - FPS: {actual_fps:.1f} ({fps_source}), 尺寸: {frame_size}")
                 
-                # 創建視頻寫入器
+                # 創建視頻寫入器 - 帶備用編碼器
                 self.video_writer = cv2.VideoWriter(
                     str(filepath), self.codec, actual_fps, frame_size
                 )
                 
                 if not self.video_writer.isOpened():
-                    logging.error("無法創建視頻寫入器")
-                    return False
+                    logging.warning(f"主要編碼器 mp4v 失敗，嘗試備用編碼器...")
+                    
+                    # 🔧 嘗試 XVID 編碼器
+                    backup_codec = cv2.VideoWriter_fourcc(*'XVID')
+                    self.video_writer = cv2.VideoWriter(
+                        str(filepath), backup_codec, actual_fps, frame_size
+                    )
+                    
+                    if not self.video_writer.isOpened():
+                        logging.warning(f"XVID 編碼器也失敗，嘗試 MJPG...")
+                        
+                        # 🔧 嘗試 MJPG 編碼器（通常更可靠）
+                        mjpg_codec = cv2.VideoWriter_fourcc(*'MJPG')
+                        self.video_writer = cv2.VideoWriter(
+                            str(filepath), mjpg_codec, actual_fps, frame_size
+                        )
+                        
+                        if not self.video_writer.isOpened():
+                            logging.error("所有編碼器都失敗，無法創建視頻寫入器")
+                            logging.error(f"嘗試的編碼器: mp4v, XVID, MJPG")
+                            logging.error(f"參數: FPS={actual_fps}, 尺寸={frame_size}")
+                            return False
+                        else:
+                            logging.info("✅ 使用 MJPG 編碼器成功")
+                            self.codec = mjpg_codec  # 記錄成功的編碼器
+                    else:
+                        logging.info("✅ 使用 XVID 編碼器成功")
+                        self.codec = backup_codec  # 記錄成功的編碼器
+                else:
+                    logging.info("✅ 使用 mp4v 編碼器成功")
                 
                 self.is_recording = True
                 self.frames_recorded = 0

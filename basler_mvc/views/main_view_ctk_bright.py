@@ -111,6 +111,9 @@ class MainView:
         self.connection_switch_on = False
         self.is_processing_active = False
         
+        # 🔧 錄製時間更新定時器
+        self.recording_timer_active = False
+        
         # 視頻顯示
         self.video_label = None
         self.current_frame = None
@@ -892,16 +895,34 @@ class MainView:
         self.stop_detection_btn.pack(side="left", padx=5)
         
         # 重置按鈕
+        reset_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
+        reset_frame.pack(fill="x", pady=(10, 15))
+        
+        # 計數重置
         ctk.CTkButton(
-            button_frame,
+            reset_frame,
             text="🔄 重置計數",
             command=self.reset_count,
             height=32,
+            width=120,
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             fg_color=ColorScheme.WARNING_ORANGE,
             hover_color="#b45309",
             text_color="white"
-        ).pack(pady=(0, 15))
+        ).pack(side="left", padx=(0, 10))
+        
+        # 🆘 緊急重置按鈕
+        ctk.CTkButton(
+            reset_frame,
+            text="🆘 緊急重置",
+            command=self.force_reset_all_states,
+            height=32,
+            width=120,
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            fg_color="#dc2626",  # 紅色警告
+            hover_color="#b91c1c",
+            text_color="white"
+        ).pack(side="left")
         
         # 檢測參數標題
         ctk.CTkLabel(
@@ -1103,6 +1124,15 @@ class MainView:
         )
         self.camera_info_status.pack(side="left")
         
+        # 🔴 錄製狀態指示器
+        self.recording_indicator = ctk.CTkLabel(
+            left_status,
+            text="",  # 預設為空
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color="#dc2626"  # 紅色
+        )
+        self.recording_indicator.pack(side="left", padx=(20, 0))
+        
         # 右側狀態
         right_status = ctk.CTkFrame(status_panel, fg_color="transparent")
         right_status.pack(side="right", fill="y", padx=15, pady=10)
@@ -1153,23 +1183,50 @@ class MainView:
             self.start_processing_btn.configure(state="disabled")
     
     def toggle_processing(self):
-        """切換處理狀態"""
-        self.is_processing_active = not self.is_processing_active
-        if self.is_processing_active:
-            success = self.controller.start_capture()
-            if success:
-                self.start_processing_btn.configure(
-                    text="⏸️ 停止處理",
-                    fg_color=ColorScheme.ERROR_RED
-                )
+        """切換處理狀態 - 根據當前模式"""
+        try:
+            current_mode = self.mode_var.get()
+            
+            if not self.is_processing_active:
+                # 🚀 開始處理
+                logging.info(f"🚀 啟動處理 - 模式: {current_mode}")
+                
+                success = self.controller.start_capture()
+                if success:
+                    self.is_processing_active = True
+                    self.start_processing_btn.configure(
+                        text="⏸️ 停止處理",
+                        fg_color=ColorScheme.ERROR_RED
+                    )
+                    self.status_var.set(f"狀態: {current_mode}模式處理中...")
+                    
+                    # 🔧 更新所有按鈕狀態（鎖定模式切換）
+                    self.update_button_states()
+                    logging.info(f"✅ {current_mode}模式處理已啟動")
+                else:
+                    self.status_var.set("狀態: 處理啟動失敗")
+                    logging.error(f"❌ {current_mode}模式處理啟動失敗")
             else:
+                # 🛑 停止處理
+                logging.info(f"🛑 停止處理 - 模式: {current_mode}")
+                
+                self.controller.stop_capture()
                 self.is_processing_active = False
-        else:
-            self.controller.stop_capture()
-            self.start_processing_btn.configure(
-                text="▶️ 啟動處理",
-                fg_color=ColorScheme.ACCENT_BLUE
-            )
+                self.start_processing_btn.configure(
+                    text="▶️ 啟動處理",
+                    fg_color=ColorScheme.ACCENT_BLUE
+                )
+                self.status_var.set("狀態: 處理已停止")
+                
+                # 🔧 更新所有按鈕狀態（解鎖模式切換）
+                self.update_button_states()
+                logging.info(f"✅ {current_mode}模式處理已停止")
+                
+        except Exception as e:
+            logging.error(f"切換處理狀態錯誤: {str(e)}")
+            self.status_var.set("狀態: 處理切換失敗")
+            self.is_processing_active = False
+            self.update_button_states()
     
     def on_method_changed(self, method):
         """檢測方法改變"""
@@ -1217,18 +1274,19 @@ class MainView:
         self.display_size = (int(640 * factor), int(480 * factor))
     
     def start_detection(self):
-        """開始檢測 - 增強視覺反饋"""
+        """開始檢測 - 增強視覺反饋和防重複點擊"""
         try:
-            # 🎯 更新內部狀態
-            self.is_detecting = True
+            # 🛡️ 防重複點擊保護
+            if self.is_detecting:
+                logging.warning("⚠️ 檢測已在運行中，忽略重複啟動")
+                return
             
-            # 🎯 更新按鈕狀態
+            # 🎯 立即禁用按鈕防止重複點擊
             self.start_detection_btn.configure(
-                text="🔄 檢測中...", 
+                text="🔄 啟動中...", 
                 state="disabled",
                 fg_color=ColorScheme.WARNING_ORANGE
             )
-            self.stop_detection_btn.configure(state="normal")
             
             # 更新狀態顯示
             self.status_var.set("狀態: 正在啟動檢測...")
@@ -1240,15 +1298,19 @@ class MainView:
             success = self.controller.start_batch_detection()
             
             if success:
+                # 🎯 只有成功啟動後才設置檢測狀態
+                self.is_detecting = True
                 self.start_detection_btn.configure(
                     text="✅ 檢測運行中",
                     fg_color=ColorScheme.SUCCESS_GREEN
                 )
+                self.stop_detection_btn.configure(state="normal")
                 self.status_var.set("狀態: 檢測已啟動，正在處理...")
+                # 🔧 更新按鈕狀態 - 禁用模式切換和錄製
+                self.update_button_states()
                 logging.info("✅ 批次檢測已啟動")
             else:
-                # 啟動失敗，還原狀態
-                self.is_detecting = False
+                # 啟動失敗，恢復按鈕狀態
                 self.start_detection_btn.configure(
                     text="▶ 開始檢測",
                     state="normal",
@@ -1256,9 +1318,8 @@ class MainView:
                 )
                 self.stop_detection_btn.configure(state="disabled")
                 self.status_var.set("狀態: 檢測啟動失敗")
-                logging.error("❌ 批次檢測啟動失敗")
-                # 更新按鈕狀態
                 self.update_button_states()
+                logging.error("❌ 批次檢測啟動失敗")
                 
         except Exception as e:
             logging.error(f"啟動檢測時出錯: {str(e)}")
@@ -1274,53 +1335,130 @@ class MainView:
             self.update_button_states()
     
     def stop_detection(self):
-        """停止檢測 - 增強視覺反饋"""
+        """停止檢測 - 增強狀態恢復機制"""
         try:
-            # 🎯 更新內部狀態
-            self.is_detecting = False
-            
-            # 🎯 更新按鈕狀態
+            # 🎯 先顯示停止狀態，但不改變 is_detecting
             self.stop_detection_btn.configure(
                 text="🔄 停止中...",
                 state="disabled"
             )
             self.status_var.set("狀態: 正在停止檢測...")
             
+            # 🔧 記錄原始狀態以便恢復
+            original_detecting_state = self.is_detecting
+            
             # 停止檢測
             success = self.controller.stop_batch_detection()
             
-            # 還原按鈕狀態
-            self.start_detection_btn.configure(
-                text="▶ 開始檢測",
-                state="normal",
-                fg_color=ColorScheme.SUCCESS_GREEN
-            )
-            self.stop_detection_btn.configure(
-                text="⏸ 停止檢測",
-                state="disabled"
-            )
-            
+            # 🎯 根據停止結果更新狀態
             if success:
+                # 停止成功 - 完全重置狀態
+                self.is_detecting = False
                 self.status_var.set("狀態: 檢測已停止")
                 logging.info("✅ 批次檢測已停止")
+                
+                # 🔧 額外確認：檢查相機是否真的停止了
+                if hasattr(self.controller, 'camera_model') and self.controller.camera_model:
+                    if self.controller.camera_model.is_grabbing:
+                        logging.warning("⚠️ 相機仍在捕獲中，強制狀態同步")
+                        self.is_detecting = True  # 保持檢測狀態
+                        self.status_var.set("狀態: 檢測停止未完成")
             else:
+                # 停止失敗 - 恢復原始狀態
+                self.is_detecting = original_detecting_state
                 self.status_var.set("狀態: 檢測停止失敗")
                 logging.error("❌ 批次檢測停止失敗")
             
-            # 🎯 重要：更新所有按鈕狀態
+            # 🎯 重要：根據最終狀態更新所有按鈕
             self.update_button_states()
+            
+            # 🔧 額外的恢復檢查
+            if not self.is_detecting:
+                # 確保停止按鈕被正確禁用
+                self.stop_detection_btn.configure(
+                    text="⏸ 停止檢測",
+                    state="disabled"
+                )
+                # 確保開始按鈕可用
+                if (hasattr(self.controller, 'camera_model') and 
+                    self.controller.camera_model and 
+                    self.controller.camera_model.is_connected):
+                    self.start_detection_btn.configure(
+                        text="▶ 開始檢測",
+                        state="normal",
+                        fg_color=ColorScheme.SUCCESS_GREEN
+                    )
             
         except Exception as e:
             logging.error(f"停止檢測時出錯: {str(e)}")
-            self.status_var.set("狀態: 停止檢測出錯")
+            # 出錯時強制重置狀態
+            self.is_detecting = False
+            self.status_var.set("狀態: 停止檢測出錯，已重置")
             self.update_button_states()
     
     def reset_count(self):
         """重置計數"""
         self.object_count_var.set("000")
         self.progress_bar.set(0)
-        self.progress_label.configure(text="0 / 100")
-        logging.info("計數已重置")
+    
+    def force_reset_all_states(self):
+        """強制重置所有狀態 - 當系統卡住時使用"""
+        try:
+            logging.warning("🔥 執行強制狀態重置...")
+            
+            # 🔧 強制重置內部狀態
+            self.is_detecting = False
+            self.is_recording = False
+            
+            # 🔧 重置按鈕狀態
+            try:
+                if hasattr(self, 'start_detection_btn') and self.start_detection_btn:
+                    self.start_detection_btn.configure(
+                        text="▶ 開始檢測",
+                        state="normal",
+                        fg_color=ColorScheme.SUCCESS_GREEN
+                    )
+                    
+                if hasattr(self, 'stop_detection_btn') and self.stop_detection_btn:
+                    self.stop_detection_btn.configure(
+                        text="⏸ 停止檢測",
+                        state="disabled"
+                    )
+                    
+                if hasattr(self, 'record_button') and self.record_button:
+                    self.record_button.configure(
+                        text="🔴 開始錄製",
+                        state="normal",
+                        fg_color=ColorScheme.ERROR_RED
+                    )
+            except Exception as e:
+                logging.error(f"重置按鈕狀態失敗: {str(e)}")
+            
+            # 🔧 嘗試強制停止控制器
+            try:
+                if hasattr(self, 'controller') and self.controller:
+                    # 強制停止相機
+                    if (hasattr(self.controller, 'camera_model') and 
+                        self.controller.camera_model):
+                        self.controller.camera_model.stop_capture()
+                    
+                    # 強制停止處理循環
+                    if hasattr(self.controller, '_stop_processing'):
+                        self.controller._stop_processing()
+            except Exception as e:
+                logging.error(f"強制停止控制器失敗: {str(e)}")
+            
+            # 🔧 更新狀態顯示
+            self.status_var.set("狀態: 已強制重置，請重新開始")
+            
+            # 🔧 更新所有按鈕狀態
+            self.update_button_states()
+            
+            logging.info("✅ 強制狀態重置完成")
+            
+        except Exception as e:
+            logging.error(f"強制重置失敗: {str(e)}")
+            self.status_var.set("狀態: 重置失敗，建議重啟程式")
     
     def update_detection_params(self, value):
         """更新檢測參數"""
@@ -1439,8 +1577,10 @@ class MainView:
     # ==================== 顯示更新 ====================
     
     def update_frame(self, frame):
-        """更新視頻幀顯示"""
+        """更新視頻幀顯示 - 帶錄製指示器"""
         try:
+            import cv2  # 🔧 移到方法開頭，確保整個方法都能使用
+            
             with self.frame_lock:
                 if frame is None:
                     return
@@ -1454,6 +1594,10 @@ class MainView:
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
                 
                 frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+                
+                # 🔴 添加錄製指示器
+                # 🔧 移除視頻畫面上的錄製指示器，改用底部狀態欄顯示
+                
                 pil_image = Image.fromarray(frame_resized)
                 photo = ImageTk.PhotoImage(pil_image)
                 
@@ -1612,6 +1756,11 @@ class MainView:
                 
             current_mode = self.mode_var.get()
             
+            # 🎯 檢查是否有任何處理正在運行
+            is_processing_running = (hasattr(self.controller, 'is_running') and self.controller.is_running)
+            is_live_running = (current_mode == "live" and self.is_detecting)
+            is_recording_running = (current_mode == "recording" and is_processing_running)
+            
             # 📹 檢測按鈕邏輯 - 添加屬性檢查避免初始化順序問題
             can_detect = False
             detect_tooltip = ""
@@ -1656,23 +1805,17 @@ class MainView:
             except Exception as e:
                 logging.debug(f"更新停止檢測按鈕失敗: {str(e)}")
             
-            # 🎬 視頻播放按鈕邏輯（回放模式）
-            try:
-                if (hasattr(self, 'play_btn') and self.play_btn is not None):
-                    if current_mode == "playback":
-                        if self.video_loaded:
-                            self.play_btn.configure(state="normal")
-                        else:
-                            self.play_btn.configure(
-                                state="disabled",
-                                text="❌ 無視頻"
-                            )
-            except Exception as e:
-                logging.debug(f"更新播放按鈕失敗: {str(e)}")
-                        
+
             # 🎥 錄製按鈕邏輯（實時模式）
             if hasattr(self, 'record_button'):
-                if current_mode == "live" and self.camera_connected and not self.is_recording:
+                if is_live_running and not self.is_recording:
+                    # 🚫 即時影像運行時禁用錄製功能
+                    self.record_button.configure(
+                        state="disabled",
+                        text="⛔ 請先停止檢測",
+                        fg_color="#666666"
+                    )
+                elif current_mode == "live" and self.camera_connected and not self.is_recording and not is_live_running:
                     self.record_button.configure(
                         state="normal",
                         text="🔴 開始錄製",
@@ -1697,6 +1840,79 @@ class MainView:
                         text="⏹ 停止錄製",
                         fg_color=ColorScheme.WARNING_ORANGE
                     )
+            
+            # 🎬 模式切換按鈕控制 - 任何處理運行時禁用模式切換
+            try:
+                mode_buttons = [
+                    ('mode_live', '實時'),
+                    ('mode_recording', '錄製'),
+                    ('mode_playback', '回放')
+                ]
+                
+                for button_attr, mode_name in mode_buttons:
+                    if hasattr(self, button_attr):
+                        button = getattr(self, button_attr)
+                        if button is not None:
+                            if is_processing_running or is_live_running or is_recording_running:
+                                # 🔒 任何處理運行時，只允許當前模式可選，其他禁用
+                                current_button_mode = button_attr.replace('mode_', '')
+                                if current_button_mode == current_mode:
+                                    button.configure(state="normal")
+                                else:
+                                    button.configure(state="disabled")
+                            else:
+                                # 正常情況下所有模式都可選
+                                button.configure(state="normal")
+            except Exception as e:
+                logging.debug(f"更新模式按鈕失敗: {str(e)}")
+            
+            # 🔴 更新底部錄製指示器
+            try:
+                if hasattr(self, 'recording_indicator'):
+                    current_mode = getattr(self, 'mode_var', tk.StringVar()).get()
+                    is_recording_mode = (current_mode == "recording")
+                    is_processing_active = (hasattr(self.controller, 'is_running') and 
+                                           self.controller.is_running)
+                    
+                    if is_recording_mode and is_processing_active:
+                        # 錄製中 - 啟動定時器更新
+                        if not self.recording_timer_active:
+                            self.recording_timer_active = True
+                            self.update_recording_timer()  # 立即開始更新
+                    else:
+                        # 非錄製狀態 - 停止定時器並隱藏指示器
+                        self.recording_timer_active = False
+                        self.recording_indicator.configure(text="")
+            except Exception as e:
+                logging.debug(f"更新錄製指示器失敗: {str(e)}")
+            
+            # 🎬 視頻播放相關按鈕 - 即時影像運行時禁用
+            try:
+                if hasattr(self, 'play_btn') and self.play_btn is not None:
+                    if is_live_running:
+                        # 即時影像運行時禁用播放按鈕
+                        self.play_btn.configure(
+                            state="disabled",
+                            text="⛔ 即時檢測中"
+                        )
+                    elif current_mode == "playback":
+                        if self.video_loaded:
+                            self.play_btn.configure(
+                                state="normal",
+                                text="▶ 播放"
+                            )
+                        else:
+                            self.play_btn.configure(
+                                state="disabled",
+                                text="❌ 無視頻"
+                            )
+                    else:
+                        self.play_btn.configure(
+                            state="disabled",
+                            text="⛔ 僅限回放模式"
+                        )
+            except Exception as e:
+                logging.debug(f"更新播放按鈕失敗: {str(e)}")
             
             # 📊 狀態提示更新
             if not self.camera_connected and not self.video_loaded:
@@ -1811,6 +2027,51 @@ class MainView:
         now = datetime.datetime.now()
         return f"recording_{now.strftime('%Y%m%d_%H%M%S')}.avi"
     
+    def get_recording_time(self):
+        """獲取錄製時間"""
+        try:
+            if (hasattr(self.controller, 'camera_model') and 
+                hasattr(self.controller.camera_model, 'video_recorder') and
+                self.controller.camera_model.video_recorder and
+                hasattr(self.controller.camera_model.video_recorder, 'recording_start_time') and
+                self.controller.camera_model.video_recorder.recording_start_time):
+                
+                import time
+                elapsed = time.time() - self.controller.camera_model.video_recorder.recording_start_time
+                
+                # 格式化為 MM:SS
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                return f"{minutes:02d}:{seconds:02d}"
+            else:
+                return "00:00"
+        except Exception:
+            return "00:00"
+    
+    def update_recording_timer(self):
+        """更新錄製計時器 - 每秒調用"""
+        try:
+            if hasattr(self, 'recording_indicator') and self.recording_timer_active:
+                current_mode = getattr(self, 'mode_var', tk.StringVar()).get()
+                is_recording_mode = (current_mode == "recording")
+                is_processing_active = (hasattr(self.controller, 'is_running') and 
+                                       self.controller.is_running)
+                
+                if is_recording_mode and is_processing_active:
+                    # 錄製中 - 更新時間顯示
+                    recording_time = self.get_recording_time()
+                    self.recording_indicator.configure(text=f"🔴 錄製中 {recording_time}")
+                    
+                    # 1秒後再次更新
+                    self.root.after(1000, self.update_recording_timer)
+                else:
+                    # 停止錄製 - 清理定時器
+                    self.recording_timer_active = False
+                    self.recording_indicator.configure(text="")
+        except Exception as e:
+            logging.debug(f"更新錄製計時器失敗: {str(e)}")
+            self.recording_timer_active = False
+    
     def change_mode(self):
         """更改系統模式"""
         mode = self.mode_var.get()
@@ -1821,7 +2082,8 @@ class MainView:
         
         # 根據模式顯示對應的面板
         if mode == "recording":
-            self.recording_frame.pack(fill="x", padx=12, pady=(0, 15))
+            # 🔧 錄製模式：系統自動管理，不顯示檔名輸入區域
+            pass  # 錄製模式下不顯示額外控制面板，透過右側「啟動處理」來錄製
         elif mode == "playback":
             self.playback_frame.pack(fill="x", padx=12, pady=(0, 15))
         
@@ -1834,25 +2096,58 @@ class MainView:
             logging.info(f"系統模式已切換為: {mode}")
     
     def toggle_recording(self):
-        """切換錄製狀態"""
-        if not self.is_recording:
-            # 開始錄製
-            filename = self.recording_filename.get().strip()
-            if not filename:
-                self.recording_status.configure(text="錯誤: 請輸入檔名")
-                return
-            
-            success = self.controller.start_recording(filename)
-            if success:
-                self.is_recording = True
-                self.record_button.configure(text="⏹ 停止錄製")
-                self.recording_status.configure(text="錄製中...", text_color=ColorScheme.ERROR_RED)
-        else:
-            # 停止錄製
-            info = self.controller.stop_recording()
-            self.is_recording = False
-            self.record_button.configure(text="● 錄製")
-            self.recording_status.configure(text="錄製完成", text_color=ColorScheme.SUCCESS_GREEN)
+        """切換錄製狀態 - 防重複點擊版本"""
+        try:
+            if not self.is_recording:
+                # 🛡️ 防重複點擊 - 檢查是否正在其他操作中
+                if self.is_detecting:
+                    self.recording_status.configure(text="錯誤: 請先停止檢測", text_color=ColorScheme.ERROR_RED)
+                    return
+                
+                # 開始錄製
+                filename = self.recording_filename.get().strip()
+                if not filename:
+                    self.recording_status.configure(text="錯誤: 請輸入檔名", text_color=ColorScheme.ERROR_RED)
+                    return
+                
+                # 🎯 立即禁用按鈕防止重複點擊
+                self.record_button.configure(text="🔄 啟動錄製...", state="disabled")
+                self.recording_status.configure(text="正在啟動錄製...", text_color=ColorScheme.WARNING_ORANGE)
+                
+                success = self.controller.start_recording(filename)
+                if success:
+                    self.is_recording = True
+                    self.record_button.configure(text="⏹ 停止錄製", state="normal")
+                    self.recording_status.configure(text="錄製中...", text_color=ColorScheme.ERROR_RED)
+                    logging.info(f"✅ 錄製已開始: {filename}")
+                else:
+                    # 啟動失敗，恢復狀態
+                    self.record_button.configure(text="🔴 開始錄製", state="normal")
+                    self.recording_status.configure(text="錄製啟動失敗", text_color=ColorScheme.ERROR_RED)
+                    logging.error("❌ 錄製啟動失敗")
+                
+                # 🔧 更新按鈕狀態
+                self.update_button_states()
+            else:
+                # 停止錄製
+                self.record_button.configure(text="🔄 停止中...", state="disabled")
+                self.recording_status.configure(text="正在停止錄製...", text_color=ColorScheme.WARNING_ORANGE)
+                
+                info = self.controller.stop_recording()
+                self.is_recording = False
+                self.record_button.configure(text="🔴 開始錄製", state="normal")
+                self.recording_status.configure(text="錄製完成", text_color=ColorScheme.SUCCESS_GREEN)
+                
+                if info:
+                    logging.info(f"✅ 錄製已完成: {info.get('filename', 'unknown')}")
+                
+                # 🔧 更新按鈕狀態
+                self.update_button_states()
+                
+        except Exception as e:
+            logging.error(f"錄製操作錯誤: {str(e)}")
+            self.recording_status.configure(text="錄製操作失敗", text_color=ColorScheme.ERROR_RED)
+            self.update_button_states()
     
     def select_playback_file(self):
         """選擇回放檔案"""
