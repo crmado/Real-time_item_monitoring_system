@@ -378,10 +378,10 @@ class MainView:
         )
         self.detection_checkbox.pack(pady=15)
         
-        # 視頻控制區域
+        # 影像控制區域
         ctk.CTkLabel(
             left_panel,
-            text="🎬 視頻控制",
+            text="🎬 影像控制",
             font=ctk.CTkFont(size=FontSizes.TITLE, weight="bold"),
             text_color=ColorScheme.PURPLE_ACCENT
         ).pack(pady=(10, 10))

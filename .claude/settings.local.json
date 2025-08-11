@@ -5,7 +5,8 @@
       "Bash(awk:*)",
       "Bash(grep:*)",
       "Bash(sed:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
