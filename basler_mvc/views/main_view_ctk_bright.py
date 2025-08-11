@@ -131,6 +131,7 @@ class MainView:
         self.refresh_device_list()
         self.update_connection_ui()
         self.initialize_display_status()
+        self.initialize_batch_variables()
         
         logging.info("CustomTkinter 明亮清晰版本初始化完成")
     
@@ -894,35 +895,89 @@ class MainView:
         )
         self.stop_detection_btn.pack(side="left", padx=5)
         
-        # 重置按鈕
-        reset_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
-        reset_frame.pack(fill="x", pady=(10, 15))
+        # 批次控制按鈕
+        batch_control_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
+        batch_control_frame.pack(fill="x", pady=(10, 15))
         
-        # 計數重置
-        ctk.CTkButton(
-            reset_frame,
-            text="🔄 重置計數",
-            command=self.reset_count,
+        # 啟動模型計算
+        self.start_model_btn = ctk.CTkButton(
+            batch_control_frame,
+            text="🚀 啟動模型計算",
+            command=self.start_model_calculation,
+            height=32,
+            width=120,
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            fg_color=ColorScheme.SUCCESS_GREEN,
+            hover_color="#059669",
+            text_color="white"
+        )
+        self.start_model_btn.pack(side="left", padx=(0, 10))
+        
+        # 停止計算
+        self.stop_calculation_btn = ctk.CTkButton(
+            batch_control_frame,
+            text="⏹ 停止計算",
+            command=self.stop_calculation,
+            height=32,
+            width=120,
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            fg_color=ColorScheme.ERROR_RED,
+            hover_color="#b91c1c",
+            text_color="white",
+            state="disabled"
+        )
+        self.stop_calculation_btn.pack(side="left", padx=(0, 10))
+        
+        # 重置計算
+        self.reset_calculation_btn = ctk.CTkButton(
+            batch_control_frame,
+            text="🔄 重置計算",
+            command=self.reset_calculation,
             height=32,
             width=120,
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             fg_color=ColorScheme.WARNING_ORANGE,
             hover_color="#b45309",
             text_color="white"
-        ).pack(side="left", padx=(0, 10))
+        )
+        self.reset_calculation_btn.pack(side="left")
         
-        # 🆘 緊急重置按鈕
-        ctk.CTkButton(
-            reset_frame,
-            text="🆘 緊急重置",
-            command=self.force_reset_all_states,
-            height=32,
-            width=120,
+        # 批次狀態顯示
+        batch_status_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_SECONDARY)
+        batch_status_frame.pack(fill="x", padx=12, pady=(5, 15))
+        
+        # 輪數顯示
+        ctk.CTkLabel(
+            batch_status_frame,
+            text="當前輪數:",
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            fg_color="#dc2626",  # 紅色警告
-            hover_color="#b91c1c",
-            text_color="white"
-        ).pack(side="left")
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(side="left", padx=(15, 5))
+        
+        self.round_count_var = ctk.StringVar(value="0")
+        ctk.CTkLabel(
+            batch_status_frame,
+            textvariable=self.round_count_var,
+            font=ctk.CTkFont(size=FontSizes.SUBTITLE, weight="bold"),
+            text_color=ColorScheme.PRIMARY_BLUE
+        ).pack(side="left", padx=(0, 15))
+        
+        # 震動機狀態
+        ctk.CTkLabel(
+            batch_status_frame,
+            text="震動機狀態:",
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(side="left", padx=(15, 5))
+        
+        self.vibration_status_var = ctk.StringVar(value="未連接")
+        self.vibration_status_label = ctk.CTkLabel(
+            batch_status_frame,
+            textvariable=self.vibration_status_var,
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color="#dc2626"  # 紅色表示未連接
+        )
+        self.vibration_status_label.pack(side="left", padx=(0, 15))
         
         # 檢測參數標題
         ctk.CTkLabel(
@@ -1620,11 +1675,26 @@ class MainView:
                     self.object_count_var.set(f"{count:03d}")
                     self.object_count_status.configure(text=f"物件: {count}")
                     
+                    # 更新總計數（用於批次記錄）
+                    if hasattr(self, 'is_calculating') and self.is_calculating:
+                        self.total_count = count
+                    
                     target = self.target_count_var.get()
                     if target > 0:
                         progress = min(count / target, 1.0)
                         self.progress_bar.set(progress)
                         self.progress_label.configure(text=f"{count} / {target}")
+                        
+                        # 🌀 自適應震動頻率調整
+                        if hasattr(self, 'is_calculating') and self.is_calculating:
+                            self.adjust_vibration_frequency(target, count)
+                            
+                            # 檢查是否接近目標數量，準備停止或進入下一輪
+                            if count >= target * 0.95:  # 達到95%時開始準備
+                                logging.info(f"📊 接近目標數量 ({count}/{target})，準備完成本輪")
+                                if count >= target:
+                                    # 達到目標，完成本輪
+                                    self.complete_current_round()
                 
                 # 🎯 更新視頻播放進度
                 if 'progress' in data and hasattr(self, 'video_progress'):
@@ -2254,6 +2324,303 @@ class MainView:
         success = self.controller.seek_video_to_progress(progress_val)
         if success:
             logging.info(f"用戶跳轉到進度: {progress_val*100:.1f}%")
+    
+    # ==================== 批次處理控制方法 ====================
+    
+    def start_model_calculation(self):
+        """啟動模型計算和震動機控制"""
+        try:
+            logging.info("🚀 啟動模型計算...")
+            
+            # 連接震動機
+            if not hasattr(self, 'vibration_connected') or not self.vibration_connected:
+                success = self.connect_vibration_machine()
+                if not success:
+                    self.status_var.set("狀態: 震動機連接失敗")
+                    return
+            
+            # 啟動檢測處理
+            if self.controller.start_batch_detection():
+                self.is_calculating = True
+                self.current_round = 1
+                self.total_count = 0
+                
+                # 更新按鈕狀態
+                self.start_model_btn.configure(state="disabled")
+                self.stop_calculation_btn.configure(state="normal")
+                
+                # 更新顯示
+                self.round_count_var.set(str(self.current_round))
+                self.status_var.set("狀態: 模型計算中...")
+                
+                # 啟動震動機
+                self.start_vibration_machine()
+                
+                logging.info("✅ 模型計算已啟動")
+            else:
+                self.status_var.set("狀態: 啟動失敗")
+                
+        except Exception as e:
+            logging.error(f"啟動模型計算錯誤: {str(e)}")
+            self.status_var.set(f"狀態: 啟動錯誤 - {str(e)}")
+    
+    def stop_calculation(self):
+        """停止計算和震動機"""
+        try:
+            logging.info("⏹ 停止計算...")
+            
+            # 停止檢測處理
+            self.controller.stop_batch_detection()
+            
+            # 停止震動機
+            self.stop_vibration_machine()
+            
+            # 更新狀態
+            self.is_calculating = False
+            
+            # 更新按鈕狀態
+            self.start_model_btn.configure(state="normal")
+            self.stop_calculation_btn.configure(state="disabled")
+            
+            # 記錄本輪結果
+            self.record_batch_result()
+            
+            self.status_var.set("狀態: 計算已停止")
+            logging.info("✅ 計算已停止")
+            
+        except Exception as e:
+            logging.error(f"停止計算錯誤: {str(e)}")
+            self.status_var.set(f"狀態: 停止錯誤 - {str(e)}")
+    
+    def reset_calculation(self):
+        """重置計算狀態"""
+        try:
+            logging.info("🔄 重置計算狀態...")
+            
+            # 停止當前操作
+            if hasattr(self, 'is_calculating') and self.is_calculating:
+                self.stop_calculation()
+            
+            # 重置計數器
+            self.object_count_var.set("000")
+            self.progress_bar.set(0)
+            self.round_count_var.set("0")
+            
+            # 重置內部狀態
+            self.current_round = 0
+            self.total_count = 0
+            
+            # 重置按鈕狀態
+            self.start_model_btn.configure(state="normal")
+            self.stop_calculation_btn.configure(state="disabled")
+            
+            self.status_var.set("狀態: 已重置")
+            logging.info("✅ 計算狀態已重置")
+            
+        except Exception as e:
+            logging.error(f"重置計算錯誤: {str(e)}")
+            self.status_var.set(f"狀態: 重置錯誤 - {str(e)}")
+    
+    # ==================== 震動機控制方法 ====================
+    
+    def connect_vibration_machine(self):
+        """連接震動機"""
+        try:
+            # 模擬連接震動機 - 實際應用中這裡會有真實的硬體連接邏輯
+            logging.info("🔗 連接震動機...")
+            
+            # 這裡可以添加實際的震動機連接邏輯
+            # 例如串口通信、TCP連接等
+            
+            # 模擬連接成功
+            self.vibration_connected = True
+            self.vibration_frequency = 50  # 初始頻率
+            
+            # 更新狀態顯示
+            self.vibration_status_var.set("已連接")
+            self.vibration_status_label.configure(text_color=ColorScheme.SUCCESS_GREEN)
+            
+            logging.info("✅ 震動機連接成功")
+            return True
+            
+        except Exception as e:
+            logging.error(f"震動機連接錯誤: {str(e)}")
+            self.vibration_status_var.set("連接失敗")
+            self.vibration_status_label.configure(text_color="#dc2626")
+            return False
+    
+    def start_vibration_machine(self):
+        """啟動震動機"""
+        try:
+            if not hasattr(self, 'vibration_connected') or not self.vibration_connected:
+                return False
+                
+            logging.info("🌀 啟動震動機...")
+            
+            # 設定初始頻率
+            self.vibration_frequency = 50  # Hz
+            
+            # 這裡可以添加實際的震動機啟動命令
+            # 例如發送串口命令：self.send_vibration_command(f"START:{self.vibration_frequency}")
+            
+            self.vibration_status_var.set(f"運行中 ({self.vibration_frequency}Hz)")
+            self.vibration_status_label.configure(text_color=ColorScheme.PRIMARY_BLUE)
+            
+            logging.info(f"✅ 震動機已啟動，頻率: {self.vibration_frequency}Hz")
+            return True
+            
+        except Exception as e:
+            logging.error(f"啟動震動機錯誤: {str(e)}")
+            return False
+    
+    def stop_vibration_machine(self):
+        """停止震動機"""
+        try:
+            if not hasattr(self, 'vibration_connected') or not self.vibration_connected:
+                return True
+                
+            logging.info("⏸ 停止震動機...")
+            
+            # 這裡可以添加實際的震動機停止命令
+            # 例如發送串口命令：self.send_vibration_command("STOP")
+            
+            self.vibration_status_var.set("已停止")
+            self.vibration_status_label.configure(text_color=ColorScheme.WARNING_ORANGE)
+            
+            logging.info("✅ 震動機已停止")
+            return True
+            
+        except Exception as e:
+            logging.error(f"停止震動機錯誤: {str(e)}")
+            return False
+    
+    def adjust_vibration_frequency(self, target_count, current_count):
+        """根據計數接近程度調整震動頻率"""
+        try:
+            if not hasattr(self, 'vibration_connected') or not self.vibration_connected:
+                return
+                
+            # 計算剩餘數量比例
+            remaining_ratio = (target_count - current_count) / target_count
+            
+            # 根據剩餘比例調整頻率
+            if remaining_ratio > 0.8:
+                # 剩餘80%以上，維持高頻率
+                new_frequency = 50
+            elif remaining_ratio > 0.5:
+                # 剩餘50%-80%，中等頻率
+                new_frequency = 35
+            elif remaining_ratio > 0.2:
+                # 剩餘20%-50%，低頻率
+                new_frequency = 20
+            else:
+                # 剩餘20%以下，最低頻率
+                new_frequency = 10
+            
+            # 如果頻率有變化才更新
+            if abs(new_frequency - self.vibration_frequency) >= 5:
+                self.vibration_frequency = new_frequency
+                
+                # 這裡發送頻率調整命令
+                # self.send_vibration_command(f"FREQ:{new_frequency}")
+                
+                self.vibration_status_var.set(f"運行中 ({new_frequency}Hz)")
+                logging.info(f"📊 震動頻率已調整為: {new_frequency}Hz (剩餘比例: {remaining_ratio:.1%})")
+                
+        except Exception as e:
+            logging.error(f"調整震動頻率錯誤: {str(e)}")
+    
+    # ==================== 批次記錄方法 ====================
+    
+    def record_batch_result(self):
+        """記錄批次結果"""
+        try:
+            if not hasattr(self, 'current_round') or not hasattr(self, 'total_count'):
+                return
+                
+            import datetime
+            import json
+            from pathlib import Path
+            
+            # 創建記錄目錄
+            records_dir = Path("batch_records")
+            records_dir.mkdir(exist_ok=True)
+            
+            # 準備記錄數據
+            record_data = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "round_number": self.current_round,
+                "part_count": self.total_count,
+                "target_count": int(self.target_entry.get()) if hasattr(self, 'target_entry') else 100,
+                "detection_method": "current_method",  # 可以從controller獲取
+                "status": "completed"
+            }
+            
+            # 保存到文件
+            filename = f"batch_record_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            file_path = records_dir / filename
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(record_data, f, ensure_ascii=False, indent=2)
+            
+            logging.info(f"📋 批次記錄已保存: {file_path}")
+            
+        except Exception as e:
+            logging.error(f"記錄批次結果錯誤: {str(e)}")
+    
+    def complete_current_round(self):
+        """完成當前輪並詢問是否繼續下一輪"""
+        try:
+            logging.info(f"✅ 完成第 {self.current_round} 輪，計數: {self.total_count}")
+            
+            # 停止震動機
+            self.stop_vibration_machine()
+            
+            # 記錄本輪結果
+            self.record_batch_result()
+            
+            # 詢問用戶是否繼續下一輪（這裡可以實現自動或手動模式）
+            # 暫時實現自動停止模式
+            self.stop_calculation()
+            
+            # 可以在這裡添加彈窗詢問是否繼續下一輪
+            # result = messagebox.askyesno("完成本輪", f"第 {self.current_round} 輪已完成\n"
+            #                                        f"計數: {self.total_count}\n"
+            #                                        f"是否開始下一輪？")
+            # if result:
+            #     self.next_round()
+            
+        except Exception as e:
+            logging.error(f"完成當前輪錯誤: {str(e)}")
+    
+    def next_round(self):
+        """開始下一輪"""
+        try:
+            self.current_round += 1
+            self.total_count = 0
+            
+            # 更新顯示
+            self.round_count_var.set(str(self.current_round))
+            self.object_count_var.set("000")
+            self.progress_bar.set(0)
+            
+            # 重啟震動機
+            self.start_vibration_machine()
+            
+            logging.info(f"🔄 開始第 {self.current_round} 輪")
+            
+        except Exception as e:
+            logging.error(f"開始下一輪錯誤: {str(e)}")
+    
+    # ==================== 初始化批次變數 ====================
+    
+    def initialize_batch_variables(self):
+        """初始化批次處理相關變數"""
+        self.is_calculating = False
+        self.vibration_connected = False
+        self.vibration_frequency = 50
+        self.current_round = 0
+        self.total_count = 0
     
     def run(self):
         """運行主循環"""
