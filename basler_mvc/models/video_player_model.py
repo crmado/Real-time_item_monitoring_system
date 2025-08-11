@@ -25,7 +25,8 @@ class VideoPlayerModel:
         # 播放控制
         self.current_frame_number = 0
         self.total_frames = 0
-        self.fps = 30
+        self.fps = None  # 🔧 修正：不設預設值，完全依賴視頻實際FPS
+        self.original_fps = None  # 🎯 新增：保存原始視頻FPS
         self.playback_speed = 1.0  # 播放速度倍數
         
         # 當前加載的視頻
@@ -92,7 +93,7 @@ class VideoPlayerModel:
                 
             # 獲取視頻信息並進行驗證
             self.total_frames = int(self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.fps = self.video_capture.get(cv2.CAP_PROP_FPS)
+            detected_fps = self.video_capture.get(cv2.CAP_PROP_FPS)
             width = int(self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
@@ -101,9 +102,29 @@ class VideoPlayerModel:
                 logging.error(f"❌ 無效的幀數: {self.total_frames}")
                 return False
             
-            if self.fps <= 0:
-                logging.warning(f"⚠️ 無效的FPS: {self.fps}, 設置為預設值25fps")
-                self.fps = 25.0  # 設置預設FPS
+            # 🎯 增強FPS驗證和自動修正
+            if detected_fps <= 0 or detected_fps > 300:  # 合理的FPS範圍
+                logging.warning(f"⚠️ 檢測到異常FPS: {detected_fps}")
+                # 嘗試通過檔案特性推測FPS
+                if 'fps' in str(video_path).lower():
+                    # 從檔名中提取FPS信息 (例如: video_30fps.mp4)
+                    import re
+                    fps_match = re.search(r'(\d+)fps', str(video_path).lower())
+                    if fps_match:
+                        self.fps = float(fps_match.group(1))
+                        logging.info(f"🔍 從檔名推測FPS: {self.fps}")
+                    else:
+                        self.fps = 25.0  # 最終預設值
+                        logging.warning(f"⚠️ 使用預設FPS: {self.fps}")
+                else:
+                    self.fps = 25.0  # 最終預設值
+                    logging.warning(f"⚠️ 使用預設FPS: {self.fps}")
+            else:
+                self.fps = detected_fps
+                logging.info(f"✅ 使用視頻實際FPS: {self.fps:.2f}")
+            
+            # 🎯 保存原始FPS用於檢測參數優化
+            self.original_fps = self.fps
             
             if width <= 0 or height <= 0:
                 logging.error(f"❌ 無效的解析度: {width}x{height}")

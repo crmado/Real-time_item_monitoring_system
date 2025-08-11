@@ -108,24 +108,53 @@ class DetectionProcessor:
         logging.info("檢測處理器已啟動")
     
     def stop_processing(self):
-        """停止處理"""
+        """停止處理 - 資源安全版本"""
         if not self.is_processing:
             return
             
         self.is_processing = False
         self.stop_event.set()
         
-        # 等待線程結束
+        # 🎯 確保線程池正確關閉（修正資源洩漏）
+        if hasattr(self, 'executor') and self.executor:
+            try:
+                # 停止接受新任務並等待完成
+                self.executor.shutdown(wait=True)
+                logging.info("✅ 線程池已正確關閉")
+                
+            except Exception as e:
+                logging.error(f"❌ 線程池關閉異常: {str(e)}")
+                
+                # 🆘 緊急措施：強制清理
+                try:
+                    if hasattr(self.executor, '_threads'):
+                        for thread in self.executor._threads:
+                            if thread.is_alive():
+                                logging.warning(f"強制等待線程 {thread.name} 停止")
+                                thread.join(timeout=1.0)
+                except Exception as force_error:
+                    logging.error(f"強制清理失敗: {str(force_error)}")
+            
+            finally:
+                # 🧹 確保引用被清除
+                self.executor = None
+        
+        # 等待工作線程結束
         for thread in self.processing_threads:
             if thread.is_alive():
                 thread.join(timeout=1.0)
+                if thread.is_alive():
+                    logging.warning(f"檢測工作線程 {thread.name} 未能及時停止")
         
         self.processing_threads.clear()
         
         # 清空隊列
         self._clear_queues()
         
-        logging.info("檢測處理器已停止")
+        # 🎯 重置統計數據以防記憶體累積
+        self.processing_times.clear()
+        
+        logging.info("✅ 檢測處理器已安全停止")
     
     def submit_frame(self, frame: np.ndarray, frame_info: Dict[str, Any]) -> bool:
         """提交幀進行檢測 - 算法調整模式同步版本"""
@@ -372,6 +401,19 @@ class DetectionProcessor:
             'samples_count': len(self.processing_times)  # 用於調試
         }
     
+    def cleanup(self):
+        """手動清理資源 - 推薦使用此方法而非依賴析構函數"""
+        try:
+            self.stop_processing()
+            logging.info("🧹 DetectionProcessor 資源清理完成")
+        except Exception as e:
+            logging.error(f"❌ DetectionProcessor 清理失敗: {str(e)}")
+    
     def __del__(self):
-        """析構函數"""
-        self.stop_processing()
+        """析構函數 - 最後防線"""
+        try:
+            # 🎯 只做最基本的清理，避免在析構時出錯
+            if hasattr(self, 'executor') and self.executor:
+                self.executor.shutdown(wait=False)  # 不等待，避免阻塞
+        except:
+            pass  # 析構函數中不記錄錯誤

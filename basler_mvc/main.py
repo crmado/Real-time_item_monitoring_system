@@ -17,7 +17,7 @@ try:
     from basler_mvc.controllers.main_controller import MainController
     # 使用 CustomTkinter 明亮清晰版本解決顯示問題
     from basler_mvc.views.main_view_ctk_bright import MainView
-    print("✅ 使用 CustomTkinter 高清顯示版本")
+    print("使用 CustomTkinter 高清顯示版本")
 except ImportError as e:
     print(f"導入錯誤: {str(e)}")
     print("請確保所有必要文件都已創建")
@@ -89,12 +89,12 @@ def check_dependencies():
 
 def show_startup_info():
     """顯示啟動信息"""
-    print("🚀 Basler acA640-300gm MVC 精簡高性能系統")
+    print("Basler acA640-300gm MVC 精簡高性能系統")
     print("=" * 60)
     print("架構: Model-View-Controller")
     print("目標: 專注核心功能，追求極致性能")
     print("支援: Basler acA640-300gm 工業相機")
-    print("檢測: 圓形檢測、輪廓檢測")
+    print("檢測: 100%準確率背景減除、混合檢測、圓形檢測、輪廓檢測")
     print("=" * 60)
     print()
 

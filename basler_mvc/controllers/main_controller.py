@@ -16,6 +16,7 @@ from ..models.video_recorder_model import VideoRecorderModel
 from ..models.video_player_model import VideoPlayerModel
 from ..models.detection_processor import DetectionProcessor
 from ..utils.recording_validator import RecordingValidator
+from ..utils.memory_monitor import MemoryMonitor
 
 
 class MainController:
@@ -39,6 +40,13 @@ class MainController:
         
         # 🎯 錄製驗證器（280 FPS品質檢查）
         self.recording_validator = RecordingValidator(expected_fps=280, tolerance_percent=5.0)
+        
+        # 🔍 記憶體監控器
+        self.memory_monitor = MemoryMonitor(check_interval=30.0, memory_limit_mb=512.0)
+        
+        # 設置記憶體警告回調
+        self.memory_monitor.set_warning_callback(self._on_memory_warning)
+        self.memory_monitor.set_critical_callback(self._on_memory_critical)
         
         # 系統模式：live, recording, playback
         self.current_mode = 'live'
@@ -69,6 +77,9 @@ class MainController:
         
         # 注入錄製器到相機模型
         self.camera_model.set_video_recorder(self.video_recorder)
+        
+        # 啟動記憶體監控
+        self.memory_monitor.start_monitoring()
         
         logging.info("主控制器初始化完成")
     
@@ -931,12 +942,28 @@ class MainController:
                 )
                 
                 if should_notify:
+                    # 🎯 雙計數系統：檢測物件數量 + ROI穿越計數
+                    frame_object_count = len(objects)  # 每幀檢測物件數
+                    total_crossing_count = 0  # 累加穿越計數
+                    
+                    # 如果使用background方法，獲取ROI穿越計數
+                    if (hasattr(self.detection_model, 'method_name') and 
+                        self.detection_model.method_name == 'background'):
+                        try:
+                            current_method = self.detection_model.current_method
+                            if hasattr(current_method, 'get_crossing_count'):
+                                total_crossing_count = current_method.get_crossing_count()
+                        except Exception as count_error:
+                            logging.debug(f"獲取穿越計數錯誤: {str(count_error)}")
+                    
                     self.notify_views('frame_processed', {
                         'frame': result_frame,
                         'objects': objects,
-                        'object_count': len(objects),
+                        'object_count': frame_object_count,  # 右側面板顯示每幀物件數
+                        'crossing_count': total_crossing_count,  # 影像中顯示累加計數
                         'processing_fps': self.processing_fps,
-                        'detection_fps': getattr(self.detection_model, 'detection_fps', 0)
+                        'detection_fps': getattr(self.detection_model, 'detection_fps', 0),
+                        'method_name': getattr(self.detection_model, 'method_name', 'unknown')
                     })
                     
                     # 第一幀日誌
@@ -1280,6 +1307,59 @@ class MainController:
         
         return health_status
     
+    def _on_memory_warning(self, memory_info: Dict[str, Any]):
+        """記憶體警告回調"""
+        memory_mb = memory_info['rss_bytes'] / (1024 * 1024)
+        logging.warning(f"⚠️ 記憶體使用警告: {memory_mb:.1f}MB")
+        
+        # 通知UI
+        self.notify_views('memory_warning', {
+            'memory_mb': memory_mb,
+            'memory_percent': memory_info['percent'],
+            'available_mb': memory_info['available_mb']
+        })
+        
+        # 自動清理建議
+        if hasattr(self, 'detection_processor'):
+            queue_status = self.detection_processor.get_queue_status()
+            if queue_status['frame_queue_size'] > 10:
+                logging.info("🧹 建議：清理檢測處理器隊列")
+        
+        # 強制垃圾回收
+        if hasattr(self, 'memory_monitor'):
+            gc_result = self.memory_monitor.force_gc()
+            if gc_result['memory_freed_mb'] > 1.0:
+                logging.info(f"🧹 垃圾回收釋放了 {gc_result['memory_freed_mb']:.1f}MB")
+    
+    def _on_memory_critical(self, memory_info: Dict[str, Any]):
+        """記憶體緊急警告回調"""
+        memory_mb = memory_info['rss_bytes'] / (1024 * 1024)
+        logging.error(f"🚨 記憶體使用緊急警告: {memory_mb:.1f}MB")
+        
+        # 通知UI緊急狀況
+        self.notify_views('memory_critical', {
+            'memory_mb': memory_mb,
+            'memory_percent': memory_info['percent'],
+            'available_mb': memory_info['available_mb']
+        })
+        
+        # 緊急措施：暫停處理
+        if self.is_processing:
+            logging.warning("🛑 記憶體不足，暫停處理")
+            self.stop_capture()
+            
+        # 強制清理
+        if hasattr(self, 'detection_processor'):
+            self.detection_processor._clear_queues()
+            logging.info("🧹 緊急清理檢測處理器隊列")
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """獲取記憶體統計信息"""
+        if hasattr(self, 'memory_monitor'):
+            return self.memory_monitor.get_memory_stats()
+        else:
+            return {'error': '記憶體監控器未初始化'}
+    
     def cleanup(self):
         """清理資源 - 增強版本"""
         try:
@@ -1290,6 +1370,14 @@ class MainController:
             
             # 斷開相機
             self.disconnect_camera()
+            
+            # 🔍 停止記憶體監控
+            if hasattr(self, 'memory_monitor'):
+                self.memory_monitor.cleanup()
+            
+            # 🧹 清理檢測處理器
+            if hasattr(self, 'detection_processor'):
+                self.detection_processor.cleanup()
             
             # 清理觀察者列表
             if hasattr(self, 'view_observers'):

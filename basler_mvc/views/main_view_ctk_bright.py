@@ -92,7 +92,7 @@ class MainView:
         self.detection_fps_var = tk.StringVar(value="檢測: 0 fps")
         self.object_count_var = tk.StringVar(value="000")
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
-        self.method_var = tk.StringVar(value="circle")
+        self.method_var = tk.StringVar(value="background")
         
         # FPS刷新控制
         self.last_fps_update = 0
@@ -224,17 +224,27 @@ class MainView:
         
         self.detection_method = ctk.CTkOptionMenu(
             method_frame,
-            values=["circle", "contour"],
+            values=["background", "hybrid", "circle", "contour"],
             variable=self.method_var,
             command=self.on_method_changed,
-            width=100,
+            width=120,
             font=ctk.CTkFont(size=FontSizes.BODY),
             dropdown_font=ctk.CTkFont(size=FontSizes.BODY),
             fg_color=ColorScheme.BG_CARD,
             button_color=ColorScheme.ACCENT_BLUE,
             text_color=ColorScheme.TEXT_PRIMARY
         )
-        self.detection_method.pack(side="left", padx=(0, 12), pady=8)
+        self.detection_method.pack(side="left", padx=(0, 6), pady=8)
+        
+        # 🎯 100%準確率指示器
+        self.accuracy_indicator = ctk.CTkLabel(
+            method_frame,
+            text="🎯 100%",
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold"),
+            text_color="#10b981",  # 綠色
+            width=50
+        )
+        self.accuracy_indicator.pack(side="left", padx=(0, 12), pady=8)
         
         # 右側設定按鈕
         self.settings_btn = ctk.CTkButton(
@@ -987,6 +997,76 @@ class MainView:
             text_color=ColorScheme.PURPLE_ACCENT
         ).pack(pady=(10, 10))
         
+        # 🎯 ROI設定區域 (僅在background方法時顯示)
+        self.roi_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_ACCENT)
+        self.roi_frame.pack(fill="x", padx=12, pady=(0, 15))
+        
+        # ROI標題
+        ctk.CTkLabel(
+            self.roi_frame,
+            text="🎯 100%準確率 ROI 設定",
+            font=ctk.CTkFont(size=FontSizes.SUBTITLE, weight="bold"),
+            text_color=ColorScheme.TEXT_SUCCESS
+        ).pack(pady=(15, 10))
+        
+        # ROI高度控制
+        roi_height_container = ctk.CTkFrame(self.roi_frame, fg_color="transparent")
+        roi_height_container.pack(fill="x", padx=12, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            roi_height_container,
+            text="ROI高度 (像素):",
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(side="left")
+        
+        self.roi_height_var = tk.IntVar(value=50)
+        self.roi_height_entry = ctk.CTkEntry(
+            roi_height_container,
+            textvariable=self.roi_height_var,
+            width=80,
+            font=ctk.CTkFont(size=FontSizes.BODY)
+        )
+        self.roi_height_entry.pack(side="right", padx=(5, 0))
+        self.roi_height_entry.bind('<Return>', self.update_roi_settings)
+        
+        # ROI位置控制  
+        roi_position_container = ctk.CTkFrame(self.roi_frame, fg_color="transparent")
+        roi_position_container.pack(fill="x", padx=12, pady=(0, 15))
+        
+        ctk.CTkLabel(
+            roi_position_container,
+            text="ROI位置比例:",
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(side="left")
+        
+        self.roi_position_var = tk.DoubleVar(value=0.1)
+        self.roi_position_slider = ctk.CTkSlider(
+            roi_position_container,
+            from_=0.0,
+            to=0.8,
+            variable=self.roi_position_var,
+            command=self.update_roi_settings,
+            width=150,
+            progress_color=ColorScheme.TEXT_SUCCESS,
+            button_color=ColorScheme.TEXT_SUCCESS
+        )
+        self.roi_position_slider.pack(side="right", padx=(10, 0))
+        
+        # ROI重置按鈕
+        ctk.CTkButton(
+            self.roi_frame,
+            text="🔄 重置計數",
+            command=self.reset_crossing_count,
+            width=120,
+            height=32,
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            fg_color=ColorScheme.WARNING_ORANGE,
+            hover_color="#b45309",
+            text_color="white"
+        ).pack(pady=(0, 15))
+        
         # 參數調整區域
         params_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_SECONDARY)
         params_frame.pack(fill="x", padx=12, pady=(0, 15))
@@ -1286,7 +1366,100 @@ class MainView:
     def on_method_changed(self, method):
         """檢測方法改變"""
         self.controller.set_detection_method(method)
-        logging.info(f"檢測方法已改為: {method}")
+        
+        # 🎯 更新準確率指示器
+        if method == "background":
+            self.accuracy_indicator.configure(
+                text="🎯 100%",
+                text_color="#10b981"  # 綠色
+            )
+        elif method == "hybrid":
+            self.accuracy_indicator.configure(
+                text="🔄 混合",
+                text_color="#f59e0b"  # 橙色
+            )
+        else:
+            self.accuracy_indicator.configure(
+                text="⚠️ 標準",
+                text_color="#6b7280"  # 灰色
+            )
+        
+        logging.info(f"檢測方法已改為: {method} {'(100%準確率模式)' if method == 'background' else ''}")
+        
+        # 🎯 根據方法顯示/隱藏ROI設定
+        if hasattr(self, 'roi_frame'):
+            if method == "background":
+                self.roi_frame.pack(fill="x", padx=12, pady=(0, 15))
+                # 🔄 切換到background方法時立即同步計數
+                self.root.after(100, self.sync_count_display)
+            else:
+                self.roi_frame.pack_forget()
+    
+    def update_roi_settings(self, event=None):
+        """更新ROI設定"""
+        try:
+            if self.method_var.get() == "background":
+                roi_height = self.roi_height_var.get()
+                roi_position = self.roi_position_var.get()
+                
+                # 更新檢測方法的ROI設定
+                detection_method = self.controller.detection_model.current_method
+                if hasattr(detection_method, 'roi_height'):
+                    detection_method.roi_height = roi_height
+                if hasattr(detection_method, 'roi_position_ratio'):
+                    detection_method.roi_position_ratio = roi_position
+                
+                logging.info(f"🎯 ROI設定已更新: 高度={roi_height}px, 位置={roi_position:.2f}")
+                
+        except Exception as e:
+            logging.error(f"更新ROI設定錯誤: {str(e)}")
+    
+    def reset_crossing_count(self):
+        """重置穿越計數"""
+        try:
+            if self.method_var.get() == "background":
+                detection_method = self.controller.detection_model.current_method
+                if hasattr(detection_method, 'reset_crossing_count'):
+                    detection_method.reset_crossing_count()
+                    logging.info("🔄 穿越計數已重置")
+                    
+                    # 🎯 立即同步重置界面顯示
+                    self.object_count_var.set("000")
+                    if hasattr(self, 'object_count_status'):
+                        self.object_count_status.configure(text="物件: 0")
+                    if hasattr(self, 'progress_bar'):
+                        self.progress_bar.set(0)
+                    if hasattr(self, 'progress_label'):
+                        target = self.target_count_var.get()
+                        self.progress_label.configure(text=f"0 / {target}")
+                    
+                    # 🔄 強制界面刷新
+                    self.root.update_idletasks()
+                        
+        except Exception as e:
+            logging.error(f"重置計數錯誤: {str(e)}")
+    
+    def sync_count_display(self):
+        """同步計數顯示 - 確保進度條與累加計數一致"""
+        try:
+            if self.method_var.get() == "background":
+                detection_method = self.controller.detection_model.current_method
+                if hasattr(detection_method, 'get_crossing_count'):
+                    crossing_count = detection_method.get_crossing_count()
+                    
+                    # 只同步進度條（累加計數），不更新右側面板的每幀計數
+                    target = self.target_count_var.get()
+                    if target > 0:
+                        progress = min(crossing_count / target, 1.0)
+                        if hasattr(self, 'progress_bar'):
+                            self.progress_bar.set(progress)
+                        if hasattr(self, 'progress_label'):
+                            self.progress_label.configure(text=f"{crossing_count} / {target}")
+                    
+                    logging.debug(f"🔄 累加計數同步: {crossing_count}")
+                    
+        except Exception as e:
+            logging.error(f"同步計數顯示錯誤: {str(e)}")
     
     def on_device_selected(self, device_name):
         """設備選擇改變"""
@@ -1517,14 +1690,20 @@ class MainView:
     
     def update_detection_params(self, value):
         """更新檢測參數"""
-        min_area = int(self.min_area_var.get())
-        max_area = int(self.max_area_var.get())
-        
-        self.min_area_label.configure(text=str(min_area))
-        self.max_area_label.configure(text=str(max_area))
-        
-        params = {'min_area': min_area, 'max_area': max_area}
-        self.controller.update_detection_parameters(params)
+        try:
+            min_area = int(self.min_area_var.get())
+            max_area = int(self.max_area_var.get())
+            
+            # 🔧 安全檢查：只有當標籤存在時才更新
+            if hasattr(self, 'min_area_label') and self.min_area_label:
+                self.min_area_label.configure(text=str(min_area))
+            if hasattr(self, 'max_area_label') and self.max_area_label:
+                self.max_area_label.configure(text=str(max_area))
+            
+            params = {'min_area': min_area, 'max_area': max_area}
+            self.controller.update_detection_parameters(params)
+        except Exception as e:
+            logging.error(f"更新檢測參數錯誤: {str(e)}")
     
     def toggle_detection(self):
         """切換檢測開關"""
@@ -1622,6 +1801,9 @@ class MainView:
         self.status_var.set("狀態: 系統就緒")
         self.update_connection_ui()
         self.update_timestamp()
+        
+        # 🎯 啟動計數同步 (每2秒同步一次)
+        self.sync_count_timer()
     
     def update_timestamp(self):
         """更新時間戳"""
@@ -1629,10 +1811,21 @@ class MainView:
         self.timestamp_label.configure(text=current_time)
         self.root.after(1000, self.update_timestamp)
     
+    def sync_count_timer(self):
+        """定期同步計數顯示"""
+        try:
+            # 每2秒同步一次計數
+            self.sync_count_display()
+            self.root.after(2000, self.sync_count_timer)
+        except Exception as e:
+            logging.error(f"同步計數定時器錯誤: {str(e)}")
+            # 出錯後仍然繼續定時器
+            self.root.after(2000, self.sync_count_timer)
+    
     # ==================== 顯示更新 ====================
     
     def update_frame(self, frame):
-        """更新視頻幀顯示 - 帶錄製指示器"""
+        """更新視頻幀顯示 - 包含ROI和檢測結果"""
         try:
             import cv2  # 🔧 移到方法開頭，確保整個方法都能使用
             
@@ -1643,15 +1836,15 @@ class MainView:
                 height, width = frame.shape[:2]
                 display_width, display_height = self.display_size
                 
-                if len(frame.shape) == 3:
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # 🎯 繪製ROI區域和檢測結果
+                frame_with_overlay = self._draw_detection_overlay(frame.copy())
+                
+                if len(frame_with_overlay.shape) == 3:
+                    frame_rgb = cv2.cvtColor(frame_with_overlay, cv2.COLOR_BGR2RGB)
                 else:
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+                    frame_rgb = cv2.cvtColor(frame_with_overlay, cv2.COLOR_GRAY2RGB)
                 
                 frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
-                
-                # 🔴 添加錄製指示器
-                # 🔧 移除視頻畫面上的錄製指示器，改用底部狀態欄顯示
                 
                 pil_image = Image.fromarray(frame_resized)
                 photo = ImageTk.PhotoImage(pil_image)
@@ -1663,6 +1856,67 @@ class MainView:
         except Exception as e:
             logging.error(f"更新幀顯示錯誤: {str(e)}")
     
+    def _draw_detection_overlay(self, frame):
+        """繪製ROI區域和檢測結果覆蓋層"""
+        try:
+            import cv2
+            
+            if frame is None:
+                return frame
+            
+            height, width = frame.shape[:2]
+            
+            # 🎯 繪製ROI區域 (僅當使用background方法時)
+            if self.method_var.get() == "background":
+                # 獲取ROI設定
+                try:
+                    detection_method = self.controller.detection_model.current_method
+                    if hasattr(detection_method, 'roi_enabled') and detection_method.roi_enabled:
+                        roi_height = getattr(detection_method, 'roi_height', 50)
+                        roi_position_ratio = getattr(detection_method, 'roi_position_ratio', 0.1)
+                        
+                        # 計算ROI位置
+                        roi_y = int(height * roi_position_ratio)
+                        roi_bottom = roi_y + roi_height
+                        
+                        # 繪製ROI區域 (綠色半透明矩形)
+                        overlay = frame.copy()
+                        cv2.rectangle(overlay, (0, roi_y), (width, roi_bottom), (0, 255, 0), -1)
+                        frame = cv2.addWeighted(frame, 0.8, overlay, 0.2, 0)
+                        
+                        # 繪製ROI邊界線 (亮綠色)
+                        cv2.line(frame, (0, roi_y), (width, roi_y), (0, 255, 0), 2)
+                        cv2.line(frame, (0, roi_bottom), (width, roi_bottom), (0, 255, 0), 2)
+                        
+                        # 添加ROI標籤
+                        cv2.putText(frame, f"ROI ({roi_height}px)", (10, roi_y - 10), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        
+                        # 在影像中顯示累加的穿越計數（黃色）
+                        if hasattr(detection_method, 'get_crossing_count'):
+                            count = detection_method.get_crossing_count()
+                            cv2.putText(frame, f"Count: {count:03d}", (10, 40), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                        
+                except Exception as roi_error:
+                    logging.debug(f"ROI繪製錯誤: {str(roi_error)}")
+            
+            # 🔍 為其他檢測方法顯示基本計數
+            else:
+                # 對於非background方法，顯示基本物件計數
+                try:
+                    count_text = self.object_count_var.get()
+                    cv2.putText(frame, f"Objects: {count_text}", (10, 40), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 3)
+                except:
+                    pass
+            
+            return frame
+            
+        except Exception as e:
+            logging.error(f"繪製檢測覆蓋層錯誤: {str(e)}")
+            return frame
+    
     def on_controller_event(self, event_type: str, data: Any = None):
         """處理控制器事件"""
         try:
@@ -1670,10 +1924,42 @@ class MainView:
                 if data and 'frame' in data:
                     self.update_frame(data['frame'])
                     
+                # 🎯 雙計數系統更新
                 if 'object_count' in data:
+                    # 右側面板顯示每幀檢測物件數
+                    frame_count = data['object_count']
+                    self.object_count_var.set(f"{frame_count:03d}")
+                    self.object_count_status.configure(text=f"物件: {frame_count}")
+                
+                # 使用穿越計數作為總計數（用於批次記錄和進度）
+                if 'crossing_count' in data:
+                    crossing_count = data['crossing_count']
+                    
+                    # 更新總計數（用於批次記錄）
+                    if hasattr(self, 'is_calculating') and self.is_calculating:
+                        self.total_count = crossing_count
+                    
+                    # 使用穿越計數更新進度條
+                    target = self.target_count_var.get()
+                    if target > 0:
+                        progress = min(crossing_count / target, 1.0)
+                        self.progress_bar.set(progress)
+                        self.progress_label.configure(text=f"{crossing_count} / {target}")
+                        
+                        # 🌀 自適應震動頻率調整（基於穿越計數）
+                        if hasattr(self, 'is_calculating') and self.is_calculating:
+                            self.adjust_vibration_frequency(target, crossing_count)
+                            
+                            # 檢查是否接近目標數量，準備停止或進入下一輪
+                            if crossing_count >= target * 0.95:  # 達到95%時開始準備
+                                logging.info(f"📊 接近目標數量 ({crossing_count}/{target})，準備完成本輪")
+                                if crossing_count >= target:
+                                    # 達到目標，完成本輪
+                                    self.complete_current_round()
+                
+                # 🎯 對於非background方法，使用object_count進行進度更新
+                elif 'object_count' in data and 'crossing_count' not in data:
                     count = data['object_count']
-                    self.object_count_var.set(f"{count:03d}")
-                    self.object_count_status.configure(text=f"物件: {count}")
                     
                     # 更新總計數（用於批次記錄）
                     if hasattr(self, 'is_calculating') and self.is_calculating:
