@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 import numpy as np
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List, Tuple
 from collections import deque
 
 from ..models.basler_camera_model import BaslerCameraModel
@@ -15,6 +15,7 @@ from ..models.detection_model import DetectionModel
 from ..models.video_recorder_model import VideoRecorderModel
 from ..models.video_player_model import VideoPlayerModel
 from ..models.detection_processor import DetectionProcessor
+from ..utils.recording_validator import RecordingValidator
 
 
 class MainController:
@@ -35,6 +36,9 @@ class MainController:
         
         # 🚀 高性能檢測處理器（專用於視頻回放）
         self.detection_processor = DetectionProcessor(self.detection_model)
+        
+        # 🎯 錄製驗證器（280 FPS品質檢查）
+        self.recording_validator = RecordingValidator(expected_fps=280, tolerance_percent=5.0)
         
         # 系統模式：live, recording, playback
         self.current_mode = 'live'
@@ -112,6 +116,8 @@ class MainController:
             logging.info(f"錄製開始: {data.get('filename', 'unknown')}")
         elif event_type == 'recording_stopped':
             logging.info(f"錄製完成: {data.get('frames_recorded', 0)} 幀")
+            # 🎯 自動驗證剛完成的錄製檔案
+            self._auto_validate_latest_recording(data)
     
     def _on_video_player_event(self, event_type: str, data: Any = None):
         """處理視頻播放事件"""
@@ -580,6 +586,167 @@ class MainController:
     def get_recorded_files(self) -> list:
         """獲取已錄製的文件列表"""
         return self.video_recorder.get_recorded_files()
+    
+    # ==================== 錄製品質驗證 ====================
+    
+    def _auto_validate_latest_recording(self, recording_data: Dict[str, Any]):
+        """自動驗證最新完成的錄製檔案"""
+        try:
+            filename = recording_data.get('filename', '')
+            file_path = recording_data.get('file_path', '')
+            
+            if not file_path:
+                logging.warning("無法驗證錄製檔案：缺少檔案路徑")
+                return
+            
+            logging.info(f"🔍 開始驗證錄製檔案: {filename}")
+            
+            # 使用錄製驗證器檢查檔案
+            from pathlib import Path
+            validation_result = self.recording_validator.validate_recording(Path(file_path))
+            
+            if validation_result:
+                # 通知視圖驗證結果
+                self.notify_views('recording_validated', {
+                    'filename': filename,
+                    'file_path': file_path,
+                    'validation_result': validation_result,
+                    'is_valid_fps': validation_result.is_valid_fps,
+                    'actual_fps': validation_result.fps,
+                    'expected_fps': self.recording_validator.expected_fps,
+                    'fps_error': validation_result.fps_error_percent
+                })
+                
+                # 記錄驗證結果
+                if validation_result.is_valid_fps:
+                    logging.info(f"✅ 錄製驗證通過: {filename} - {validation_result.fps:.1f} fps (誤差: {validation_result.fps_error_percent:.1f}%)")
+                else:
+                    logging.warning(f"⚠️ 錄製驗證警告: {filename} - {validation_result.fps:.1f} fps (誤差: {validation_result.fps_error_percent:.1f}%)")
+            else:
+                logging.error(f"❌ 錄製驗證失敗: {filename}")
+                self.notify_views('recording_validation_failed', {
+                    'filename': filename,
+                    'file_path': file_path,
+                    'error': '無法讀取檔案資訊'
+                })
+                
+        except Exception as e:
+            logging.error(f"錄製驗證過程中發生錯誤: {str(e)}")
+    
+    def validate_recording_file(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """手動驗證指定的錄製檔案"""
+        try:
+            from pathlib import Path
+            validation_result = self.recording_validator.validate_recording(Path(file_path))
+            
+            if validation_result:
+                return {
+                    'file_name': validation_result.file_name,
+                    'file_path': validation_result.file_path,
+                    'fps': validation_result.fps,
+                    'is_valid_fps': validation_result.is_valid_fps,
+                    'fps_error_percent': validation_result.fps_error_percent,
+                    'frame_count': validation_result.frame_count,
+                    'duration': validation_result.duration,
+                    'resolution': f"{validation_result.width}x{validation_result.height}",
+                    'codec': validation_result.codec,
+                    'file_size_mb': validation_result.file_size_mb
+                }
+            return None
+            
+        except Exception as e:
+            logging.error(f"驗證檔案時發生錯誤: {str(e)}")
+            return None
+    
+    def validate_all_recordings(self) -> List[Dict[str, Any]]:
+        """驗證所有錄製檔案"""
+        try:
+            from pathlib import Path
+            recordings_dir = Path("basler_mvc/recordings")
+            
+            all_recordings = self.recording_validator.validate_all_recordings(recordings_dir)
+            
+            # 轉換為字典格式供UI使用
+            results = []
+            for recording in all_recordings:
+                results.append({
+                    'file_name': recording.file_name,
+                    'file_path': recording.file_path,
+                    'fps': recording.fps,
+                    'is_valid_fps': recording.is_valid_fps,
+                    'fps_error_percent': recording.fps_error_percent,
+                    'frame_count': recording.frame_count,
+                    'duration': recording.duration,
+                    'resolution': f"{recording.width}x{recording.height}",
+                    'codec': recording.codec,
+                    'file_size_mb': recording.file_size_mb,
+                    'status': 'valid' if recording.is_valid_fps else 'invalid'
+                })
+            
+            return results
+            
+        except Exception as e:
+            logging.error(f"批量驗證錄製檔案時發生錯誤: {str(e)}")
+            return []
+    
+    def get_recording_quality_summary(self) -> Dict[str, Any]:
+        """獲取錄製品質總結"""
+        try:
+            from pathlib import Path
+            recordings_dir = Path("basler_mvc/recordings")
+            
+            all_recordings = self.recording_validator.validate_all_recordings(recordings_dir)
+            summary = self.recording_validator.get_quality_summary(all_recordings)
+            
+            # 添加詳細分析
+            summary['recommendations'] = []
+            
+            if summary['invalid_fps_files'] > 0:
+                summary['recommendations'].append({
+                    'type': 'warning',
+                    'message': f"發現 {summary['invalid_fps_files']} 個FPS不符合280目標的檔案",
+                    'action': '檢查攝影機設定和系統效能'
+                })
+            
+            if summary['validity_rate'] < 80:
+                summary['recommendations'].append({
+                    'type': 'critical',
+                    'message': f"錄製品質較低 ({summary['validity_rate']:.1f}%)",
+                    'action': '建議檢查整體系統配置'
+                })
+            elif summary['validity_rate'] == 100:
+                summary['recommendations'].append({
+                    'type': 'success',
+                    'message': '所有錄製檔案品質優良',
+                    'action': '繼續保持當前設定'
+                })
+            
+            return summary
+            
+        except Exception as e:
+            logging.error(f"獲取錄製品質總結時發生錯誤: {str(e)}")
+            return {
+                'total_files': 0,
+                'valid_fps_files': 0,
+                'invalid_fps_files': 0,
+                'validity_rate': 0.0,
+                'avg_fps': 0.0,
+                'fps_range': (0.0, 0.0),
+                'recommendations': [{
+                    'type': 'error',
+                    'message': '無法獲取錄製品質資訊',
+                    'action': '檢查錄製目錄是否存在'
+                }]
+            }
+    
+    def quick_fps_check(self, file_path: str) -> Tuple[bool, float]:
+        """快速檢查檔案FPS是否符合280目標"""
+        try:
+            from pathlib import Path
+            return self.recording_validator.quick_fps_check(Path(file_path))
+        except Exception as e:
+            logging.error(f"快速FPS檢查失敗: {str(e)}")
+            return False, 0.0
     
     def get_video_player_status(self) -> dict:
         """獲取視頻播放狀態"""
