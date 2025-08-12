@@ -542,7 +542,7 @@ class DetectionModel:
             # 獲取視頻實際規格
             width = video_info.get('width', 640)
             height = video_info.get('height', 480)
-            fps = video_info.get('fps', 30.0)
+            fps = video_info.get('fps', 206.0)  # 🚀 高速預設值
             codec = video_info.get('codec', 'unknown')
             total_frames = video_info.get('total_frames', 0)
             
@@ -698,10 +698,11 @@ class DetectionModel:
                 # 有檢測結果時才複製和繪製
                 result_frame = self._draw_detections(frame.copy(), objects)
             else:
-                # 無檢測結果時直接在原圖上繪製計數
+                # 無檢測結果時直接返回原圖（不顯示計數）
                 result_frame = frame
-                cv2.putText(result_frame, f'Count: 0', 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                # 移除重複計數顯示，只使用右側面板計數
+                # cv2.putText(result_frame, f'Count: 0', 
+                #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
             # 通知觀察者
             self.notify_observers('detection_completed', {
@@ -736,9 +737,9 @@ class DetectionModel:
                 cv2.putText(frame, f'{int(area)}', 
                            (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
-            # 顯示總數
-            cv2.putText(frame, f'Count: {len(objects)}', 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            # 移除重複計數顯示，只使用右側面板計數
+            # cv2.putText(frame, f'Count: {len(objects)}', 
+            #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
             return frame
             

@@ -38,20 +38,20 @@ class DetectionProcessor:
         # 線程池
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         
-        # 🎯 優化隊列配置：視頻回放模式需要更大的緩衝區
-        self.frame_queue = queue.Queue(maxsize=self.max_workers * 8)  # 增加隊列大小以處理視頻回放
+        # 🎯 記憶體優化：減少隊列大小以降低記憶體占用
+        self.frame_queue = queue.Queue(maxsize=self.max_workers * 2)  # 減小隊列大小節省記憶體
         
         # 結果隊列（UI消費）
-        self.result_queue = queue.Queue(maxsize=50)  # 增加結果隊列大小
+        self.result_queue = queue.Queue(maxsize=20)  # 減小結果隊列大小
         
-        # 同步控制 - 為視頻回放優化
+        # 同步控制 - 記憶體優化
         self.sync_mode = False  # 🎯 預設使用非同步模式，減少阻塞
-        self.processing_semaphore = threading.Semaphore(self.max_workers * 4)  # 增加並發許可數
+        self.processing_semaphore = threading.Semaphore(self.max_workers * 2)  # 減少並發許可數，降低記憶體
         
         # 統計資料
         self.total_frames_processed = 0
         self.total_objects_detected = 0
-        self.processing_times = deque(maxlen=100)
+        self.processing_times = deque(maxlen=50)  # 減少記憶體占用
         self.detection_fps = 0.0
         
         # 控制標誌
@@ -142,7 +142,7 @@ class DetectionProcessor:
         # 等待工作線程結束
         for thread in self.processing_threads:
             if thread.is_alive():
-                thread.join(timeout=1.0)
+                thread.join(timeout=2.0)  # 增加等待時間
                 if thread.is_alive():
                     logging.warning(f"檢測工作線程 {thread.name} 未能及時停止")
         
@@ -153,6 +153,11 @@ class DetectionProcessor:
         
         # 🎯 重置統計數據以防記憶體累積
         self.processing_times.clear()
+        
+        # 🧹 強制記憶體清理
+        import gc
+        gc.collect()
+        logging.debug("🧹 執行記憶體垃圾回收")
         
         logging.info("✅ 檢測處理器已安全停止")
     

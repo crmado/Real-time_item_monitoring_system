@@ -821,10 +821,10 @@ class BaslerCameraModel:
                 camera_fps = configured_fps
                 fps_source = "相機配置"
             else:
-                # 最後使用安全預設值
-                camera_fps = 30.0
-                fps_source = "安全預設"
-                logging.warning("⚠️ 無法獲取相機實際或配置FPS，使用安全預設值")
+                # 最後使用高速預設值
+                camera_fps = 206.0  # 🚀 acA640-300gm 典型高速預設
+                fps_source = "高速預設"
+                logging.warning("⚠️ 無法獲取相機實際或配置FPS，使用高速預設值")
         
         logging.info(f"📷 相機錄製使用幀率: {camera_fps:.1f} fps (來源: {fps_source})")
         

@@ -23,7 +23,7 @@ class VideoRecorderModel:
         
         # 錄製參數
         self.output_path = Path("recordings")
-        self.fps = 30  # 預設FPS（將從相機動態獲取實際配置）
+        self.fps = 206  # 🚀 高速預設FPS（將從相機動態獲取實際配置）
         self.camera_configured_fps = None  # 儲存相機配置的FPS
         
         # 🔧 使用更可靠的編碼器 - MP4V 比 XVID 更通用

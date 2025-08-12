@@ -41,8 +41,8 @@ class MainController:
         # 🎯 錄製驗證器（280 FPS品質檢查）
         self.recording_validator = RecordingValidator(expected_fps=280, tolerance_percent=5.0)
         
-        # 🔍 記憶體監控器
-        self.memory_monitor = MemoryMonitor(check_interval=30.0, memory_limit_mb=512.0)
+        # 🔍 記憶體監控器 - 提高限制以減少警告
+        self.memory_monitor = MemoryMonitor(check_interval=30.0, memory_limit_mb=768.0)
         
         # 設置記憶體警告回調
         self.memory_monitor.set_warning_callback(self._on_memory_warning)
@@ -65,6 +65,12 @@ class MainController:
         self.processing_start_time = None
         self.frame_times = deque(maxlen=100)
         
+        # 🎯 包裝計數系統
+        self.total_detected_count = 0     # 當前計數：該影像啟動檢測後的所有檢測到的總合
+        self.current_segment_count = 0    # 目前計數：每一段的數量
+        self.package_count = 0            # 包裝數：每滿100就+1
+        self.segment_target = 100         # 每段目標數量
+        
         # 觀察者（Views）
         self.view_observers = []
         
@@ -82,6 +88,33 @@ class MainController:
         self.memory_monitor.start_monitoring()
         
         logging.info("主控制器初始化完成")
+    
+    def _update_package_counting(self, crossing_count: int):
+        """更新包裝計數系統"""
+        try:
+            # 🎯 修正邏輯：當前計數(總累計) = 目前計數(當前段) = 實際檢測數量
+            self.total_detected_count = crossing_count      # 當前計數(總累計)
+            self.current_segment_count = crossing_count     # 目前計數(當前段) - 應該一樣
+            
+            # 計算包裝數（每滿100包裝數+1）
+            new_package_count = crossing_count // self.segment_target
+            
+            # 檢查是否需要增加包裝數
+            if new_package_count > self.package_count:
+                self.package_count = new_package_count
+                # 🚀🚀 206fps模式：最小化日誌輸出
+                if self.package_count % 10 == 1:  # 極少數日誌，只在關鍵里程碑
+                    logging.info(f"📦 包裝數: {self.package_count}")
+                
+        except Exception as e:
+            logging.error(f"包裝計數更新錯誤: {str(e)}")
+    
+    def reset_package_counting(self):
+        """重置包裝計數系統"""
+        self.total_detected_count = 0
+        self.current_segment_count = 0
+        self.package_count = 0
+        logging.info("🔄 包裝計數系統已重置")
     
     def add_view_observer(self, observer: Callable):
         """添加視圖觀察者"""
@@ -506,7 +539,32 @@ class MainController:
     
     def load_video(self, video_path: str) -> bool:
         """加載視頻用於回放"""
-        return self.video_player.load_video(video_path)
+        success = self.video_player.load_video(video_path)
+        
+        if success:
+            # 🚀 啟用高速檢測模式：盡快處理所有幀，不等待時間同步
+            self.video_player.set_high_speed_detection_mode(True)
+            
+            # 🎯 設定檢測模型的影片信息，用於中間段照片保存
+            video_info = self.video_player.video_info
+            total_frames = video_info.get('total_frames', 0)
+            fps = video_info.get('fps', 206)
+            
+            # 🚀🚀 206fps模式：簡化載入日誌
+            logging.info(f"🎥 {total_frames}幀, {fps}fps - 高速模式")
+            
+            # 如果使用background檢測方法，設定影片信息
+            if (hasattr(self.detection_model, 'method_name') and 
+                self.detection_model.method_name == 'background'):
+                try:
+                    current_method = self.detection_model.current_method
+                    if hasattr(current_method, 'set_video_info'):
+                        current_method.set_video_info(total_frames, fps)
+                        logging.info(f"📸 已設定影片信息用於中間段保存: {total_frames}幀, {fps:.1f}FPS")
+                except Exception as e:
+                    logging.warning(f"設定檢測模型影片信息失敗: {str(e)}")
+        
+        return success
     
     def set_playback_file(self, file_path: str) -> bool:
         """設置回放檔案路徑"""
@@ -912,7 +970,7 @@ class MainController:
                     # 第一次獲取失敗時的診斷日誌
                     if self.total_processed_frames == 0:
                         logging.warning("處理循環：等待第一幀")
-                    time.sleep(0.005)  # 🚀 減少延遲50%
+                    pass  # 🚀🚀 206fps模式：移除所有延遲
                     continue
                 
                 # 執行檢測
@@ -935,14 +993,11 @@ class MainController:
                         while len(self.frame_times) > 100:
                             self.frame_times.pop(0)
                 
-                # 🚀 極速模式：降低通知頻率提升性能
-                should_notify = (
-                    self.total_processed_frames == 1 or  # 第一幀
-                    self.total_processed_frames % 5 == 0  # 每5幀通知一次（大幅減少UI更新）
-                )
+                # 🚀🚀 真實206fps模式：移除所有人工限制
+                should_notify = True  # 每幀都通知，不限制更新頻率
                 
                 if should_notify:
-                    # 🎯 雙計數系統：檢測物件數量 + ROI穿越計數
+                    # 🎯 包裝計數系統：檢測物件數量 + ROI穿越計數 + 包裝邏輯
                     frame_object_count = len(objects)  # 每幀檢測物件數
                     total_crossing_count = 0  # 累加穿越計數
                     
@@ -953,6 +1008,10 @@ class MainController:
                             current_method = self.detection_model.current_method
                             if hasattr(current_method, 'get_crossing_count'):
                                 total_crossing_count = current_method.get_crossing_count()
+                                
+                                # 🎯 更新包裝計數系統
+                                self._update_package_counting(total_crossing_count)
+                                
                         except Exception as count_error:
                             logging.debug(f"獲取穿越計數錯誤: {str(count_error)}")
                     
@@ -961,6 +1020,9 @@ class MainController:
                         'objects': objects,
                         'object_count': frame_object_count,  # 右側面板顯示每幀物件數
                         'crossing_count': total_crossing_count,  # 影像中顯示累加計數
+                        'total_detected_count': self.total_detected_count,  # 當前計數：總累計
+                        'current_segment_count': self.current_segment_count,  # 目前計數：當前段數量
+                        'package_count': self.package_count,  # 包裝數
                         'processing_fps': self.processing_fps,
                         'detection_fps': getattr(self.detection_model, 'detection_fps', 0),
                         'method_name': getattr(self.detection_model, 'method_name', 'unknown')
@@ -975,7 +1037,7 @@ class MainController:
                 
             except Exception as e:
                 logging.error(f"處理循環錯誤: {str(e)}")
-                time.sleep(0.001)  # 🚀 錯誤時最小延遲
+                pass  # 🚀🚀 206fps模式：移除錯誤延遲
     
     # ==================== 系統控制 ====================
     
@@ -1386,6 +1448,79 @@ class MainController:
             logging.info("控制器資源清理完成")
         except Exception as e:
             logging.error(f"清理資源錯誤: {str(e)}")
+    
+    # ==================== 調試分析功能 ====================
+    
+    def enable_debug_image_save(self, enabled: bool = True):
+        """啟用或禁用調試圖片保存功能"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'enable_debug_save'):
+                detection_method.enable_debug_save(enabled)
+                
+                action = "啟用" if enabled else "禁用"
+                self.notify_views('debug_save_status', {
+                    'enabled': enabled,
+                    'message': f"調試圖片保存已{action}"
+                })
+                
+                logging.info(f"📸 調試圖片保存已{action}")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援調試圖片保存")
+                return False
+                
+        except Exception as e:
+            logging.error(f"設置調試圖片保存錯誤: {str(e)}")
+            return False
+    
+    def get_debug_status(self) -> Dict[str, Any]:
+        """獲取調試狀態信息"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'get_debug_info'):
+                return detection_method.get_debug_info()
+            else:
+                return {
+                    'debug_enabled': False,
+                    'frames_saved': 0,
+                    'max_frames': 0,
+                    'save_directory': '',
+                    'error': '當前檢測方法不支援調試功能'
+                }
+        except Exception as e:
+            logging.error(f"獲取調試狀態錯誤: {str(e)}")
+            return {'error': str(e)}
+    
+    def clear_debug_images(self):
+        """清理調試圖片"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, '_cleanup_debug_folder'):
+                detection_method._cleanup_debug_folder()
+                logging.info("🗑️ 調試圖片已清理")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援調試圖片清理")
+                return False
+        except Exception as e:
+            logging.error(f"清理調試圖片錯誤: {str(e)}")
+            return False
+    
+    def trigger_manual_debug_save(self):
+        """手動觸發調試圖片保存 - 用於捕捉特定畫面"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'trigger_manual_save'):
+                detection_method.trigger_manual_save()
+                logging.info("🔧 手動觸發調試保存")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援手動觸發保存")
+                return False
+        except Exception as e:
+            logging.error(f"手動觸發調試保存錯誤: {str(e)}")
+            return False
     
     def __del__(self):
         """析構函數 - 安全版本"""

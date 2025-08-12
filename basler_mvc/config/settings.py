@@ -71,7 +71,7 @@ PERFORMANCE_CONFIG = {
     'max_processing_queue_size': 10,
     
     # 顯示設置
-    'ui_update_fps': 30,  # UI 更新頻率
+    'ui_update_fps': 120,  # 🚀 UI 更新頻率 (大幅提升)
     'frame_skip_ratio': 4,  # 顯示時跳幀比例
     'auto_resize_display': True,
     'max_display_width': 800,
@@ -144,7 +144,7 @@ PATHS = {
 DEV_CONFIG = {
     'debug_mode': False,
     'enable_test_camera': False,  # 是否啟用測試相機（無實體設備時）
-    'mock_frame_rate': 30,  # 測試相機幀率
+    'mock_frame_rate': 206,  # 🚀 測試相機高速幀率
     'enable_detailed_logging': False,
     'log_frame_processing': False
 }
@@ -161,8 +161,8 @@ def validate_config() -> bool:
                 return False
         
         # 檢查數值範圍
-        if not (1 <= PERFORMANCE_CONFIG['ui_update_fps'] <= 60):
-            print("❌ UI更新頻率超出範圍 (1-60)")
+        if not (1 <= PERFORMANCE_CONFIG['ui_update_fps'] <= 240):
+            print("❌ UI更新頻率超出範圍 (1-240)")
             return False
             
         if not (100 <= CAMERA_CONFIG['target_fps'] <= 400):

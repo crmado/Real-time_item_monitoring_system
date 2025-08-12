@@ -28,6 +28,7 @@ class VideoPlayerModel:
         self.fps = None  # 🔧 修正：不設預設值，完全依賴視頻實際FPS
         self.original_fps = None  # 🎯 新增：保存原始視頻FPS
         self.playback_speed = 1.0  # 播放速度倍數
+        self.high_speed_detection_mode = True  # 🚀 高速檢測模式：跳過時間同步，盡快處理所有幀
         
         # 當前加載的視頻
         self.current_video_path = None
@@ -114,11 +115,11 @@ class VideoPlayerModel:
                         self.fps = float(fps_match.group(1))
                         logging.info(f"🔍 從檔名推測FPS: {self.fps}")
                     else:
-                        self.fps = 25.0  # 最終預設值
-                        logging.warning(f"⚠️ 使用預設FPS: {self.fps}")
+                        self.fps = 206.0  # 🚀 高速預設值
+                        logging.warning(f"⚠️ 使用高速預設FPS: {self.fps}")
                 else:
-                    self.fps = 25.0  # 最終預設值
-                    logging.warning(f"⚠️ 使用預設FPS: {self.fps}")
+                    self.fps = 206.0  # 🚀 高速預設值
+                    logging.warning(f"⚠️ 使用高速預設FPS: {self.fps}")
             else:
                 self.fps = detected_fps
                 logging.info(f"✅ 使用視頻實際FPS: {self.fps:.2f}")
@@ -253,16 +254,19 @@ class VideoPlayerModel:
                 playback_start_time = time.time() - (self.current_frame_number / self.fps)
                 continue
             
-            # 計算當前應該播放的視頻時間點
-            current_video_time = self.current_frame_number / self.fps if self.fps > 0 else 0
-            target_real_time = playback_start_time + (current_video_time / self.playback_speed)
-            current_real_time = time.time()
-            
-            # 🚀 關鍵：等待直到實際時間達到視頻時間點
-            if current_real_time < target_real_time:
-                wait_time = target_real_time - current_real_time
-                if wait_time > 0:
-                    time.sleep(wait_time)
+            # 🚀 高速檢測模式：跳過時間同步，盡快處理所有幀
+            if not self.high_speed_detection_mode:
+                # 正常播放模式：按影片時間線播放
+                current_video_time = self.current_frame_number / self.fps if self.fps > 0 else 0
+                target_real_time = playback_start_time + (current_video_time / self.playback_speed)
+                current_real_time = time.time()
+                
+                # 等待直到實際時間達到視頻時間點
+                if current_real_time < target_real_time:
+                    wait_time = target_real_time - current_real_time
+                    if wait_time > 0:
+                        time.sleep(wait_time)
+            # 高速檢測模式：不等待，直接處理下一幀
             
             # 讀取下一幀
             ret, frame = self.video_capture.read()
@@ -313,14 +317,12 @@ class VideoPlayerModel:
             # 🎯 發送幀給檢測處理器（同步模式下會等待處理完成）
             self.notify_observers('frame_ready', frame_data)
             
-            # 每50幀記錄一次時間同步狀態
-            if self.current_frame_number % 50 == 0:
+            # 🚀🚀 206fps模式：大幅減少時間同步日誌
+            if self.current_frame_number % 1000 == 0:  # 每1000幀才記錄一次
                 sync_error_ms = frame_data['time_sync_error'] * 1000
-                logging.debug(f"幀 {self.current_frame_number}/{self.total_frames}: 時間同步誤差 {sync_error_ms:.1f}ms")
-                
-                # 如果時間誤差過大，發出警告
-                if sync_error_ms > 100:  # 超過100ms
-                    logging.warning(f"時間同步誤差過大: {sync_error_ms:.1f}ms")
+                # 只在高速檢測模式下且誤差極大時才警告
+                if self.high_speed_detection_mode and sync_error_ms > 50000:  # 50秒才警告
+                    logging.debug(f"幀{self.current_frame_number}: {sync_error_ms:.0f}ms")
     
     def _wait_for_processor_ready(self):
         """等待檢測處理器準備好 - 簡化版本"""
@@ -389,6 +391,17 @@ class VideoPlayerModel:
             'playback_speed': self.playback_speed
         })
     
+    def set_high_speed_detection_mode(self, enable: bool):
+        """🚀 設置高速檢測模式 - 盡快處理所有幀，不等待時間同步"""
+        self.high_speed_detection_mode = enable
+        mode_text = "高速檢測" if enable else "正常播放"
+        logging.info(f"🎯 播放模式切換為: {mode_text}模式")
+        
+        self.notify_observers('detection_mode_changed', {
+            'high_speed_detection_mode': self.high_speed_detection_mode,
+            'mode_description': mode_text
+        })
+    
     def set_loop_playback(self, enable: bool):
         """設置循環播放"""
         self.loop_playback = enable
@@ -413,8 +426,11 @@ class VideoPlayerModel:
     def get_playback_status(self) -> dict:
         """獲取播放狀態 - 時間軸版本"""
         progress = self.current_frame_number / self.total_frames if self.total_frames > 0 else 0
-        video_duration = self.total_frames / self.fps if self.fps > 0 else 0
-        current_time = self.current_frame_number / self.fps if self.fps > 0 else 0
+        
+        # 🚀 修正FPS限制問題 - 使用高速預設值
+        effective_fps = self.fps if (self.fps and self.fps > 0) else 206.0  # 預設206fps (acA640-300gm典型值)
+        video_duration = self.total_frames / effective_fps if self.total_frames > 0 else 0
+        current_time = self.current_frame_number / effective_fps if self.current_frame_number > 0 else 0
         
         return {
             'is_playing': self.is_playing,
@@ -427,7 +443,10 @@ class VideoPlayerModel:
             'playback_speed': self.playback_speed,
             'loop_playback': self.loop_playback,
             'video_info': self.video_info,
-            # 🎯 新增時間軸相關信息
+            # 🚀 高速檢測模式信息
+            'high_speed_detection_mode': self.high_speed_detection_mode,
+            'mode_description': "高速檢測" if self.high_speed_detection_mode else "正常播放",
+            # 🎯 時間軸相關信息
             'video_duration': video_duration,      # 視頻總時長（秒）
             'current_time': current_time,          # 當前播放時間（秒）
             'remaining_time': max(0, video_duration - current_time),  # 剩餘時間（秒）

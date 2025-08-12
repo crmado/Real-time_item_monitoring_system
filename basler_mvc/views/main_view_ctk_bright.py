@@ -94,6 +94,11 @@ class MainView:
         self.camera_info_var = tk.StringVar(value="相機: 未連接")
         self.method_var = tk.StringVar(value="background")
         
+        # 🎯 包裝計數系統變量
+        self.total_count_var = tk.StringVar(value="0")      # 當前計數：總累計
+        self.segment_count_var = tk.StringVar(value="0")    # 目前計數：當前段
+        self.package_count_var = tk.StringVar(value="0")    # 包裝數
+        
         # FPS刷新控制
         self.last_fps_update = 0
         self.fps_update_interval = 1.0  # 1秒更新一次
@@ -807,21 +812,44 @@ class MainView:
             text_color=ColorScheme.TEXT_ACCENT
         ).pack(pady=(15, 10))
         
+        # 🎯 包裝計數系統顯示
+        package_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_ACCENT)
+        package_frame.pack(fill="x", padx=12, pady=(0, 10))
+        
+        # 包裝數顯示
+        package_header_frame = ctk.CTkFrame(package_frame, fg_color="transparent")
+        package_header_frame.pack(fill="x", pady=(10, 5))
+        
+        ctk.CTkLabel(
+            package_header_frame,
+            text="📦 包裝數:",
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color=ColorScheme.TEXT_PRIMARY
+        ).pack(side="left", padx=(15, 5))
+        
+        self.package_count_label = ctk.CTkLabel(
+            package_header_frame,
+            textvariable=self.package_count_var,
+            font=ctk.CTkFont(size=FontSizes.LARGE, weight="bold"),
+            text_color=ColorScheme.SUCCESS_GREEN
+        )
+        self.package_count_label.pack(side="left")
+        
         # 當前計數顯示
         count_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_ACCENT)
-        count_frame.pack(fill="x", padx=12, pady=(0, 15))
+        count_frame.pack(fill="x", padx=12, pady=(0, 10))
         
         ctk.CTkLabel(
             count_frame, 
-            text="當前計數", 
+            text="📊 檢測計數", 
             font=ctk.CTkFont(size=FontSizes.SUBTITLE, weight="bold"),
             text_color=ColorScheme.TEXT_PRIMARY
         ).pack(pady=(15, 5))
         
-        # 超大數字顯示
+        # 超大數字顯示 - 顯示檢測計數（總累計與當前段一致）
         self.count_label = ctk.CTkLabel(
             count_frame,
-            textvariable=self.object_count_var,
+            textvariable=self.segment_count_var,
             font=ctk.CTkFont(size=FontSizes.HUGE, weight="bold"),
             text_color=ColorScheme.PRIMARY_BLUE
         )
@@ -1423,8 +1451,16 @@ class MainView:
                     detection_method.reset_crossing_count()
                     logging.info("🔄 穿越計數已重置")
                     
+                    # 🎯 重置包裝計數系統
+                    if hasattr(self.controller, 'reset_package_counting'):
+                        self.controller.reset_package_counting()
+                    
                     # 🎯 立即同步重置界面顯示
                     self.object_count_var.set("000")
+                    self.total_count_var.set("0")
+                    self.segment_count_var.set("000")
+                    self.package_count_var.set("0")
+                    
                     if hasattr(self, 'object_count_status'):
                         self.object_count_status.configure(text="物件: 0")
                     if hasattr(self, 'progress_bar'):
@@ -1892,11 +1928,12 @@ class MainView:
                         cv2.putText(frame, f"ROI ({roi_height}px)", (10, roi_y - 10), 
                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                         
-                        # 在影像中顯示累加的穿越計數（黃色）
-                        if hasattr(detection_method, 'get_crossing_count'):
-                            count = detection_method.get_crossing_count()
-                            cv2.putText(frame, f"Count: {count:03d}", (10, 40), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                        # 移除重複的影像計數顯示，只使用右側面板計數
+                        # 注釋掉重複的黃色計數顯示
+                        # if hasattr(detection_method, 'get_crossing_count'):
+                        #     count = detection_method.get_crossing_count()
+                        #     cv2.putText(frame, f"Count: {count:03d}", (10, 40), 
+                        #               cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
                         
                 except Exception as roi_error:
                     logging.debug(f"ROI繪製錯誤: {str(roi_error)}")
@@ -1924,16 +1961,24 @@ class MainView:
                 if data and 'frame' in data:
                     self.update_frame(data['frame'])
                     
-                # 🎯 雙計數系統更新
-                if 'object_count' in data:
-                    # 右側面板顯示每幀檢測物件數
-                    frame_count = data['object_count']
-                    self.object_count_var.set(f"{frame_count:03d}")
-                    self.object_count_status.configure(text=f"物件: {frame_count}")
-                
-                # 使用穿越計數作為總計數（用於批次記錄和進度）
+                # 🎯 包裝計數系統顯示邏輯
                 if 'crossing_count' in data:
+                    # background方法：使用穿越計數作為主要顯示
                     crossing_count = data['crossing_count']
+                    
+                    # 🎯 更新包裝計數系統顯示 - 確保總累計與當前段顯示一致
+                    if 'current_segment_count' in data:
+                        count_value = data['current_segment_count']
+                        # 兩個計數顯示相同的值，使用相同格式
+                        self.total_count_var.set(f"{count_value:03d}")
+                        self.segment_count_var.set(f"{count_value:03d}")
+                    
+                    if 'package_count' in data:
+                        self.package_count_var.set(str(data['package_count']))
+                    
+                    # 右側面板顯示累積的穿越計數（保持相容性）
+                    self.object_count_var.set(f"{crossing_count:03d}")
+                    self.object_count_status.configure(text=f"累積: {crossing_count}")
                     
                     # 更新總計數（用於批次記錄）
                     if hasattr(self, 'is_calculating') and self.is_calculating:
@@ -1942,9 +1987,21 @@ class MainView:
                     # 使用穿越計數更新進度條
                     target = self.target_count_var.get()
                     if target > 0:
+                        # 🔧 修正：進度條不應超過100%，但計數可以繼續
                         progress = min(crossing_count / target, 1.0)
                         self.progress_bar.set(progress)
-                        self.progress_label.configure(text=f"{crossing_count} / {target}")
+                        
+                        # 🎯 顯示實際計數，但標記超出狀態
+                        if crossing_count > target:
+                            self.progress_label.configure(
+                                text=f"{crossing_count} / {target} (超出)", 
+                                text_color=ColorScheme.ERROR_RED
+                            )
+                        else:
+                            self.progress_label.configure(
+                                text=f"{crossing_count} / {target}",
+                                text_color=ColorScheme.TEXT_PRIMARY
+                            )
                         
                         # 🌀 自適應震動頻率調整（基於穿越計數）
                         if hasattr(self, 'is_calculating') and self.is_calculating:
@@ -1957,28 +2014,32 @@ class MainView:
                                     # 達到目標，完成本輪
                                     self.complete_current_round()
                 
-                # 🎯 對於非background方法，使用object_count進行進度更新
-                elif 'object_count' in data and 'crossing_count' not in data:
-                    count = data['object_count']
+                elif 'object_count' in data:
+                    # 其他方法：使用每幀檢測數
+                    frame_count = data['object_count']
+                    
+                    # 右側面板顯示每幀檢測數
+                    self.object_count_var.set(f"{frame_count:03d}")
+                    self.object_count_status.configure(text=f"物件: {frame_count}")
                     
                     # 更新總計數（用於批次記錄）
                     if hasattr(self, 'is_calculating') and self.is_calculating:
-                        self.total_count = count
+                        self.total_count = frame_count
                     
                     target = self.target_count_var.get()
                     if target > 0:
-                        progress = min(count / target, 1.0)
+                        progress = min(frame_count / target, 1.0)
                         self.progress_bar.set(progress)
-                        self.progress_label.configure(text=f"{count} / {target}")
+                        self.progress_label.configure(text=f"{frame_count} / {target}")
                         
                         # 🌀 自適應震動頻率調整
                         if hasattr(self, 'is_calculating') and self.is_calculating:
-                            self.adjust_vibration_frequency(target, count)
+                            self.adjust_vibration_frequency(target, frame_count)
                             
                             # 檢查是否接近目標數量，準備停止或進入下一輪
-                            if count >= target * 0.95:  # 達到95%時開始準備
-                                logging.info(f"📊 接近目標數量 ({count}/{target})，準備完成本輪")
-                                if count >= target:
+                            if frame_count >= target * 0.95:  # 達到95%時開始準備
+                                logging.info(f"📊 接近目標數量 ({frame_count}/{target})，準備完成本輪")
+                                if frame_count >= target:
                                     # 達到目標，完成本輪
                                     self.complete_current_round()
                 
