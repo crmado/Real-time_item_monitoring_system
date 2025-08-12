@@ -19,8 +19,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
     
     def __init__(self):
         """初始化背景減除檢測"""
-        # 🎯 小零件檢測優化 - 降低面積限制以捕獲更小零件
-        self.min_area = 5    # 🔍 降低以檢測更小零件 (原12→5)
+        # 🎯 小零件檢測優化 - 極低面積限制以捕獲微小零件
+        self.min_area = 2    # 🔍 極低門檻檢測微小零件 (5→2)
         self.max_area = 1000 # 適中上限
         
         # 物件形狀過濾參數 - 使用調試工具中成功的寬鬆參數
@@ -40,10 +40,10 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.canny_high_threshold = 80       # 適中設定
         self.binary_threshold = 15           # 適度提高，過濾弱訊號
         
-        # 🎯 平衡性能的形態學處理參數 - 減少計算負荷
-        self.dilate_kernel_size = (3, 3)    # 適中核大小
-        self.dilate_iterations = 2           # 減少迭代，提高性能
-        self.close_kernel_size = (5, 5)     # 適中核大小
+        # 🔍 優化物件分離 - 減少粘連問題
+        self.dilate_kernel_size = (2, 2)    # 🔧 縮小核，減少物件擴張 (3→2)
+        self.dilate_iterations = 1           # 🔧 減少迭代，避免過度膨脹 (2→1)
+        self.close_kernel_size = (3, 3)     # 🔧 縮小核，減少物件連接 (5→3)
         
         # 連通組件參數
         self.connectivity = 4  # 4-連通或8-連通
@@ -229,9 +229,17 @@ class BackgroundSubtractionDetection(DetectionMethod):
             
             current_objects = []
             
+            # 🔍 調試：記錄總組件數
+            if self.current_frame_count % 20 == 0:  # 每20幀記錄一次
+                logging.debug(f"總連通組件數: {num_labels-1}, 面積範圍: {min_a}-{max_a}")
+            
             # 遍歷所有連通組件 (跳過背景，從1開始)
             for i in range(1, num_labels):
                 area = stats[i, cv2.CC_STAT_AREA]
+                
+                # 🔍 調試：記錄面積過濾
+                if self.current_frame_count % 20 == 0 and i <= 3:  # 每20幀記錄前3個組件
+                    logging.debug(f"組件{i}: 面積={area}, 是否通過面積過濾={min_a < area < max_a}")
                 
                 # 面積篩選
                 if min_a < area < max_a:
@@ -265,12 +273,16 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     except:
                         solidity = 1.0  # 錯誤時給予預設值
                     
-                    # 🚀 嚴格的形狀過濾條件
+                    # 🔍 放寬形狀過濾 - 優先檢測，減少遺漏
                     shape_valid = (
-                        self.min_aspect_ratio <= aspect_ratio <= self.max_aspect_ratio and
-                        extent >= self.min_extent and
-                        solidity <= self.max_solidity
+                        aspect_ratio > 0.05 and  # 極寬鬆長寬比 (0.1→0.05)
+                        extent > 0.005 and       # 極寬鬆填充比例 (0.01→0.005)  
+                        solidity <= 1.2          # 放寬結實性 (1.1→1.2)
                     )
+                    
+                    # 🔍 調試信息：記錄被過濾的物件 (每10幀記錄一次)
+                    if not shape_valid and self.current_frame_count % 10 == 0:
+                        logging.debug(f"物件被過濾: 面積={area}, 長寬比={aspect_ratio:.3f}, 填充比例={extent:.3f}, 結實性={solidity:.3f}")
                     
                     if shape_valid:
                         # 獲取質心 (ROI座標)
@@ -289,6 +301,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
             
             # 🎯 執行物件追蹤和穿越計數 (參考 partsCounts_v1.py)
             if self.enable_crossing_count:
+                # 🔍 調試：記錄追蹤狀態 (每20幀記錄一次)
+                if self.current_frame_count % 20 == 0:
+                    logging.debug(f"🔍 開始追蹤: 檢測物件數={len(current_objects)}, 啟用計數={self.enable_crossing_count}")
                 self._update_object_tracking(current_objects)
             
             # 💾 保存檢測結果供調試使用
@@ -339,7 +354,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # if self.debug_frame_counter % 10 == 0:  # 已禁用
             #     gc.collect()  # 已禁用
             
-            # 🎯 專注於核心檢測，已移除統計功能
+            # 🔍 調試：記錄檢測結果
+            if self.current_frame_count % 20 == 0:  # 每20幀記錄一次
+                logging.debug(f"最終檢測到物件數: {len(current_objects)}")
             
             return current_objects
             
@@ -412,6 +429,10 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         'min_y': cy
                     }
             
+            # 🔍 調試：記錄軌跡狀態 (每20幀記錄一次)
+            if self.current_frame_count % 20 == 0:
+                logging.debug(f"🎯 軌跡狀態: 總軌跡數={len(new_tracks)}, 當前穿越計數={self.crossing_counter}")
+            
             # 🎯 簡化高效穿越計數邏輯 - 提升檢測速度
             for track_id, track in new_tracks.items():
                 if not track['counted'] and track['in_roi_frames'] >= self.min_track_frames:
@@ -421,11 +442,15 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     # 檢查是否為重複計數（簡化版）
                     is_duplicate = self._check_duplicate_detection_simple(track)
                     
-                    # 🚀 極簡計數邏輯：在ROI中檢測到 + 有基本移動 + 非重複
+                    # 🎯 小零件掉落優化：降低移動要求，適合快速掉落
                     valid_crossing = (
-                        y_travel >= 5 and  # 基本的Y軸移動（5像素）
+                        y_travel >= 1 and  # 🔧 極低移動要求（5→1像素）
                         not is_duplicate   # 非重複檢測
                     )
+                    
+                    # 🔍 調試：記錄計數邏輯 (每10幀記錄一次)
+                    if self.current_frame_count % 10 == 0 and track_id in list(new_tracks.keys())[:2]:
+                        logging.debug(f"物件{track_id}: Y移動={y_travel}px, 重複={is_duplicate}, 在ROI幀數={track['in_roi_frames']}, 有效穿越={valid_crossing}")
                     
                     if valid_crossing:
                         # 記錄到歷史中防止重複
@@ -434,9 +459,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         self.crossing_counter += 1
                         track['counted'] = True
                         
-                        # 🚀🚀 206fps模式：移除計數日誌以提升性能
-                        # if self.crossing_counter % 10 == 0:  # 已禁用
-                        #     logging.debug(f"✅ 計數檢查點 #{self.crossing_counter}")  # 已禁用
+                        # 🔍 重要：記錄每次成功計數 (性能影響小但很重要)
+                        logging.info(f"✅ 成功計數 #{self.crossing_counter} - 物件{track_id} (Y移動: {y_travel}px)")
             
             # 清理過期的追蹤 (生命週期管理)
             current_time = self.current_frame_count

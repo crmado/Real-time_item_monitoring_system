@@ -1476,23 +1476,40 @@ class MainView:
             logging.error(f"重置計數錯誤: {str(e)}")
     
     def sync_count_display(self):
-        """同步計數顯示 - 確保進度條與累加計數一致"""
+        """同步計數顯示 - 確保進度條與累加計數一致（所有檢測方法）"""
         try:
-            if self.method_var.get() == "background":
+            current_method = self.method_var.get()
+            
+            # 🔧 關鍵修正：處理所有檢測方法，避免進度條跳動
+            if current_method == "background":
+                # Background 方法：使用穿越計數
                 detection_method = self.controller.detection_model.current_method
                 if hasattr(detection_method, 'get_crossing_count'):
                     crossing_count = detection_method.get_crossing_count()
                     
-                    # 只同步進度條（累加計數），不更新右側面板的每幀計數
                     target = self.target_count_var.get()
                     if target > 0:
                         progress = min(crossing_count / target, 1.0)
                         if hasattr(self, 'progress_bar'):
                             self.progress_bar.set(progress)
                         if hasattr(self, 'progress_label'):
-                            self.progress_label.configure(text=f"{crossing_count} / {target}")
+                            # 🎯 統一顯示格式
+                            if crossing_count > target:
+                                self.progress_label.configure(
+                                    text=f"{crossing_count} / {target} (超出)",
+                                    text_color=ColorScheme.ERROR_RED
+                                )
+                            else:
+                                self.progress_label.configure(
+                                    text=f"{crossing_count} / {target}",
+                                    text_color=ColorScheme.TEXT_PRIMARY
+                                )
                     
-                    logging.debug(f"🔄 累加計數同步: {crossing_count}")
+                    logging.debug(f"🔄 Background累加計數同步: {crossing_count}")
+            else:
+                # 🎯 其他方法：保持當前進度條狀態，不重置
+                # 避免每2秒重置進度條，讓 on_frame_processed 正常更新
+                logging.debug(f"🔄 {current_method}方法：保持當前進度條狀態")
                     
         except Exception as e:
             logging.error(f"同步計數顯示錯誤: {str(e)}")
@@ -1976,70 +1993,74 @@ class MainView:
                     if 'package_count' in data:
                         self.package_count_var.set(str(data['package_count']))
                     
-                    # 右側面板顯示累積的穿越計數（保持相容性）
-                    self.object_count_var.set(f"{crossing_count:03d}")
-                    self.object_count_status.configure(text=f"累積: {crossing_count}")
+                    # 🔍 強制顯示實時檢測數 + 累積穿越數
+                    frame_objects = data.get('object_count', 0)  # 每幀檢測數
+                    objects_list = data.get('objects', [])       # 檢測物件列表
+                    real_count = max(frame_objects, len(objects_list))  # 確保計數正確
+                    
+                    self.object_count_var.set(f"{real_count:03d}")
+                    self.object_count_status.configure(text=f"🔍檢測: {real_count} | 📊累積: {crossing_count}")
+                    
+                    # 🔍 調試：每10幀記錄一次實時數據
+                    if hasattr(self, '_debug_counter'):
+                        self._debug_counter += 1
+                    else:
+                        self._debug_counter = 1
+                    
+                    if self._debug_counter % 10 == 0:
+                        logging.debug(f"UI更新: 檢測={real_count}, 累積={crossing_count}, 原始objects={len(objects_list)}")
                     
                     # 更新總計數（用於批次記錄）
                     if hasattr(self, 'is_calculating') and self.is_calculating:
                         self.total_count = crossing_count
                     
-                    # 使用穿越計數更新進度條
-                    target = self.target_count_var.get()
-                    if target > 0:
-                        # 🔧 修正：進度條不應超過100%，但計數可以繼續
-                        progress = min(crossing_count / target, 1.0)
-                        self.progress_bar.set(progress)
-                        
-                        # 🎯 顯示實際計數，但標記超出狀態
-                        if crossing_count > target:
-                            self.progress_label.configure(
-                                text=f"{crossing_count} / {target} (超出)", 
-                                text_color=ColorScheme.ERROR_RED
-                            )
-                        else:
-                            self.progress_label.configure(
-                                text=f"{crossing_count} / {target}",
-                                text_color=ColorScheme.TEXT_PRIMARY
-                            )
-                        
-                        # 🌀 自適應震動頻率調整（基於穿越計數）
-                        if hasattr(self, 'is_calculating') and self.is_calculating:
-                            self.adjust_vibration_frequency(target, crossing_count)
-                            
-                            # 檢查是否接近目標數量，準備停止或進入下一輪
-                            if crossing_count >= target * 0.95:  # 達到95%時開始準備
-                                logging.info(f"📊 接近目標數量 ({crossing_count}/{target})，準備完成本輪")
-                                if crossing_count >= target:
-                                    # 達到目標，完成本輪
-                                    self.complete_current_round()
+                    # 🔧 進度條更新已移至統一邏輯處理，避免重複更新
                 
                 elif 'object_count' in data:
-                    # 其他方法：使用每幀檢測數
+                    # 🎯 只更新右側面板顯示，不影響進度條
                     frame_count = data['object_count']
                     
                     # 右側面板顯示每幀檢測數
                     self.object_count_var.set(f"{frame_count:03d}")
                     self.object_count_status.configure(text=f"物件: {frame_count}")
-                    
-                    # 更新總計數（用於批次記錄）
-                    if hasattr(self, 'is_calculating') and self.is_calculating:
-                        self.total_count = frame_count
-                    
+                
+                # 🎯 統一進度條更新邏輯：只使用累計計數
+                cumulative_count = 0
+                if 'crossing_count' in data and data['crossing_count'] is not None:
+                    cumulative_count = data['crossing_count']
+                elif 'total_detected_count' in data and data['total_detected_count'] is not None:
+                    cumulative_count = data['total_detected_count']
+                
+                # 只有累計計數大於0時才更新進度條
+                if cumulative_count > 0:
                     target = self.target_count_var.get()
                     if target > 0:
-                        progress = min(frame_count / target, 1.0)
+                        progress = min(cumulative_count / target, 1.0)
                         self.progress_bar.set(progress)
-                        self.progress_label.configure(text=f"{frame_count} / {target}")
                         
-                        # 🌀 自適應震動頻率調整
+                        # 更新進度標籤
+                        if cumulative_count > target:
+                            self.progress_label.configure(
+                                text=f"{cumulative_count} / {target} (超出)",
+                                text_color=ColorScheme.ERROR_RED
+                            )
+                        else:
+                            self.progress_label.configure(
+                                text=f"{cumulative_count} / {target}",
+                                text_color=ColorScheme.TEXT_PRIMARY
+                            )
+                        
+                        # 更新總計數（用於批次記錄）
                         if hasattr(self, 'is_calculating') and self.is_calculating:
-                            self.adjust_vibration_frequency(target, frame_count)
+                            self.total_count = cumulative_count
                             
-                            # 檢查是否接近目標數量，準備停止或進入下一輪
-                            if frame_count >= target * 0.95:  # 達到95%時開始準備
-                                logging.info(f"📊 接近目標數量 ({frame_count}/{target})，準備完成本輪")
-                                if frame_count >= target:
+                            # 🌀 自適應震動頻率調整
+                            self.adjust_vibration_frequency(target, cumulative_count)
+                            
+                            # 檢查是否接近目標數量
+                            if cumulative_count >= target * 0.95:  # 達到95%時開始準備
+                                logging.info(f"📊 接近目標數量 ({cumulative_count}/{target})，準備完成本輪")
+                                if cumulative_count >= target:
                                     # 達到目標，完成本輪
                                     self.complete_current_round()
                 

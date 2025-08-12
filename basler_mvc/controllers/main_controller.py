@@ -1009,6 +1009,10 @@ class MainController:
                             if hasattr(current_method, 'get_crossing_count'):
                                 total_crossing_count = current_method.get_crossing_count()
                                 
+                                # 🔍 調試：每20幀記錄一次穿越計數
+                                if self.total_processed_frames % 20 == 0:
+                                    logging.debug(f"🎯 穿越計數: {total_crossing_count}, 檢測物件: {frame_object_count}")
+                                
                                 # 🎯 更新包裝計數系統
                                 self._update_package_counting(total_crossing_count)
                                 
