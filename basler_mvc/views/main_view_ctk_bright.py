@@ -1412,7 +1412,24 @@ class MainView:
                 text_color="#6b7280"  # 灰色
             )
         
-        logging.info(f"檢測方法已改為: {method} {'(100%準確率模式)' if method == 'background' else ''}")
+        # 🖼️ 根據系統模式啟用合成調試功能
+        if method == "background":
+            try:
+                detection_method = self.controller.detection_model.current_method
+                if hasattr(detection_method, 'enable_composite_debug'):
+                    # 獲取當前系統模式
+                    current_mode = self.mode_var.get()
+                    detection_method.enable_composite_debug(True, mode=current_mode)
+                    
+                    if current_mode == "playback":
+                        debug_info = detection_method.get_composite_debug_info()
+                        logging.info(f"🖼️ 合成調試功能已啟用 (回放模式)，保存目錄: {debug_info['save_directory']}")
+                    else:
+                        logging.info(f"🖼️ {current_mode}模式下調試圖片保存已禁用（性能優化）")
+            except Exception as e:
+                logging.warning(f"設置合成調試功能失敗: {str(e)}")
+        
+        logging.info(f"檢測方法已改為: {method} {'(100%準確率模式+合成調試)' if method == 'background' else ''}")
         
         # 🎯 根據方法顯示/隱藏ROI設定
         if hasattr(self, 'roi_frame'):
