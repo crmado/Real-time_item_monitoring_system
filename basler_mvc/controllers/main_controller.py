@@ -499,41 +499,86 @@ class MainController:
     # ==================== 視頻錄製和回放控制 ====================
     
     def switch_mode(self, mode: str) -> bool:
-        """切換系統模式：live, recording, playback"""
+        """切換系統模式：live, recording, playback - 改進版，避免過度清理"""
         try:
             if mode not in ['live', 'recording', 'playback']:
                 logging.error(f"不支持的模式: {mode}")
                 return False
             
-            # 停止當前操作
-            self.force_stop_all()
-            
-            # 切換數據源類型
-            if mode == 'playback':
-                # 🎯 視頻模式：先設置為基本視頻模式，實際參數將在video_loaded事件中優化
-                self.detection_model.set_source_type('video')
-                logging.info("🎬 已切換至視頻檢測模式，等待視頻加載後優化參數")
+            # 🔧 智能模式切換：只停止必要的組件
+            if self.current_mode != mode:
+                logging.info(f"🔄 從 {self.current_mode} 模式切換到 {mode} 模式")
+                
+                # 根據切換類型決定停止範圍
+                if mode == 'playback':
+                    # 切換到回放模式：只停止相機相關，保留視頻播放能力
+                    if self.current_mode in ['live', 'recording']:
+                        self._stop_camera_operations()
+                    # 不調用 force_stop_all()，避免影響視頻播放器
+                    
+                elif mode in ['live', 'recording']:
+                    # 切換到相機模式：可以安全停止所有操作
+                    if self.current_mode == 'playback':
+                        # 從回放模式切換，只需停止檢測處理器
+                        if self.detection_processor.is_processing:
+                            self.detection_processor.stop_processing()
+                    else:
+                        # 相機模式間切換，停止當前相機操作
+                        self._stop_camera_operations()
+                
+                # 切換數據源類型
+                if mode == 'playback':
+                    # 🎯 視頻模式：先設置為基本視頻模式，實際參數將在video_loaded事件中優化
+                    self.detection_model.set_source_type('video')
+                    logging.info("🎬 已切換至視頻檢測模式，等待視頻加載後優化參數")
+                else:
+                    self.detection_model.set_source_type('camera')
+                    logging.info("📷 已切換至相機檢測模式")
+                
+                self.current_mode = mode
+                
+                self.notify_views('mode_changed', {
+                    'mode': mode,
+                    'description': {
+                        'live': '實時檢測模式',
+                        'recording': '錄製模式',
+                        'playback': '回放測試模式'
+                    }.get(mode, mode)
+                })
+                
+                logging.info(f"✅ 系統模式已切換為: {mode}")
             else:
-                self.detection_model.set_source_type('camera')
-                logging.info("📷 已切換至相機檢測模式")
+                logging.info(f"💭 已在 {mode} 模式，無需切換")
             
-            self.current_mode = mode
-            
-            self.notify_views('mode_changed', {
-                'mode': mode,
-                'description': {
-                    'live': '實時檢測模式',
-                    'recording': '錄製模式',
-                    'playback': '回放測試模式'
-                }.get(mode, mode)
-            })
-            
-            logging.info(f"系統模式已切換為: {mode}")
             return True
             
         except Exception as e:
             logging.error(f"切換模式失敗: {str(e)}")
             return False
+    
+    def _stop_camera_operations(self):
+        """只停止相機相關操作，保留其他功能"""
+        try:
+            logging.info("🎥 停止相機相關操作...")
+            
+            # 停止主處理循環
+            if self.is_processing:
+                self._stop_processing()
+            
+            # 停止相機捕獲
+            if hasattr(self, 'camera_model') and self.camera_model:
+                if self.camera_model.is_grabbing:
+                    self.camera_model.stop_capture()
+            
+            # 停止錄製（如果在進行）
+            if hasattr(self, 'video_recorder') and self.video_recorder:
+                if self.video_recorder.is_recording:
+                    self.video_recorder.stop_recording()
+            
+            logging.info("✅ 相機操作已停止")
+            
+        except Exception as e:
+            logging.error(f"停止相機操作錯誤: {str(e)}")
     
     def start_recording(self, filename: str = None) -> bool:
         """開始錄製"""

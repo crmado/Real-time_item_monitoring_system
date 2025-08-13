@@ -1861,8 +1861,12 @@ class MainView:
             self.update_button_states()
     
     def stop_detection(self):
-        """🔧 停止檢測 - 改善線程停止機制"""
+        """🔧 停止檢測 - 改善線程停止機制，保護回放功能"""
         try:
+            # 🔧 檢查當前模式，確保不影響回放
+            current_mode = getattr(self.controller, 'current_mode', 'live')
+            logging.info(f"🛑 停止檢測請求 - 當前模式: {current_mode}")
+            
             # 🎯 先顯示停止狀態，但不改變 is_detecting
             self.stop_detection_btn.configure(
                 text="🔄 停止中...",
@@ -1884,15 +1888,22 @@ class MainView:
             if success:
                 # 停止成功 - 完全重置狀態
                 self.is_detecting = False
-                self.status_var.set("狀態: 檢測已停止")
-                logging.info("✅ 批次檢測已停止")
                 
-                # 🔧 額外確認：檢查相機是否真的停止了
-                if hasattr(self.controller, 'camera_model') and self.controller.camera_model:
-                    if self.controller.camera_model.is_grabbing:
-                        logging.warning("⚠️ 相機仍在捕獲中，強制狀態同步")
-                        self.is_detecting = True  # 保持檢測狀態
-                        self.status_var.set("狀態: 檢測停止未完成")
+                # 🔧 根據模式設置適當的狀態信息
+                if current_mode == 'playback':
+                    self.status_var.set("狀態: 檢測已停止，回放功能正常")
+                    logging.info("✅ 回放模式下的檢測已停止，視頻播放不受影響")
+                else:
+                    self.status_var.set("狀態: 檢測已停止")
+                    logging.info("✅ 批次檢測已停止")
+                
+                # 🔧 額外確認：檢查相機是否真的停止了（僅限相機模式）
+                if current_mode in ['live', 'recording']:
+                    if hasattr(self.controller, 'camera_model') and self.controller.camera_model:
+                        if self.controller.camera_model.is_grabbing:
+                            logging.warning("⚠️ 相機仍在捕獲中，強制狀態同步")
+                            self.is_detecting = True  # 保持檢測狀態
+                            self.status_var.set("狀態: 檢測停止未完成")
             else:
                 # 停止失敗 - 恢復原始狀態
                 self.is_detecting = original_detecting_state
@@ -1910,7 +1921,37 @@ class MainView:
                     text="⏸ 停止檢測",
                     state="disabled"
                 )
-                # 確保開始按鈕可用
+                # 根據模式和連接狀態設置開始按鈕
+                self._update_start_detection_button_state()
+            
+        except Exception as e:
+            logging.error(f"停止檢測時出錯: {str(e)}")
+            # 出錯時強制重置狀態
+            self.is_detecting = False
+            self.status_var.set("狀態: 停止檢測出錯，已重置")
+            self.update_button_states()
+    
+    def _update_start_detection_button_state(self):
+        """根據當前模式和連接狀態更新開始檢測按鈕"""
+        try:
+            current_mode = getattr(self.controller, 'current_mode', 'live')
+            
+            if current_mode == 'playback':
+                # 回放模式：檢查是否有視頻加載
+                if hasattr(self, 'video_loaded') and self.video_loaded:
+                    self.start_detection_btn.configure(
+                        text="▶ 開始檢測",
+                        state="normal",
+                        fg_color=ColorScheme.SUCCESS_GREEN
+                    )
+                else:
+                    self.start_detection_btn.configure(
+                        text="▶ 開始檢測",
+                        state="disabled",
+                        fg_color=ColorScheme.BUTTON_DISABLED
+                    )
+            else:
+                # 相機模式：檢查相機連接
                 if (hasattr(self.controller, 'camera_model') and 
                     self.controller.camera_model and 
                     self.controller.camera_model.is_connected):
@@ -1919,13 +1960,23 @@ class MainView:
                         state="normal",
                         fg_color=ColorScheme.SUCCESS_GREEN
                     )
-            
+                else:
+                    self.start_detection_btn.configure(
+                        text="▶ 開始檢測",
+                        state="disabled",
+                        fg_color=ColorScheme.BUTTON_DISABLED
+                    )
+                    
         except Exception as e:
-            logging.error(f"停止檢測時出錯: {str(e)}")
-            # 出錯時強制重置狀態
-            self.is_detecting = False
-            self.status_var.set("狀態: 停止檢測出錯，已重置")
-            self.update_button_states()
+            logging.error(f"更新開始檢測按鈕狀態錯誤: {str(e)}")
+    
+    def _safe_update_button_states(self):
+        """安全的按鈕狀態更新，避免在模式切換時出現錯誤"""
+        try:
+            # 延遲執行，確保所有狀態變更都已完成
+            self.root.after(50, self.update_button_states)
+        except Exception as e:
+            logging.error(f"安全按鈕狀態更新錯誤: {str(e)}")
     
     def _delayed_button_state_update(self):
         """🔧 延遲的按鈕狀態更新，避免在停止檢測時的狀態衝突"""
@@ -2139,7 +2190,7 @@ class MainView:
     # ==================== 顯示更新 ====================
     
     def update_frame(self, frame):
-        """更新視頻幀顯示 - 包含ROI和檢測結果"""
+        """更新視頻幀顯示 - 包含ROI和檢測結果 - 改進版，支援模式感知"""
         try:
             import cv2  # 🔧 移到方法開頭，確保整個方法都能使用
             
@@ -2147,11 +2198,19 @@ class MainView:
                 if frame is None:
                     return
                 
+                # 🔧 檢查當前模式，避免狀態衝突
+                current_mode = getattr(self.controller, 'current_mode', 'live')
+                
                 height, width = frame.shape[:2]
                 display_width, display_height = self.display_size
                 
-                # 🎯 繪製ROI區域和檢測結果
-                frame_with_overlay = self._draw_detection_overlay(frame.copy())
+                # 🎯 根據模式決定是否繪製檢測覆蓋層
+                if current_mode == 'playback' and not self.is_detecting:
+                    # 回放模式且沒有檢測時，只顯示原始幀
+                    frame_with_overlay = frame.copy()
+                else:
+                    # 其他情況繪製ROI區域和檢測結果
+                    frame_with_overlay = self._draw_detection_overlay(frame.copy())
                 
                 if len(frame_with_overlay.shape) == 3:
                     frame_rgb = cv2.cvtColor(frame_with_overlay, cv2.COLOR_BGR2RGB)
@@ -2163,9 +2222,11 @@ class MainView:
                 pil_image = Image.fromarray(frame_resized)
                 photo = ImageTk.PhotoImage(pil_image)
                 
-                self.video_label.configure(image=photo, text="")
-                self.video_label.image = photo
-                self.current_frame = frame
+                # 🔧 安全的UI更新，確保UI元素存在
+                if hasattr(self, 'video_label') and self.video_label:
+                    self.video_label.configure(image=photo, text="")
+                    self.video_label.image = photo
+                    self.current_frame = frame
                 
         except Exception as e:
             logging.error(f"更新幀顯示錯誤: {str(e)}")
@@ -2433,6 +2494,11 @@ class MainView:
                         self._updating_progress = False
                 # 注意：播放完成後視頻仍然加載，只是停止播放
                 # 不要設置 self.video_loaded = False
+                
+                # 🔧 確保在回放模式下保持正確狀態
+                current_mode = getattr(self.controller, 'current_mode', 'live')
+                if current_mode == 'playback':
+                    logging.info("🎬 回放模式：視頻播放完成，功能保持正常")
             
             elif event_type == 'player_playback_started':
                 logging.info("▶️ 視頻播放已開始")
