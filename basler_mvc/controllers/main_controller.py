@@ -232,6 +232,24 @@ class MainController:
         """檢測相機"""
         return self.camera_model.detect_cameras()
     
+    # ==================== 🎯 設備監控功能 ====================
+    
+    def start_device_monitor(self) -> bool:
+        """啟動設備監控"""
+        return self.camera_model.start_device_monitor()
+    
+    def stop_device_monitor(self):
+        """停止設備監控"""
+        self.camera_model.stop_device_monitor()
+    
+    def force_refresh_device_list(self) -> list:
+        """手動刷新設備列表"""
+        return self.camera_model.force_refresh_device_list()
+    
+    def set_device_monitor_interval(self, interval: float):
+        """設置設備監控間隔"""
+        self.camera_model.set_device_monitor_interval(interval)
+    
     def connect_camera(self, device_index: int = 0) -> bool:
         """連接相機 - 強化線程安全版本"""
         try:

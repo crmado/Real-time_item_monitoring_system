@@ -121,8 +121,14 @@ def main():
         
         # 創建 MVC 組件
         print("🏗️ 初始化 MVC 架構...")
+        
+        print("   📊 創建控制器...")
         controller = MainController()
+        logging.info("✅ 控制器初始化完成")
+        
+        print("   🖥️ 創建用戶界面...")
         view = MainView(controller)
+        logging.info("✅ 視圖初始化完成")
         
         logging.info("✅ MVC 架構初始化完成")
         print("✅ 系統初始化完成")
@@ -162,6 +168,13 @@ def main():
     except Exception as e:
         error_msg = f"系統啟動失敗: {str(e)}"
         print(f"❌ {error_msg}")
+        print(f"💡 錯誤類型: {type(e).__name__}")
+        
+        # 打印詳細的錯誤追蹤
+        import traceback
+        print("🔍 詳細錯誤追蹤:")
+        traceback.print_exc()
+        
         logging.error(error_msg, exc_info=True)
         
         # 🩺 自動運行診斷（如果可能）

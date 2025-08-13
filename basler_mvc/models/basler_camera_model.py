@@ -60,6 +60,13 @@ class BaslerCameraModel:
         # 觀察者模式 - 通知 View 更新
         self.observers = []
         
+        # 🎯 設備監控和自動刷新功能
+        self.device_monitor_enabled = False
+        self.device_monitor_thread = None
+        self.device_monitor_interval = 3.0  # 每3秒檢查一次設備
+        self.last_device_list = []  # 記錄上次檢測到的設備列表
+        self.device_monitor_lock = threading.Lock()
+        
         logging.info("Basler 相機模型初始化完成")
         
     def set_exposure_time(self, exposure_us: float) -> bool:
@@ -933,9 +940,170 @@ class BaslerCameraModel:
                 'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
             }
     
+    # ==================== 🎯 設備監控和自動刷新功能 ====================
+    
+    def start_device_monitor(self):
+        """啟動設備監控線程"""
+        try:
+            if not PYLON_AVAILABLE:
+                logging.warning("pypylon 不可用，跳過設備監控")
+                return False
+                
+            if self.device_monitor_enabled:
+                logging.info("設備監控已在運行")
+                return True
+                
+            self.device_monitor_enabled = True
+            
+            # 記錄初始設備列表
+            with self.device_monitor_lock:
+                self.last_device_list = self.detect_cameras()
+                
+            # 啟動監控線程
+            self.device_monitor_thread = threading.Thread(
+                target=self._device_monitor_worker,
+                name="DeviceMonitor",
+                daemon=True
+            )
+            self.device_monitor_thread.start()
+            
+            logging.info("🔍 設備監控已啟動，每 {:.1f} 秒檢查一次".format(self.device_monitor_interval))
+            return True
+            
+        except Exception as e:
+            logging.error(f"啟動設備監控失敗: {str(e)}")
+            return False
+    
+    def stop_device_monitor(self):
+        """停止設備監控線程"""
+        try:
+            if not self.device_monitor_enabled:
+                return
+                
+            self.device_monitor_enabled = False
+            
+            # 等待監控線程結束
+            if self.device_monitor_thread and self.device_monitor_thread.is_alive():
+                self.device_monitor_thread.join(timeout=2.0)
+                if self.device_monitor_thread.is_alive():
+                    logging.warning("設備監控線程未能及時停止")
+                    
+            self.device_monitor_thread = None
+            logging.info("🔍 設備監控已停止")
+            
+        except Exception as e:
+            logging.error(f"停止設備監控失敗: {str(e)}")
+    
+    def _device_monitor_worker(self):
+        """設備監控工作線程"""
+        logging.info("設備監控線程已啟動")
+        
+        while self.device_monitor_enabled:
+            try:
+                # 檢測當前設備
+                current_devices = self.detect_cameras()
+                
+                with self.device_monitor_lock:
+                    # 比較設備列表是否發生變化
+                    devices_changed = self._compare_device_lists(self.last_device_list, current_devices)
+                    
+                    if devices_changed:
+                        logging.info("🔄 檢測到設備變化，通知界面更新")
+                        
+                        # 分析變化類型
+                        added_devices = []
+                        removed_devices = []
+                        
+                        # 檢查新增設備
+                        for device in current_devices:
+                            if not any(d['serial'] == device['serial'] for d in self.last_device_list):
+                                added_devices.append(device)
+                        
+                        # 檢查移除設備
+                        for device in self.last_device_list:
+                            if not any(d['serial'] == device['serial'] for d in current_devices):
+                                removed_devices.append(device)
+                        
+                        # 記錄變化
+                        if added_devices:
+                            for device in added_devices:
+                                logging.info(f"➕ 新設備: {device['model']} (序號: {device['serial']})")
+                        
+                        if removed_devices:
+                            for device in removed_devices:
+                                logging.info(f"➖ 設備斷開: {device['model']} (序號: {device['serial']})")
+                        
+                        # 更新設備列表
+                        self.last_device_list = current_devices
+                        
+                        # 通知觀察者設備列表已更改
+                        self.notify_observers('device_list_changed', {
+                            'current_devices': current_devices,
+                            'added_devices': added_devices,
+                            'removed_devices': removed_devices
+                        })
+                
+                # 等待下次檢查
+                time.sleep(self.device_monitor_interval)
+                
+            except Exception as e:
+                logging.error(f"設備監控錯誤: {str(e)}")
+                # 出錯時稍作等待，避免瘋狂重試
+                time.sleep(1.0)
+        
+        logging.info("設備監控線程已結束")
+    
+    def _compare_device_lists(self, old_list: list, new_list: list) -> bool:
+        """比較兩個設備列表是否不同"""
+        if len(old_list) != len(new_list):
+            return True
+        
+        # 按序號排序後比較
+        old_serials = sorted([device['serial'] for device in old_list])
+        new_serials = sorted([device['serial'] for device in new_list])
+        
+        return old_serials != new_serials
+    
+    def set_device_monitor_interval(self, interval: float):
+        """設置設備監控間隔（秒）"""
+        if interval < 1.0:
+            logging.warning("設備監控間隔不能小於1秒，已調整為1秒")
+            interval = 1.0
+        elif interval > 30.0:
+            logging.warning("設備監控間隔不能大於30秒，已調整為30秒")
+            interval = 30.0
+            
+        self.device_monitor_interval = interval
+        logging.info(f"設備監控間隔已調整為: {interval}秒")
+    
+    def force_refresh_device_list(self):
+        """強制刷新設備列表（手動觸發）"""
+        try:
+            logging.info("🔄 手動刷新設備列表")
+            current_devices = self.detect_cameras()
+            
+            with self.device_monitor_lock:
+                self.last_device_list = current_devices
+            
+            # 通知觀察者
+            self.notify_observers('device_list_refreshed', {
+                'devices': current_devices,
+                'timestamp': time.time()
+            })
+            
+            return current_devices
+            
+        except Exception as e:
+            logging.error(f"手動刷新設備列表失敗: {str(e)}")
+            return []
+
     def __del__(self):
         """析構函數 - 安全版本"""
         try:
+            # 停止設備監控
+            if hasattr(self, 'device_monitor_enabled'):
+                self.stop_device_monitor()
+                
             # 安全斷開連接
             if hasattr(self, 'is_connected') and self.is_connected:
                 self.disconnect()

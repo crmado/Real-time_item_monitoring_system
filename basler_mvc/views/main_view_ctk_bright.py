@@ -67,6 +67,16 @@ class MainView:
         # 註冊為控制器觀察者
         self.controller.add_view_observer(self.on_controller_event)
         
+        # 🎯 註冊為相機模型的觀察者（設備監控）
+        try:
+            if hasattr(self.controller, 'camera_model') and self.controller.camera_model:
+                self.controller.camera_model.add_observer(self.on_device_list_changed)
+                logging.info("✅ 已註冊為設備監控觀察者")
+            else:
+                logging.warning("⚠️ 相機模型不存在，跳過觀察者註冊")
+        except Exception as e:
+            logging.error(f"註冊設備監控觀察者失敗: {str(e)}")
+        
         # 視窗設置
         self.root.title("🚀 Basler acA640-300gm 精簡高性能系統")
         
@@ -83,6 +93,9 @@ class MainView:
         self.root.geometry(f"{optimal_width}x{optimal_height}+{x}+{y}")
         self.root.minsize(1400, 1000)
         self.root.resizable(True, True)
+        
+        # 🎯 設置窗口關閉處理
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
         
         # UI 變量 - 修正FPS顯示格式
         self.status_var = tk.StringVar(value="狀態: 系統就緒")
@@ -137,6 +150,9 @@ class MainView:
         self.update_connection_ui()
         self.initialize_display_status()
         self.initialize_batch_variables()
+        
+        # 🎯 啟動設備監控
+        self._start_device_monitoring()
         
         logging.info("CustomTkinter 明亮清晰版本初始化完成")
     
@@ -302,7 +318,33 @@ class MainView:
             border_color=ColorScheme.TEXT_SECONDARY,
             text_color=ColorScheme.TEXT_PRIMARY
         )
-        self.device_combobox.pack(fill="x", padx=12, pady=12)
+        self.device_combobox.pack(fill="x", padx=12, pady=(12, 5))
+        
+        # 🎯 設備刷新按鈕和監控狀態 - 改進布局但保持原色
+        refresh_button_frame = ctk.CTkFrame(device_frame, fg_color="transparent")
+        refresh_button_frame.pack(fill="x", padx=12, pady=(0, 12))
+        
+        self.refresh_devices_button = ctk.CTkButton(
+            refresh_button_frame,
+            text="🔄 手動刷新",
+            command=self.refresh_devices_manually,
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold"),
+            fg_color=ColorScheme.ACCENT_BLUE,
+            hover_color=ColorScheme.PRIMARY_BLUE,
+            text_color="#ffffff",
+            width=120,
+            height=28
+        )
+        self.refresh_devices_button.pack(side="left")
+        
+        # 設備監控狀態指示器
+        self.monitor_status_label = ctk.CTkLabel(
+            refresh_button_frame,
+            text="🔍 監控中",
+            font=ctk.CTkFont(size=FontSizes.SMALL),
+            text_color=ColorScheme.SUCCESS_GREEN
+        )
+        self.monitor_status_label.pack(side="right", padx=(10, 0))
         
         # 連接狀態
         self.connection_status = ctk.CTkLabel(
@@ -321,7 +363,7 @@ class MainView:
             text_color=ColorScheme.TEXT_ACCENT
         ).pack(pady=(0, 10))
         
-        # 曝光時間設置 - 增強版
+        # 曝光時間設置 - 保持原色但改進布局
         exposure_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
         exposure_frame.pack(fill="x", padx=12, pady=(0, 15))
         
@@ -373,6 +415,16 @@ class MainView:
             fg_color=ColorScheme.ACCENT_BLUE,
             hover_color=ColorScheme.PRIMARY_BLUE
         ).pack()
+        
+        # 曝光值顯示標籤 
+        self.exposure_label = ctk.CTkLabel(
+            exp_input_frame,
+            text="1000",
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold"),
+            text_color=ColorScheme.TEXT_PRIMARY,
+            width=40
+        )
+        self.exposure_label.pack(side="left", padx=(5, 0))
         
         # 滑動條
         self.exposure_slider = ctk.CTkSlider(
@@ -1528,6 +1580,185 @@ class MainView:
         """設備選擇改變"""
         logging.info(f"選擇設備: {device_name}")
     
+    # ==================== 🎯 設備監控和刷新功能 ====================
+    
+    def refresh_devices_manually(self):
+        """手動刷新設備列表"""
+        try:
+            # 暫時禁用刷新按鈕，避免重複點擊
+            self.refresh_devices_button.configure(state="disabled", text="刷新中...")
+            
+            # 強制刷新設備列表
+            devices = self.controller.force_refresh_device_list()
+            
+            # 更新UI設備列表
+            self._update_device_combobox(devices)
+            
+            # 顯示結果訊息
+            if devices:
+                logging.info(f"🔄 手動刷新完成，找到 {len(devices)} 台設備")
+                # 臨時顯示刷新成功
+                original_text = self.monitor_status_label.cget("text")
+                self.monitor_status_label.configure(text="✅ 已刷新", text_color=ColorScheme.SUCCESS_GREEN)
+                self.root.after(2000, lambda: self.monitor_status_label.configure(
+                    text=original_text, text_color=ColorScheme.SUCCESS_GREEN
+                ))
+            else:
+                logging.warning("⚠️ 手動刷新完成，未找到任何設備")
+                # 臨時顯示未找到設備
+                original_text = self.monitor_status_label.cget("text")
+                self.monitor_status_label.configure(text="⚠️ 無設備", text_color=ColorScheme.WARNING_ORANGE)
+                self.root.after(2000, lambda: self.monitor_status_label.configure(
+                    text=original_text, text_color=ColorScheme.SUCCESS_GREEN
+                ))
+                
+        except Exception as e:
+            logging.error(f"手動刷新設備失敗: {str(e)}")
+            # 顯示錯誤狀態
+            original_text = self.monitor_status_label.cget("text")
+            self.monitor_status_label.configure(text="❌ 刷新失敗", text_color=ColorScheme.ERROR_RED)
+            self.root.after(3000, lambda: self.monitor_status_label.configure(
+                text=original_text, text_color=ColorScheme.SUCCESS_GREEN
+            ))
+        finally:
+            # 恢復刷新按鈕
+            self.root.after(1000, lambda: self.refresh_devices_button.configure(
+                state="normal", text="🔄 手動刷新"
+            ))
+    
+    def _update_device_combobox(self, devices: list):
+        """更新設備下拉選單"""
+        try:
+            if devices:
+                device_names = []
+                for i, camera in enumerate(devices):
+                    status = "✅" if camera.get('is_target', False) else "⚠️"
+                    device_name = f"{status} {camera['model']}"
+                    device_names.append(device_name)
+                
+                # 更新下拉選單選項
+                self.device_combobox.configure(values=device_names)
+                
+                # 如果當前沒有選擇，自動選擇第一個設備
+                if self.device_combobox.get() == "未檢測到設備" or not self.device_combobox.get():
+                    self.device_combobox.set(device_names[0])
+                    
+                # 更新內部設備列表
+                self.devices = devices
+                
+                logging.info(f"🔄 設備列表已更新: {len(devices)} 台設備")
+                
+            else:
+                # 沒有設備時的處理
+                self.device_combobox.configure(values=["未檢測到設備"])
+                self.device_combobox.set("未檢測到設備")
+                self.devices = []
+                
+        except Exception as e:
+            logging.error(f"更新設備下拉選單失敗: {str(e)}")
+    
+    def on_device_list_changed(self, event_type: str, data: dict):
+        """處理設備列表變化事件（觀察者模式回調）"""
+        try:
+            if event_type == 'device_list_changed':
+                current_devices = data.get('current_devices', [])
+                added_devices = data.get('added_devices', [])
+                removed_devices = data.get('removed_devices', [])
+                
+                # 記錄設備變化
+                if added_devices:
+                    for device in added_devices:
+                        logging.info(f"🔌 新設備接入: {device['model']}")
+                
+                if removed_devices:
+                    for device in removed_devices:
+                        logging.info(f"🔌 設備斷開: {device['model']}")
+                
+                # 更新UI設備列表
+                self._update_device_combobox(current_devices)
+                
+                # 更新監控狀態指示器（臨時顯示變化）
+                if added_devices or removed_devices:
+                    original_text = self.monitor_status_label.cget("text")
+                    change_text = f"🔄 檢測到變化"
+                    self.monitor_status_label.configure(text=change_text, text_color=ColorScheme.ACCENT_BLUE)
+                    self.root.after(3000, lambda: self.monitor_status_label.configure(
+                        text=original_text, text_color=ColorScheme.SUCCESS_GREEN
+                    ))
+                    
+            elif event_type == 'device_list_refreshed':
+                devices = data.get('devices', [])
+                self._update_device_combobox(devices)
+                
+        except Exception as e:
+            logging.error(f"處理設備列表變化事件失敗: {str(e)}")
+    
+    def _start_device_monitoring(self):
+        """啟動設備監控功能"""
+        try:
+            logging.info("🔍 正在啟動設備監控...")
+            
+            # 檢查控制器和相機模型是否存在
+            if not hasattr(self, 'controller') or not self.controller:
+                logging.warning("⚠️ 控制器不存在，跳過設備監控")
+                return
+                
+            if not hasattr(self.controller, 'camera_model') or not self.controller.camera_model:
+                logging.warning("⚠️ 相機模型不存在，跳過設備監控")
+                return
+            
+            # 啟動設備監控
+            success = self.controller.start_device_monitor()
+            
+            if success:
+                logging.info("🔍 設備監控已啟動")
+                if hasattr(self, 'monitor_status_label'):
+                    self.monitor_status_label.configure(
+                        text="🔍 監控中", 
+                        text_color=ColorScheme.SUCCESS_GREEN
+                    )
+            else:
+                logging.warning("⚠️ 設備監控啟動失敗")
+                if hasattr(self, 'monitor_status_label'):
+                    self.monitor_status_label.configure(
+                        text="⚠️ 監控失敗", 
+                        text_color=ColorScheme.WARNING_ORANGE
+                    )
+                
+        except Exception as e:
+            logging.error(f"啟動設備監控失敗: {str(e)}")
+            import traceback
+            logging.debug(traceback.format_exc())
+            
+            if hasattr(self, 'monitor_status_label'):
+                self.monitor_status_label.configure(
+                    text="❌ 監控錯誤", 
+                    text_color=ColorScheme.ERROR_RED
+                )
+    
+    def _on_closing(self):
+        """窗口關閉時的清理處理"""
+        try:
+            logging.info("🔚 正在關閉應用程序...")
+            
+            # 停止設備監控
+            self.controller.stop_device_monitor()
+            logging.info("🔍 設備監控已停止")
+            
+            # 停止所有相機和檢測活動
+            if hasattr(self.controller, 'force_stop_all'):
+                self.controller.force_stop_all()
+                logging.info("📷 所有系統活動已停止")
+            
+            # 銷毀窗口
+            self.root.destroy()
+            logging.info("✅ 應用程序已安全關閉")
+            
+        except Exception as e:
+            logging.error(f"關閉應用程序時發生錯誤: {str(e)}")
+            # 強制退出
+            self.root.destroy()
+    
     def on_exposure_changed(self, value):
         """曝光時間改變"""
         exposure = int(float(value))
@@ -2200,6 +2431,13 @@ class MainView:
             if not hasattr(self, 'root') or not self.root:
                 logging.debug("UI根組件不存在，跳過按鈕狀態更新")
                 return
+                
+            # 🎯 檢查核心狀態屬性是否存在（防止初始化順序問題）
+            required_attrs = ['is_detecting', 'is_recording', 'is_playing', 'camera_connected', 'video_loaded']
+            for attr in required_attrs:
+                if not hasattr(self, attr):
+                    logging.debug(f"狀態屬性 {attr} 不存在，跳過按鈕狀態更新")
+                    return
                 
             try:
                 # 檢查root是否還存在
