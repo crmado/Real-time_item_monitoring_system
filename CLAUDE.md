@@ -4,226 +4,293 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a real-time item monitoring and detection system designed primarily for industrial production lines. The system consists of two main applications:
+This is a real-time industrial item monitoring and detection system designed for production line automation. The system features two main architectures:
 
-1. **Main Application**: Full-featured monitoring system with comprehensive UI and multiple detection modes
-2. **Basler MVC**: Streamlined high-performance system optimized specifically for Basler acA640-300gm industrial cameras
-
-## Key Architecture
-
-### Main Application (Root Directory)
-- **Architecture**: Full MVC pattern with extensive UI components
-- **Language**: Python with Traditional Chinese documentation and UI
-- **Camera Support**: Multi-camera support including USB cameras, Basler industrial cameras, and Raspberry Pi libcamera
-- **Detection Methods**: Multiple detection algorithms including traditional methods, shape detection, and deep learning
-- **Modes**: Live monitoring, video recording, playback analysis, and photo capture modes
-
-### Basler MVC Application (basler_mvc/)
-- **Architecture**: Simplified MVC pattern focused on core functionality
-- **Target**: Specifically optimized for Basler acA640-300gm camera (640x480 Mono8, 280+ FPS)
-- **Performance Focus**: High-speed capture and real-time detection with minimal latency
-- **Threading**: Multi-threaded architecture with observer pattern for event handling
-
-## CustomTkinter Upgrade
-
-The project now includes a **CustomTkinter** version to solve cross-platform display issues:
-- **Problem**: Original tkinter interface appears blurry on high-DPI screens and different platforms
-- **Solution**: CustomTkinter provides automatic DPI scaling and crisp text rendering
-- **Installation**: `pip install customtkinter`
-
-### Running CustomTkinter Version
-```bash
-# Default: CustomTkinter version (recommended)
-cd basler_mvc
-python main.py
-
-# Version selector (choose between CustomTkinter and original tkinter)
-python main_selector.py
-
-# Quick launcher with dependency checking
-python ../run_ctk_version.py
-```
+1. **Basler MVC (Primary)**: High-performance streamlined system optimized for Basler acA640-300gm industrial cameras (280+ FPS)
+2. **Main Application (Legacy)**: Full-featured system with comprehensive UI and multi-camera support
 
 ## Development Commands
 
+### Quick Start
+```bash
+# Recommended: Run the high-performance Basler MVC system
+python run_ctk_version.py
+
+# Alternative: Direct launch
+cd basler_mvc && python main.py
+
+# Test system components
+python test_mvc_system.py
+```
+
 ### Environment Setup
 ```bash
-# Create and activate conda environment
+# Create conda environment
 conda create -n RPi_4_camera python=3.10
 conda activate RPi_4_camera
 
-# Install dependencies
-pip install -r requirements.txt
+# Install core dependencies
+pip install customtkinter opencv-python numpy pillow PyYAML
 
-# Install Basler camera support (optional)
+# Install Basler camera support (required for industrial cameras)
 pip install pypylon
+
+# Install all dependencies
+pip install -r requirements.txt
 ```
 
-### Running the Applications
+### Testing and Validation
 ```bash
-# Main application
-python main.py
-
-# Basler MVC application  
-cd basler_mvc
-python main.py
-
-# Test MVC system
+# Test MVC system components and imports
 python test_mvc_system.py
+
+# Test thread synchronization fixes
+python test_thread_fix.py
+
+# Validate video recording quality
+python recording_quality_analyzer.py
+
+# Verify video FPS accuracy
+python video_fps_verifier.py
 ```
 
 ### Building Executables
 ```bash
-# Generate spec file and build
+# Build standalone executable (Windows)
 pyinstaller --clean object_detection_system.spec
-
-# Run with error logging
 .\dist\object_detection_system.exe 2> logs\error.log
 
-# Linux format
+# Linux/Mac build
 pyinstaller --onefile main.py
 ```
 
-### Testing Commands
-Based on the codebase structure, testing appears to be done through:
-- `test_mvc_system.py` - Tests the MVC system components
-- `test_thread_fix.py` - Tests thread synchronization fixes
-- Various demo files like `run_cross_platform_demo.py`
+## Core Architecture
 
-## Core System Architecture
+### Basler MVC (High-Performance System)
+The primary system uses a clean MVC pattern optimized for industrial cameras:
 
-### Main Application Structure
-```
-Real-time_item_monitoring_system/
-├── main.py                          # Main entry point
-├── models/                          # Data layer
-│   ├── system_config.py            # System configuration
-│   ├── image_processor.py          # Image processing core
-│   ├── camera_manager.py           # Camera management
-│   └── detection_methods/          # Modular detection algorithms
-├── views/                          # UI layer  
-│   ├── main_window.py              # Main window
-│   └── components/                 # UI components
-├── controllers/                    # Control logic layer
-│   ├── system_controller.py        # Main system controller
-│   └── detection_controller.py     # Detection logic controller
-├── utils/                          # Utilities
-│   ├── logger.py                   # Logging system
-│   ├── config.py                   # Configuration management
-│   └── language.py                 # Multi-language support
-├── config/                         # Configuration files
-├── languages/                      # i18n resources (zh_TW, en_US, zh_CN)
-└── basler_mvc/                     # Streamlined Basler system
-```
-
-### Basler MVC Structure (High-Performance Subset)
 ```
 basler_mvc/
-├── main.py                         # Entry point
+├── main.py                           # Entry point with dependency checking
 ├── controllers/
-│   └── main_controller.py          # Coordinates camera and detection models
+│   └── main_controller.py            # Coordinates camera and detection models
 ├── models/
-│   ├── basler_camera_model.py      # Basler camera interface
-│   ├── detection_model.py          # Detection algorithms
-│   └── detection_processor.py      # High-performance frame processing
+│   ├── basler_camera_model.py        # Basler camera interface (pypylon)
+│   ├── detection_model.py            # Modular detection algorithms
+│   ├── detection_processor.py        # High-performance frame processing
+│   ├── video_recorder_model.py       # 280+ FPS video recording
+│   └── video_player_model.py         # Video playback with detection
 ├── views/
-│   └── main_view.py                # Simplified UI
+│   └── main_view_ctk_bright.py       # CustomTkinter high-DPI UI
 ├── config/
-│   └── settings.py                 # Centralized configuration
-└── utils/
-    └── system_diagnostics.py       # Diagnostic utilities
+│   └── settings.py                   # Centralized configuration
+├── utils/
+│   ├── system_diagnostics.py         # Hardware diagnostic tools
+│   ├── recording_validator.py        # Video quality validation
+│   └── memory_monitor.py             # Memory usage monitoring
+└── styles/                           # Cross-platform UI themes
 ```
 
-## Key Technical Details
+### Key Design Patterns
+- **MVC Architecture**: Clean separation of concerns with observer pattern
+- **Dependency Injection**: Models are injected into controllers
+- **Multi-threading**: Separate threads for camera capture, processing, and UI
+- **Observer Pattern**: Event-driven communication between components
+- **Strategy Pattern**: Pluggable detection algorithms
 
-### Camera Support
-- **Basler Industrial Cameras**: Primary target acA640-300gm with pypylon
-- **USB Cameras**: Standard OpenCV camera interface  
-- **Raspberry Pi**: libcamera support for Pi cameras
-- **Auto-detection**: System can detect and configure multiple camera types
+## Performance Targets
 
-### Detection Algorithms
-The system supports modular detection methods:
-- **Traditional Methods**: Background subtraction, threshold-based detection
-- **Shape Detection**: Circle detection using HoughCircles
-- **Deep Learning**: YOLO integration for object detection
-- **Specialized**: Custom detection methods for specific applications
+### Basler acA640-300gm Specifications
+- **Resolution**: 640x480 Mono8
+- **Target FPS**: 280+ (theoretical max 376)
+- **Capture Latency**: <10ms
+- **Processing FPS**: 200+
+- **UI Update Rate**: 30 FPS (throttled)
 
-### Performance Optimization
-- **Multi-threading**: Separate threads for capture, processing, and UI
-- **Frame Buffering**: Configurable buffer sizes to prevent frame drops  
-- **Memory Management**: Automatic cleanup and limited buffer sizes
-- **GPU Acceleration**: Optional GPU optimization available
+### System Performance Monitoring
+The system includes built-in performance monitoring:
+- Real-time FPS display (camera/processing/detection)
+- Memory usage tracking with warnings
+- Frame drop detection and reporting
+- Hardware health diagnostics
 
-### Configuration System
-- **YAML Configuration**: Persistent settings storage
-- **Runtime Updates**: Dynamic parameter adjustment
-- **Multi-language**: Full internationalization support
-- **Theme Management**: Light/dark theme switching
+## Configuration System
 
-## Important Development Notes
+### Camera Configuration (basler_mvc/config/settings.py)
+```python
+CAMERA_CONFIG = {
+    'target_model': 'acA640-300gm',
+    'target_fps': 350.0,
+    'default_exposure_time': 1000.0,  # microseconds
+    'enable_jumbo_frames': True,
+    'packet_size': 9000,
+    'grab_strategy': 'LatestImageOnly'
+}
+```
 
-### Working with Basler Cameras
-- The `basler_mvc` system is specifically optimized for acA640-300gm cameras
-- Always check camera connection status before starting capture
-- Use the provided diagnostic utilities for troubleshooting camera issues
-- The system includes automatic camera reconnection on connection loss
+### Detection Configuration
+```python
+DETECTION_CONFIG = {
+    'default_method': 'circle',  # 'circle', 'contour', 'enhanced'
+    'min_area': 100,
+    'max_area': 5000,
+    'enable_detection': True
+}
+```
 
-### Threading and Synchronization  
-- The system uses extensive threading for performance
-- Always use the provided synchronization primitives (locks, events)
-- The camera capture runs in dedicated threads with observer pattern notifications
-- UI updates are throttled to prevent overwhelming the interface
+## Detection Algorithms
 
-### Error Handling and Recovery
-- Both applications include comprehensive error handling
-- Automatic recovery mechanisms for camera disconnections
-- System health monitoring and diagnostic reporting
-- Graceful degradation when hardware is unavailable
+The system supports multiple detection methods via modular architecture:
 
-### Cross-Platform Considerations
-- The system includes cross-platform UI management in `basler_mvc/styles/`
-- Font and color management for different operating systems
-- Platform-specific optimizations for performance
+1. **Circle Detection**: HoughCircles for round objects
+2. **Contour Detection**: Morphological operations for irregular shapes  
+3. **Enhanced Detection**: Hybrid method combining multiple approaches
+4. **Background Subtraction**: Motion-based detection
+5. **Deep Learning**: YOLO integration (via ultralytics)
 
-### Video Recording and Playback
-- Support for real-time video recording during detection
-- Video playback with synchronized detection analysis
-- Multiple video formats supported through OpenCV
-- Frame-accurate seeking and speed control
+### Adding New Detection Methods
+1. Inherit from `DetectionMethod` base class in `detection_base.py`
+2. Implement `process_frame()` and `detect_objects()` methods
+3. Register in `DetectionModel` class
+
+## UI System (CustomTkinter)
+
+### Cross-Platform Display Solution
+The system uses CustomTkinter to solve high-DPI display issues:
+- **Problem**: Standard tkinter appears blurry on high-DPI screens
+- **Solution**: CustomTkinter provides automatic DPI scaling and crisp rendering
+- **Theme Support**: Multiple themes in `styles/` directory
+
+### Running Different UI Versions
+```bash
+# CustomTkinter version (recommended)
+python run_ctk_version.py
+
+# Version selector
+cd basler_mvc && python main_selector.py
+```
+
+## Video Recording and Analysis
+
+### High-Speed Recording
+- **Format**: MP4/AVI with configurable codecs
+- **Performance**: 280+ FPS recording capability  
+- **Quality Validation**: Automatic FPS and frame integrity checking
+- **Storage**: Organized in `recordings/` with metadata
+
+### Video Analysis Tools
+```bash
+# Analyze recording quality
+python recording_quality_analyzer.py
+
+# Verify FPS accuracy
+python video_fps_verifier.py
+```
+
+## Industrial Automation Features
+
+### Vibration Motor Control
+The system includes intelligent vibration motor control for automated feeding:
+- **Adaptive Frequency**: Automatically adjusts based on counting progress
+- **Communication**: Supports RS232/485 and TCP/IP protocols
+- **Safety**: Automatic stop on completion or error conditions
+
+### Batch Processing
+- **Automated Counting**: Real-time object counting with duplicate elimination
+- **Batch Management**: Multi-round processing with automatic record keeping
+- **Progress Monitoring**: Real-time progress bars and completion statistics
+- **Data Logging**: Comprehensive batch records in JSON format
 
 ## Dependencies and Requirements
 
-### Core Dependencies
-- **OpenCV**: Image processing and camera interface (`opencv-python-headless==4.10.0.84`)
-- **NumPy**: Numerical operations (`numpy==1.24.4`) 
-- **Pillow**: Image handling (`pillow==10.4.0`)
-- **PyYAML**: Configuration file handling (`PyYAML==6.0.1`)
-- **Tkinter**: GUI framework (usually included with Python)
+### Core Dependencies (Required)
+```bash
+customtkinter>=1.5.0    # High-DPI UI framework
+opencv-python>=4.10.0   # Image processing and camera interface
+numpy>=1.24.4           # Numerical operations
+pillow>=10.4.0          # Image handling
+PyYAML>=6.0.1           # Configuration file management
+```
+
+### Hardware-Specific Dependencies
+```bash
+pypylon>=3.0.0          # Basler camera SDK (industrial cameras)
+```
 
 ### Optional Dependencies
-- **pypylon**: Basler camera support (for industrial cameras)
-- **ultralytics**: YOLO model support (`ultralytics==8.3.67`)
-- **torch/torchvision**: Deep learning backend
-- **Flask**: Web interface support (`Flask==3.0.3`)
+```bash
+ultralytics>=8.3.0      # YOLO deep learning models
+torch>=2.0.0            # PyTorch backend for AI
+Flask>=3.0.0            # Web interface support
+psutil>=6.0.0           # System monitoring
+```
 
-### Development Tools
-- **pyinstaller**: Executable building (`pyinstaller==6.11.1`)
-- **pytest**: Testing framework (implied by test files)
+## Troubleshooting and Diagnostics
 
-## System Modes and Workflows
+### System Health Checks
+```bash
+# Run comprehensive system diagnostics
+python basler_mvc/utils/system_diagnostics.py
 
-### Main Application Modes
-1. **Live Monitoring**: Real-time detection with camera feed
-2. **Video Recording**: Capture video while detecting objects  
-3. **Video Playback**: Analyze pre-recorded videos with detection
-4. **Photo Analysis**: Single image analysis mode
+# Memory monitoring (runs automatically in background)
+# Check logs in basler_mvc/logs/basler_mvc.log
+```
 
-### Typical Development Workflow
-1. **Camera Setup**: Use detection utilities to verify camera connectivity
-2. **Algorithm Selection**: Choose appropriate detection method based on use case
-3. **Parameter Tuning**: Adjust detection parameters through the UI or configuration
-4. **Performance Testing**: Monitor FPS and system performance
-5. **Integration**: Integrate with external systems through API endpoints
+### Common Issues and Solutions
 
-The system is designed for industrial applications requiring high reliability and performance, with extensive monitoring and diagnostic capabilities built-in.
+#### Camera Connection Issues
+1. **Basler Camera Not Detected**:
+   - Ensure pypylon is installed: `pip install pypylon`
+   - Check camera power and network connection
+   - Verify firewall settings for GigE cameras
+   - Run camera diagnostic: System → Health Check
+
+2. **Low FPS Performance**:
+   - Enable Jumbo Frames (MTU 9000) on network adapter
+   - Close unnecessary background applications
+   - Check CPU and memory usage
+   - Adjust detection parameters to reduce processing load
+
+#### UI Display Issues
+1. **Blurry Interface on High-DPI Screens**:
+   - Use CustomTkinter version: `python run_ctk_version.py`
+   - Install CustomTkinter: `pip install customtkinter`
+
+2. **Interface Not Responding**:
+   - Check logs in `basler_mvc/logs/`
+   - Restart with debug mode: `python run_main_with_debug.py`
+
+### Log Files and Debugging
+- **Main Log**: `basler_mvc/logs/basler_mvc.log`
+- **Batch Records**: `basler_mvc/batch_records/`
+- **Recording Quality**: `recording_analysis_report.json`
+- **Debug Mode**: Use `run_main_with_debug.py` for verbose logging
+
+## Development Guidelines
+
+### Code Organization
+- **Controllers**: Business logic and model coordination
+- **Models**: Data processing and hardware interfaces
+- **Views**: UI components and user interaction
+- **Utils**: Shared utilities and diagnostic tools
+- **Config**: Centralized configuration management
+
+### Threading Best Practices
+- Camera capture runs in dedicated thread with observer notifications
+- UI updates are throttled to prevent interface blocking
+- Use provided synchronization primitives (locks, events)
+- Memory cleanup is automatic but can be monitored
+
+### Performance Optimization
+- Frame processing uses optimized NumPy operations
+- Detection algorithms are parallelizable where possible
+- Memory usage is monitored with configurable limits
+- UI updates are decoupled from processing pipeline
+
+### Configuration Management
+- All settings centralized in `basler_mvc/config/settings.py`
+- Runtime parameter adjustment through UI
+- Persistent storage of user preferences
+- Validation of configuration parameters on startup
+
+The system is designed for 24/7 industrial operation with comprehensive monitoring, automatic error recovery, and performance optimization for high-speed camera applications.

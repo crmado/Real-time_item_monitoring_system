@@ -32,9 +32,9 @@ class MemoryMonitor:
         self.monitor_thread = None
         self.stop_event = threading.Event()
         
-        # 記憶體歷史記錄
-        self.memory_history = deque(maxlen=100)  # 保留最近100次記錄
-        self.gc_history = deque(maxlen=50)  # GC歷史
+        # 記憶體歷史記錄 - 優化記憶體使用
+        self.memory_history = deque(maxlen=50)   # 保留最近50次記錄
+        self.gc_history = deque(maxlen=25)       # GC歷史
         
         # 統計數據
         self.max_memory_used = 0

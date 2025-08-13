@@ -27,31 +27,31 @@ class DetectionProcessor:
         """初始化檢測處理器"""
         self.detection_model = detection_model
         
-        # 自動設定線程數量（針對rack 5b優化）
+        # 自動設定線程數量（優化記憶體使用）
         if max_workers is None:
             cpu_count = multiprocessing.cpu_count()
-            # rack 5b通常是8核心，使用4個檢測線程
-            self.max_workers = min(4, max(2, cpu_count // 2))
+            # 減少線程數量以降低記憶體消耗
+            self.max_workers = max(1, cpu_count // 2)
         else:
             self.max_workers = max_workers
             
         # 線程池
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         
-        # 🎯 記憶體優化：減少隊列大小以降低記憶體占用
-        self.frame_queue = queue.Queue(maxsize=self.max_workers * 2)  # 減小隊列大小節省記憶體
+        # 🎯 記憶體優化：進一步減少隊列大小以降低記憶體占用
+        self.frame_queue = queue.Queue(maxsize=3)     # 最小化隊列大小
         
         # 結果隊列（UI消費）
-        self.result_queue = queue.Queue(maxsize=20)  # 減小結果隊列大小
+        self.result_queue = queue.Queue(maxsize=5)    # 最小化結果隊列
         
         # 同步控制 - 記憶體優化
         self.sync_mode = False  # 🎯 預設使用非同步模式，減少阻塞
-        self.processing_semaphore = threading.Semaphore(self.max_workers * 2)  # 減少並發許可數，降低記憶體
+        self.processing_semaphore = threading.Semaphore(self.max_workers)      # 進一步減少並發許可數
         
         # 統計資料
         self.total_frames_processed = 0
         self.total_objects_detected = 0
-        self.processing_times = deque(maxlen=50)  # 減少記憶體占用
+        self.processing_times = deque(maxlen=20)  # 進一步減少記憶體占用
         self.detection_fps = 0.0
         
         # 控制標誌

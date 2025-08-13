@@ -48,7 +48,7 @@ class BaslerCameraModel:
         self.start_time = None
         self.current_fps = 0.0
         # 🎯 減少窗口大小，使用最近60幀計算更準確的實時FPS（約2秒窗口@280fps）
-        self.frame_times = deque(maxlen=60)
+        self.frame_times = deque(maxlen=30)  # 優化記憶體使用
         
         # 相機資訊
         self.camera_info = {}

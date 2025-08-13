@@ -63,7 +63,7 @@ class MainController:
         self.processing_fps = 0.0
         self.total_processed_frames = 0
         self.processing_start_time = None
-        self.frame_times = deque(maxlen=100)
+        self.frame_times = deque(maxlen=50)  # 優化記憶體使用
         
         # 🎯 包裝計數系統
         self.total_detected_count = 0     # 當前計數：該影像啟動檢測後的所有檢測到的總合

@@ -467,8 +467,8 @@ class DetectionModel:
         self.object_count = 0
         self.detection_lock = threading.Lock()
         
-        # 性能統計
-        self.detection_times = deque(maxlen=100)
+        # 性能統計 - 優化記憶體使用
+        self.detection_times = deque(maxlen=50)
         self.detection_fps = 0.0
         
         # 觀察者模式

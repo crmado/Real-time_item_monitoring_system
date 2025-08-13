@@ -77,28 +77,10 @@ def main():
                 break
                 
             elif choice == "2":
-                print("🔧 啟動原始 tkinter 版本...")
-                
-                # 啟動原始版本
-                try:
-                    from basler_mvc.controllers.main_controller import MainController
-                    from basler_mvc.views.main_view import MainView
-                    
-                    print("🏗️ 初始化系統...")
-                    controller = MainController()
-                    view = MainView(controller)
-                    
-                    print("🎮 啟動界面...")
-                    view.run()
-                    
-                except ImportError as e:
-                    print(f"❌ 導入錯誤: {str(e)}")
-                    print("請確保所有必要文件都已創建")
-                    
-                except Exception as e:
-                    print(f"❌ 執行錯誤: {str(e)}")
-                
-                break
+                print("❌ 原始 tkinter 版本已停用")
+                print("📌 建議使用 CustomTkinter 版本以獲得最佳體驗")
+                print("🔄 請選擇選項 1")
+                continue
                 
             else:
                 print("❌ 無效選擇，請重新輸入")

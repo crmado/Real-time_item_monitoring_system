@@ -58,7 +58,7 @@ def test_mvc_structure():
         basler_mvc / "models" / "basler_camera_model.py",
         basler_mvc / "models" / "detection_model.py",
         basler_mvc / "views" / "__init__.py",
-        basler_mvc / "views" / "main_view.py",
+        basler_mvc / "views" / "main_view_ctk_bright.py",
         basler_mvc / "controllers" / "__init__.py",
         basler_mvc / "controllers" / "main_controller.py",
         basler_mvc / "config" / "__init__.py",

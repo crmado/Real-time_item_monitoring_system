@@ -28,8 +28,8 @@ CAMERA_CONFIG = {
     'grab_strategy': 'LatestImageOnly',
     'grab_timeout': 1,  # 毫秒
     
-    # 緩衝設置
-    'frame_buffer_size': 10,
+    # 緩衝設置 - 優化記憶體使用
+    'frame_buffer_size': 3,
     'enable_frame_queue': True
 }
 
@@ -68,7 +68,7 @@ PERFORMANCE_CONFIG = {
     # 線程設置
     'enable_multithreading': True,
     'processing_thread_count': 1,
-    'max_processing_queue_size': 10,
+    'max_processing_queue_size': 5,
     
     # 顯示設置
     'ui_update_fps': 120,  # 🚀 UI 更新頻率 (大幅提升)
@@ -79,7 +79,7 @@ PERFORMANCE_CONFIG = {
     
     # 統計設置
     'stats_update_interval': 0.5,  # 秒
-    'fps_calculation_window': 100,  # 幀數
+    'fps_calculation_window': 50,  # 幀數 - 減少記憶體使用
     'enable_performance_logging': True
 }
 
