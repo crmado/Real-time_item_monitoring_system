@@ -1589,6 +1589,155 @@ class MainController:
             logging.error(f"手動觸發調試保存錯誤: {str(e)}")
             return False
     
+    # ==================== 🚀 超高速檢測模式 ====================
+    
+    def enable_ultra_high_speed_detection(self, enabled: bool = True, target_fps: int = None):
+        """啟用超高速檢測模式 - 專為206-376fps設計"""
+        # 🚀 根據相機規格自動設定目標FPS
+        if target_fps is None:
+            # 根據相機模型推斷最適FPS
+            if hasattr(self.camera_model, 'current_fps') and self.camera_model.current_fps > 0:
+                # 使用當前相機FPS作為目標，檢測速度比相機快15%
+                target_fps = int(self.camera_model.current_fps * 1.15)
+            else:
+                # 預設使用280fps (中等規格)
+                target_fps = 280
+        
+        # 🔧 確保檢測FPS高於影像FPS
+        if target_fps < 200:
+            target_fps = 280  # 最低280fps以確保性能
+        
+        self.detection_model.enable_ultra_high_speed_mode(enabled, target_fps)
+        
+        if enabled:
+            logging.info(f"🚀 主控制器啟用超高速檢測 - 目標: {target_fps}fps")
+            # 🔧 自動關閉不必要的功能以提升性能
+            self._optimize_for_high_speed()
+        else:
+            logging.info("🔧 主控制器禁用超高速檢測，恢復標準模式")
+            self._restore_standard_mode()
+    
+    def _optimize_for_high_speed(self):
+        """為高速模式優化系統設置"""
+        try:
+            # 🚀 減少記憶體監控頻率以節省性能
+            if hasattr(self.memory_monitor, 'check_interval'):
+                self.memory_monitor.check_interval = 60.0  # 從30秒改為60秒
+            
+            # 🚀 暫停不必要的設備監控
+            if hasattr(self.camera_model, 'device_monitor_enabled'):
+                self.camera_model.device_monitor_enabled = False
+                
+            logging.info("🚀 系統已優化以支援超高速檢測")
+        except Exception as e:
+            logging.warning(f"高速優化設置部分失敗: {str(e)}")
+    
+    def _restore_standard_mode(self):
+        """恢復標準模式設置"""
+        try:
+            # 🔧 恢復記憶體監控頻率
+            if hasattr(self.memory_monitor, 'check_interval'):
+                self.memory_monitor.check_interval = 30.0
+            
+            # 🔧 恢復設備監控
+            if hasattr(self.camera_model, 'device_monitor_enabled'):
+                self.camera_model.device_monitor_enabled = True
+                
+            logging.info("🔧 系統已恢復標準模式設置")
+        except Exception as e:
+            logging.warning(f"標準模式恢復部分失敗: {str(e)}")
+    
+    def is_ultra_high_speed_enabled(self) -> bool:
+        """檢查是否啟用超高速模式"""
+        return self.detection_model.is_ultra_high_speed_enabled()
+    
+    def auto_configure_detection_speed(self):
+        """根據相機規格自動配置檢測速度"""
+        try:
+            if hasattr(self.camera_model, 'current_fps') and self.camera_model.current_fps > 0:
+                camera_fps = self.camera_model.current_fps
+                
+                # 🚀 自動判斷是否需要高速模式
+                if camera_fps >= 200:  # 高速相機
+                    # 檢測FPS應該比相機FPS高15%以確保每幀都被處理
+                    target_detection_fps = int(camera_fps * 1.15)
+                    self.enable_ultra_high_speed_detection(True, target_detection_fps)
+                    logging.info(f"🚀 檢測到高速相機({camera_fps:.1f}fps)，自動啟用超高速檢測模式")
+                else:
+                    # 低速相機使用標準模式
+                    self.enable_ultra_high_speed_detection(False)
+                    logging.info(f"🎯 檢測到標準相機({camera_fps:.1f}fps)，使用標準檢測模式")
+            else:
+                logging.warning("⚠️ 無法獲取相機FPS，使用預設檢測模式")
+        except Exception as e:
+            logging.error(f"自動配置檢測速度失敗: {str(e)}")
+    
+    def get_detection_speed_info(self) -> Dict[str, Any]:
+        """獲取檢測速度相關信息"""
+        try:
+            detection_stats = self.detection_model.get_stats()
+            is_high_speed = self.is_ultra_high_speed_enabled()
+            
+            camera_fps = getattr(self.camera_model, 'current_fps', 0)
+            detection_fps = detection_stats.get('detection_fps', 0)
+            
+            # 計算性能比率
+            speed_ratio = detection_fps / camera_fps if camera_fps > 0 else 0
+            
+            return {
+                'ultra_high_speed_enabled': is_high_speed,
+                'camera_fps': camera_fps,
+                'detection_fps': detection_fps,
+                'speed_ratio': speed_ratio,
+                'performance_grade': self._get_speed_grade(speed_ratio, camera_fps),
+                'ultra_high_speed_status': detection_stats.get('ultra_high_speed', {}),
+                'recommendations': self._get_speed_recommendations(camera_fps, detection_fps, is_high_speed)
+            }
+        except Exception as e:
+            logging.error(f"獲取檢測速度信息錯誤: {str(e)}")
+            return {'error': str(e)}
+    
+    def _get_speed_grade(self, ratio: float, camera_fps: float) -> str:
+        """獲取速度等級評分"""
+        if camera_fps >= 300:  # 超高速相機
+            if ratio >= 1.1:
+                return "🏆 卓越 (適用376fps)"
+            elif ratio >= 1.05:
+                return "🎉 優秀"
+            else:
+                return "⚠️ 需要啟用超高速模式"
+        elif camera_fps >= 200:  # 高速相機
+            if ratio >= 1.1:
+                return "🏆 卓越 (適用280fps)"
+            elif ratio >= 1.0:
+                return "✅ 良好"
+            else:
+                return "⚠️ 建議啟用高速模式"
+        else:  # 標準相機
+            if ratio >= 1.0:
+                return "✅ 良好 (適用206fps)"
+            else:
+                return "🔧 標準模式即可"
+    
+    def _get_speed_recommendations(self, camera_fps: float, detection_fps: float, is_high_speed: bool) -> List[str]:
+        """獲取速度優化建議"""
+        recommendations = []
+        
+        if camera_fps >= 300 and not is_high_speed:
+            recommendations.append("🚀 建議啟用376fps超高速模式")
+        elif camera_fps >= 250 and not is_high_speed:
+            recommendations.append("🚀 建議啟用280fps高速模式")
+        elif camera_fps >= 200 and not is_high_speed:
+            recommendations.append("🚀 建議啟用206fps模式")
+        
+        if detection_fps < camera_fps:
+            recommendations.append("⚠️ 檢測速度低於相機速度，可能丟幀")
+        
+        if is_high_speed and camera_fps < 150:
+            recommendations.append("🔧 相機速度較低，可考慮使用標準模式")
+            
+        return recommendations
+
     def __del__(self):
         """析構函數 - 安全版本"""
         try:

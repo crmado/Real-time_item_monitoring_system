@@ -764,10 +764,30 @@ class DetectionModel:
     
     def get_stats(self) -> Dict[str, Any]:
         """獲取檢測統計"""
-        return {
+        stats = {
             'current_method': self.method_name,
             'object_count': self.object_count,
             'detection_fps': self.detection_fps,
             'available_methods': self.get_available_methods(),
             'parameters': self.detection_params.copy()
         }
+        
+        # 🚀 添加高速模式狀態
+        if hasattr(self.current_method, 'get_ultra_high_speed_status'):
+            stats['ultra_high_speed'] = self.current_method.get_ultra_high_speed_status()
+        
+        return stats
+    
+    def enable_ultra_high_speed_mode(self, enabled: bool = True, target_fps: int = 280):
+        """啟用超高速檢測模式"""
+        if hasattr(self.current_method, 'enable_ultra_high_speed_mode'):
+            self.current_method.enable_ultra_high_speed_mode(enabled, target_fps)
+            logging.info(f"🚀 檢測模型高速模式: {'啟用' if enabled else '禁用'} (目標: {target_fps}fps)")
+        else:
+            logging.warning("⚠️ 當前檢測方法不支援超高速模式")
+    
+    def is_ultra_high_speed_enabled(self) -> bool:
+        """檢查是否啟用超高速模式"""
+        if hasattr(self.current_method, 'ultra_high_speed_mode'):
+            return self.current_method.ultra_high_speed_mode
+        return False
