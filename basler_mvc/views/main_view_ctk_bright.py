@@ -270,16 +270,25 @@ class MainView:
         left_panel = ctk.CTkFrame(parent, fg_color=ColorScheme.BG_CARD)
         left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 2), pady=0)
         
+        # 創建可滾動框架以避免內容過多時的佈局問題
+        left_scrollable = ctk.CTkScrollableFrame(
+            left_panel,
+            fg_color="transparent",
+            scrollbar_button_color=ColorScheme.ACCENT_BLUE,
+            scrollbar_button_hover_color=ColorScheme.PRIMARY_BLUE
+        )
+        left_scrollable.pack(fill="both", expand=True, padx=5, pady=5)
+        
         # 設備標題
         ctk.CTkLabel(
-            left_panel,
+            left_scrollable,
             text="設備",
             font=ctk.CTkFont(size=FontSizes.TITLE, weight="bold"),
             text_color=ColorScheme.TEXT_PRIMARY
         ).pack(pady=(15, 10))
         
         # 設備選擇區域
-        device_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        device_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
         device_frame.pack(fill="x", padx=12, pady=(0, 15))
         
         self.device_combobox = ctk.CTkComboBox(
@@ -306,14 +315,14 @@ class MainView:
         
         # 相機設置標題
         ctk.CTkLabel(
-            left_panel,
+            left_scrollable,
             text="📷 相機設置",
             font=ctk.CTkFont(size=FontSizes.TITLE, weight="bold"),
             text_color=ColorScheme.TEXT_ACCENT
         ).pack(pady=(0, 10))
         
         # 曝光時間設置 - 增強版
-        exposure_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        exposure_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
         exposure_frame.pack(fill="x", padx=12, pady=(0, 15))
         
         # 標題和輸入框
@@ -381,7 +390,7 @@ class MainView:
         # 即時檢測開關
         self.enable_detection_var = tk.BooleanVar(value=True)
         self.detection_checkbox = ctk.CTkCheckBox(
-            left_panel,
+            left_scrollable,
             text="啟用即時檢測",
             variable=self.enable_detection_var,
             command=self.toggle_detection,
@@ -395,14 +404,14 @@ class MainView:
         
         # 影像控制區域
         ctk.CTkLabel(
-            left_panel,
+            left_scrollable,
             text="🎬 影像控制",
             font=ctk.CTkFont(size=FontSizes.TITLE, weight="bold"),
             text_color=ColorScheme.PURPLE_ACCENT
         ).pack(pady=(10, 10))
         
         # 模式選擇
-        mode_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        mode_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
         mode_frame.pack(fill="x", padx=12, pady=(0, 15))
         
         ctk.CTkLabel(
@@ -453,7 +462,7 @@ class MainView:
         self.mode_playback.pack(anchor="w", padx=25, pady=(3, 15))
         
         # 錄製控件區域
-        self.recording_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        self.recording_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
         # 預設隱藏，根據模式顯示
         
         # 檔名輸入
@@ -503,7 +512,7 @@ class MainView:
         self.recording_status.pack()
         
         # 回放控件區域
-        self.playback_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        self.playback_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
         # 預設隱藏，根據模式顯示
         
         # 檔案選擇
@@ -525,7 +534,10 @@ class MainView:
             file_select_frame,
             textvariable=self.playback_file,
             font=ctk.CTkFont(size=FontSizes.SMALL),
-            text_color=ColorScheme.TEXT_SECONDARY
+            text_color=ColorScheme.TEXT_SECONDARY,
+            wraplength=300,  # 設置換行寬度
+            anchor="w",      # 左對齊
+            justify="left"   # 文字左對齊
         )
         self.file_label.pack(side="left", fill="x", expand=True)
         
@@ -879,6 +891,9 @@ class MainView:
         )
         self.target_entry.pack(pady=8)
         
+        # 當目標計數變更時，更新進度標籤
+        self.target_count_var.trace_add('write', self._update_progress_label)
+        
         # 進度條
         self.progress_bar = ctk.CTkProgressBar(
             target_frame, 
@@ -892,7 +907,7 @@ class MainView:
         
         self.progress_label = ctk.CTkLabel(
             target_frame, 
-            text="0 / 100",
+            text=f"0 / {self.target_count_var.get()}",  # 動態顯示目標計數
             font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             text_color=ColorScheme.TEXT_ACCENT
         )
@@ -1485,6 +1500,29 @@ class MainView:
                     
         except Exception as e:
             logging.error(f"同步計數顯示錯誤: {str(e)}")
+    
+    def _update_progress_label(self, *args):
+        """當目標計數變更時更新進度標籤"""
+        try:
+            if hasattr(self, 'progress_label'):
+                current_count = 0
+                # 嘗試獲取當前計數
+                if hasattr(self, 'object_count_var'):
+                    try:
+                        current_count = int(self.object_count_var.get())
+                    except (ValueError, TypeError):
+                        current_count = 0
+                
+                target = self.target_count_var.get()
+                self.progress_label.configure(text=f"{current_count} / {target}")
+                
+                # 同時更新進度條
+                if hasattr(self, 'progress_bar') and target > 0:
+                    progress = min(current_count / target, 1.0)
+                    self.progress_bar.set(progress)
+                    
+        except Exception as e:
+            logging.debug(f"更新進度標籤錯誤: {str(e)}")
     
     def on_device_selected(self, device_name):
         """設備選擇改變"""
@@ -2106,10 +2144,19 @@ class MainView:
                 
             elif event_type == 'player_playback_finished':
                 logging.info("🏁 視頻播放完成")
-                self.status_var.set("狀態: 視頻播放完成")
+                self.status_var.set("狀態: 視頻播放完成，可重新播放")
                 self.is_playing = False
                 if hasattr(self, 'play_btn'):
-                    self.play_btn.configure(text="▶️")
+                    self.play_btn.configure(text="▶ 重播")
+                # 重置進度條到開始位置，準備重新播放
+                if hasattr(self, 'video_progress'):
+                    self._updating_progress = True
+                    try:
+                        self.video_progress.set(0.0)
+                        # 重置視頻到開始位置
+                        self.controller.seek_video_to_progress(0.0)
+                    finally:
+                        self._updating_progress = False
                 # 注意：播放完成後視頻仍然加載，只是停止播放
                 # 不要設置 self.video_loaded = False
             
@@ -2188,12 +2235,18 @@ class MainView:
             try:
                 if (hasattr(self, 'start_detection_btn') and 
                     self.start_detection_btn is not None):
-                    # 更新開始檢測按鈕
+                    # 更新開始檢測按鈕 - 檢測功能與播放功能分離
                     if can_detect and not self.is_detecting:
+                        # 在 playbook 模式下，檢測是在視頻上進行物件檢測
+                        if current_mode == "playback":
+                            detect_text = "🔍 視頻檢測"
+                        else:
+                            detect_text = "▶ 開始檢測"
+                        
                         self.start_detection_btn.configure(
                             state="normal",
                             fg_color=ColorScheme.SUCCESS_GREEN,
-                            text="▶ 開始檢測"
+                            text=detect_text
                         )
                     elif not can_detect:
                         self.start_detection_btn.configure(
@@ -2307,9 +2360,14 @@ class MainView:
                         )
                     elif current_mode == "playback":
                         if self.video_loaded:
+                            # 🎬 根據實際播放狀態設置按鈕文字，但不影響檢測功能
+                            if hasattr(self, 'is_playing') and self.is_playing:
+                                play_text = "⏸️ 暫停"
+                            else:
+                                play_text = "▶ 播放"
                             self.play_btn.configure(
                                 state="normal",
-                                text="▶ 播放"
+                                text=play_text
                             )
                         else:
                             self.play_btn.configure(
@@ -2568,7 +2626,13 @@ class MainView:
         )
         if filename:
             import os
-            self.playback_file.set(os.path.basename(filename))
+            # 處理長檔案名 - 如果太長則截斷並添加...
+            basename = os.path.basename(filename)
+            if len(basename) > 50:  # 如果檔案名超過50個字符
+                display_name = basename[:25] + "..." + basename[-22:]  # 顯示前25和後22個字符
+            else:
+                display_name = basename
+            self.playback_file.set(display_name)
             
             # 🔧 關鍵修復：確保UI模式與控制器同步
             # 選擇視頻檔案時自動切換到回放模式
@@ -2643,10 +2707,20 @@ class MainView:
             self.play_btn.configure(text="▶️")
     
     def stop_playback(self):
-        """停止回放"""
+        """停止回放並重置進度條"""
         self.controller.stop_video_playback()
         self.is_playing = False
         self.play_btn.configure(text="▶️")
+        
+        # 重置進度條到開始位置
+        if hasattr(self, 'video_progress'):
+            self._updating_progress = True
+            try:
+                self.video_progress.set(0.0)
+                # 同時重置視頻到開始位置
+                self.controller.seek_video_to_progress(0.0)
+            finally:
+                self._updating_progress = False
     
     def on_speed_changed(self, speed):
         """播放速度變化"""
