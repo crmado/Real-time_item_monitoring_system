@@ -933,52 +933,7 @@ class MainView:
         )
         self.stop_detection_btn.pack(side="left", padx=5)
         
-        # 批次控制按鈕
-        batch_control_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
-        batch_control_frame.pack(fill="x", pady=(10, 15))
-        
-        # 啟動模型計算
-        self.start_model_btn = ctk.CTkButton(
-            batch_control_frame,
-            text="🚀 啟動模型計算",
-            command=self.start_model_calculation,
-            height=32,
-            width=120,
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            fg_color=ColorScheme.SUCCESS_GREEN,
-            hover_color="#059669",
-            text_color="white"
-        )
-        self.start_model_btn.pack(side="left", padx=(0, 10))
-        
-        # 停止計算
-        self.stop_calculation_btn = ctk.CTkButton(
-            batch_control_frame,
-            text="⏹ 停止計算",
-            command=self.stop_calculation,
-            height=32,
-            width=120,
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            fg_color=ColorScheme.ERROR_RED,
-            hover_color="#b91c1c",
-            text_color="white",
-            state="disabled"
-        )
-        self.stop_calculation_btn.pack(side="left", padx=(0, 10))
-        
-        # 重置計算
-        self.reset_calculation_btn = ctk.CTkButton(
-            batch_control_frame,
-            text="🔄 重置計算",
-            command=self.reset_calculation,
-            height=32,
-            width=120,
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            fg_color=ColorScheme.WARNING_ORANGE,
-            hover_color="#b45309",
-            text_color="white"
-        )
-        self.reset_calculation_btn.pack(side="left")
+        # 批次控制按鈕區域已移除 - 功能已整合到"開始檢測"按鈕中
         
         # 批次狀態顯示
         batch_status_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_SECONDARY)
@@ -2712,99 +2667,7 @@ class MainView:
     
     # ==================== 批次處理控制方法 ====================
     
-    def start_model_calculation(self):
-        """啟動模型計算和震動機控制"""
-        try:
-            logging.info("🚀 啟動模型計算...")
-            
-            # 連接震動機
-            if not hasattr(self, 'vibration_connected') or not self.vibration_connected:
-                success = self.connect_vibration_machine()
-                if not success:
-                    self.status_var.set("狀態: 震動機連接失敗")
-                    return
-            
-            # 啟動檢測處理
-            if self.controller.start_batch_detection():
-                self.is_calculating = True
-                self.current_round = 1
-                self.total_count = 0
-                
-                # 更新按鈕狀態
-                self.start_model_btn.configure(state="disabled")
-                self.stop_calculation_btn.configure(state="normal")
-                
-                # 更新顯示
-                self.round_count_var.set(str(self.current_round))
-                self.status_var.set("狀態: 模型計算中...")
-                
-                # 啟動震動機
-                self.start_vibration_machine()
-                
-                logging.info("✅ 模型計算已啟動")
-            else:
-                self.status_var.set("狀態: 啟動失敗")
-                
-        except Exception as e:
-            logging.error(f"啟動模型計算錯誤: {str(e)}")
-            self.status_var.set(f"狀態: 啟動錯誤 - {str(e)}")
-    
-    def stop_calculation(self):
-        """停止計算和震動機"""
-        try:
-            logging.info("⏹ 停止計算...")
-            
-            # 停止檢測處理
-            self.controller.stop_batch_detection()
-            
-            # 停止震動機
-            self.stop_vibration_machine()
-            
-            # 更新狀態
-            self.is_calculating = False
-            
-            # 更新按鈕狀態
-            self.start_model_btn.configure(state="normal")
-            self.stop_calculation_btn.configure(state="disabled")
-            
-            # 記錄本輪結果
-            self.record_batch_result()
-            
-            self.status_var.set("狀態: 計算已停止")
-            logging.info("✅ 計算已停止")
-            
-        except Exception as e:
-            logging.error(f"停止計算錯誤: {str(e)}")
-            self.status_var.set(f"狀態: 停止錯誤 - {str(e)}")
-    
-    def reset_calculation(self):
-        """重置計算狀態"""
-        try:
-            logging.info("🔄 重置計算狀態...")
-            
-            # 停止當前操作
-            if hasattr(self, 'is_calculating') and self.is_calculating:
-                self.stop_calculation()
-            
-            # 重置計數器
-            self.object_count_var.set("000")
-            self.progress_bar.set(0)
-            self.round_count_var.set("0")
-            
-            # 重置內部狀態
-            self.current_round = 0
-            self.total_count = 0
-            
-            # 重置按鈕狀態
-            self.start_model_btn.configure(state="normal")
-            self.stop_calculation_btn.configure(state="disabled")
-            
-            self.status_var.set("狀態: 已重置")
-            logging.info("✅ 計算狀態已重置")
-            
-        except Exception as e:
-            logging.error(f"重置計算錯誤: {str(e)}")
-            self.status_var.set(f"狀態: 重置錯誤 - {str(e)}")
+    # 原有的模型計算相關函數已移除，功能已整合到"開始檢測"中
     
     # ==================== 震動機控制方法 ====================
     
@@ -2966,7 +2829,7 @@ class MainView:
             
             # 詢問用戶是否繼續下一輪（這裡可以實現自動或手動模式）
             # 暫時實現自動停止模式
-            self.stop_calculation()
+            self.stop_detection()
             
             # 可以在這裡添加彈窗詢問是否繼續下一輪
             # result = messagebox.askyesno("完成本輪", f"第 {self.current_round} 輪已完成\n"
