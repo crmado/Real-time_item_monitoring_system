@@ -56,12 +56,12 @@ python video_fps_verifier.py
 
 ### Building Executables
 ```bash
-# Build standalone executable (Windows)
-pyinstaller --clean object_detection_system.spec
-.\dist\object_detection_system.exe 2> logs\error.log
+# Build standalone executable (Windows/Linux/Mac)
+# Note: No .spec file found in current codebase
+pyinstaller --onefile basler_mvc/main.py --name basler_mvc_system
 
-# Linux/Mac build
-pyinstaller --onefile main.py
+# Alternative: Use existing launcher
+python basler_mvc_launcher.py
 ```
 
 ## Core Architecture
@@ -120,11 +120,15 @@ The system includes built-in performance monitoring:
 ```python
 CAMERA_CONFIG = {
     'target_model': 'acA640-300gm',
+    'default_width': 640,
+    'default_height': 480,
+    'default_pixel_format': 'Mono8',
     'target_fps': 350.0,
     'default_exposure_time': 1000.0,  # microseconds
     'enable_jumbo_frames': True,
     'packet_size': 9000,
-    'grab_strategy': 'LatestImageOnly'
+    'grab_strategy': 'LatestImageOnly',
+    'frame_buffer_size': 3
 }
 ```
 
@@ -134,7 +138,25 @@ DETECTION_CONFIG = {
     'default_method': 'circle',  # 'circle', 'contour', 'enhanced'
     'min_area': 100,
     'max_area': 5000,
-    'enable_detection': True
+    'enable_detection': True,
+    'circle_detection': {
+        'dp': 1.2,
+        'min_dist': 20,
+        'param1': 50,
+        'param2': 30,
+        'min_radius': 5,
+        'max_radius': 100
+    }
+}
+```
+
+### Performance Configuration
+```python
+PERFORMANCE_CONFIG = {
+    'ui_update_fps': 120,  # High-speed UI updates
+    'frame_skip_ratio': 4,
+    'max_processing_queue_size': 5,
+    'fps_calculation_window': 50
 }
 ```
 
@@ -149,9 +171,10 @@ The system supports multiple detection methods via modular architecture:
 5. **Deep Learning**: YOLO integration (via ultralytics)
 
 ### Adding New Detection Methods
-1. Inherit from `DetectionMethod` base class in `detection_base.py`
-2. Implement `process_frame()` and `detect_objects()` methods
-3. Register in `DetectionModel` class
+1. Inherit from `DetectionMethod` base class in `basler_mvc/models/detection_base.py`
+2. Implement required methods: `process_frame()`, `detect_objects()`, `set_parameters()`
+3. Register in `DetectionModel` class in `basler_mvc/models/detection_model.py`
+4. Update configuration in `basler_mvc/config/settings.py`
 
 ## UI System (CustomTkinter)
 
@@ -205,24 +228,34 @@ The system includes intelligent vibration motor control for automated feeding:
 
 ### Core Dependencies (Required)
 ```bash
-customtkinter>=1.5.0    # High-DPI UI framework
-opencv-python>=4.10.0   # Image processing and camera interface
-numpy>=1.24.4           # Numerical operations
-pillow>=10.4.0          # Image handling
-PyYAML>=6.0.1           # Configuration file management
+customtkinter    # High-DPI UI framework  
+opencv-python-headless>=4.10.0   # Image processing (headless version from requirements.txt)
+numpy>=1.24.4    # Numerical operations
+pillow>=10.4.0   # Image handling
+PyYAML>=6.0.1    # Configuration file management
 ```
 
-### Hardware-Specific Dependencies
+### Hardware-Specific Dependencies  
 ```bash
-pypylon>=3.0.0          # Basler camera SDK (industrial cameras)
+pypylon>=3.0.0   # Basler camera SDK (industrial cameras)
 ```
 
-### Optional Dependencies
+### Optional Dependencies (Available in requirements.txt)
 ```bash
 ultralytics>=8.3.0      # YOLO deep learning models
 torch>=2.0.0            # PyTorch backend for AI
 Flask>=3.0.0            # Web interface support
 psutil>=6.0.0           # System monitoring
+memory-profiler         # Memory usage analysis
+```
+
+### Installing Dependencies
+```bash
+# Install all dependencies at once
+pip install -r requirements.txt
+
+# Install minimal dependencies only
+pip install customtkinter opencv-python numpy pillow PyYAML
 ```
 
 ## Troubleshooting and Diagnostics
@@ -259,12 +292,38 @@ python basler_mvc/utils/system_diagnostics.py
 2. **Interface Not Responding**:
    - Check logs in `basler_mvc/logs/`
    - Restart with debug mode: `python run_main_with_debug.py`
+   - Try alternative launcher: `python basler_mvc_launcher.py`
 
 ### Log Files and Debugging
 - **Main Log**: `basler_mvc/logs/basler_mvc.log`
-- **Batch Records**: `basler_mvc/batch_records/`
+- **Batch Records**: `basler_mvc/batch_records/` (JSON format)
 - **Recording Quality**: `recording_analysis_report.json`
 - **Debug Mode**: Use `run_main_with_debug.py` for verbose logging
+
+## Testing and Quality Assurance
+
+### Running Tests
+```bash
+# Test system functionality and imports
+python test_mvc_system.py
+
+# Test thread synchronization fixes  
+python test_thread_fix.py
+
+# Validate video recording quality
+python recording_quality_analyzer.py
+
+# Verify video frame rate accuracy
+python video_fps_verifier.py
+```
+
+### Test Coverage
+The testing framework covers:
+- **Import Testing**: Validates all required modules load correctly
+- **MVC Structure**: Ensures all directories and files exist
+- **Detection Algorithms**: Tests circle and contour detection with synthetic data
+- **Performance Validation**: Verifies FPS targets and memory usage
+- **Configuration Validation**: Checks settings.py parameter ranges
 
 ## Development Guidelines
 
@@ -292,5 +351,33 @@ python basler_mvc/utils/system_diagnostics.py
 - Runtime parameter adjustment through UI
 - Persistent storage of user preferences
 - Validation of configuration parameters on startup
+
+## File Structure and Data Storage
+
+### Recording Storage
+- **Location**: `basler_mvc/recordings/` 
+- **Organization**: Subdirectories by batch size (e.g., `1000顆/`)
+- **Formats**: MP4 video files with metadata
+- **Naming**: Timestamped with format `output_YYYY-MM-DD_HH-MM-SS_count.mp4`
+
+### Batch Records
+- **Location**: `basler_mvc/batch_records/`
+- **Format**: JSON files with comprehensive batch metadata
+- **Content**: Processing statistics, timestamps, object counts, performance metrics
+
+### Configuration Updates
+Use the provided functions for runtime configuration changes:
+```python
+from basler_mvc.config.settings import update_config, validate_config
+
+# Update camera settings
+update_config('camera', {'target_fps': 300.0})
+
+# Update detection parameters  
+update_config('detection', {'min_area': 150})
+
+# Always validate after changes
+validate_config()
+```
 
 The system is designed for 24/7 industrial operation with comprehensive monitoring, automatic error recovery, and performance optimization for high-speed camera applications.
