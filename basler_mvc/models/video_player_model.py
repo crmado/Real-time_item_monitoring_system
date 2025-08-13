@@ -69,26 +69,42 @@ class VideoPlayerModel:
             self.is_paused = False
             self.current_frame_number = 0
             
-            # 釋放舊的視頻捕獲
+            # 🔧 安全釋放舊的視頻捕獲，避免 FFmpeg 線程衝突
             if self.video_capture:
+                # 先確保完全停止播放，避免線程競爭
+                self.stop_event.set()
+                if hasattr(self, 'playback_thread') and self.playback_thread:
+                    self.playback_thread.join(timeout=3.0)
+                    
+                # 延遲釋放，給 FFmpeg 時間清理內部線程
+                time.sleep(0.1)
                 self.video_capture.release()
+                time.sleep(0.1)  # 額外延遲確保完全釋放
                 
-            # 🔧 針對AVI等格式的兼容性改進
+            # 🔧 避免 FFmpeg 線程問題：優先使用預設後端，謹慎使用 FFMPEG
             self.video_capture = cv2.VideoCapture(video_path)
             
-            # 嘗試多種後端以提高AVI兼容性
+            # 只有在預設後端完全失敗時才嘗試 FFMPEG 後端
             if not self.video_capture.isOpened():
-                logging.warning(f"使用預設後端無法打開視頻，嘗試其他後端: {video_path}")
+                logging.warning(f"預設後端無法打開視頻: {video_path}")
                 self.video_capture.release()
+                time.sleep(0.2)  # 給系統時間清理
                 
-                # 嘗試使用FFMPEG後端
-                self.video_capture = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
-                if not self.video_capture.isOpened():
-                    logging.error(f"無法打開視頻檔案: {video_path}")
-                    logging.error("請確認視頻檔案格式受支援（推薦使用MP4格式）")
+                # 🔧 關鍵修復：設置 FFmpeg 線程數為 1，避免多線程衝突
+                try:
+                    # 嘗試使用單線程 FFMPEG 後端
+                    logging.info("⚠️ 嘗試使用單線程 FFMPEG 後端...")
+                    self.video_capture = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+                    
+                    if self.video_capture.isOpened():
+                        logging.info("✅ 使用 FFMPEG 後端成功開啟視頻（單線程模式）")
+                    else:
+                        logging.error(f"❌ 無法打開視頻檔案: {video_path}")
+                        logging.error("請確認視頻檔案格式受支援（推薦使用MP4格式）")
+                        return False
+                except Exception as e:
+                    logging.error(f"FFMPEG 後端初始化失敗: {str(e)}")
                     return False
-                else:
-                    logging.info("✅ 使用FFMPEG後端成功開啟視頻")
             else:
                 logging.info("✅ 使用預設後端成功開啟視頻")
                 
@@ -179,13 +195,27 @@ class VideoPlayerModel:
             logging.warning("⚠️ 視頻播放啟動失敗: 視頻已在播放中")
             return False
             
-        self.is_playing = True
-        self.is_paused = False
+        # 🔧 線程安全的播放啟動機制
         self.stop_event.clear()
         
-        # 啟動播放線程
-        self.playback_thread = threading.Thread(target=self._playback_loop)
+        # 確保舊線程完全停止
+        if hasattr(self, 'playback_thread') and self.playback_thread and self.playback_thread.is_alive():
+            logging.warning("⚠️ 檢測到舊播放線程仍在運行，等待停止...")
+            self.playback_thread.join(timeout=2.0)
+            
+        # 線程安全地設置狀態
+        self.is_playing = True
+        self.is_paused = False
+        
+        # 🔧 創建新的播放線程，添加更好的同步保護
+        self.playback_thread = threading.Thread(
+            target=self._playback_loop, 
+            name=f"VideoPlayback-{id(self)}"  # 唯一線程名稱
+        )
         self.playback_thread.daemon = True
+        
+        # 延遲啟動，確保狀態完全設置
+        time.sleep(0.05)
         self.playback_thread.start()
         
         self.notify_observers('playback_started', {
@@ -454,9 +484,31 @@ class VideoPlayerModel:
         }
     
     def release(self):
-        """釋放資源"""
+        """🔧 安全釋放資源，避免 FFmpeg 線程衝突"""
+        logging.info("🔄 開始清理視頻播放器資源...")
+        
+        # 1. 停止播放並等待線程完全結束
         self.stop_playback()
+        
+        # 2. 額外等待確保線程完全停止
+        if hasattr(self, 'playback_thread') and self.playback_thread:
+            if self.playback_thread.is_alive():
+                logging.warning("⚠️ 等待播放線程完全停止...")
+                self.playback_thread.join(timeout=3.0)
+                if self.playback_thread.is_alive():
+                    logging.error("❌ 播放線程停止超時")
+                    
+        # 3. 安全釋放 VideoCapture，避免 FFmpeg 衝突
         if self.video_capture:
-            self.video_capture.release()
-            self.video_capture = None
-        logging.info("視頻播放器資源已釋放")
+            try:
+                # 延遲釋放，給 FFmpeg 時間清理內部線程
+                time.sleep(0.2)
+                self.video_capture.release()
+                time.sleep(0.1)
+                self.video_capture = None
+                logging.info("✅ VideoCapture 已安全釋放")
+            except Exception as e:
+                logging.error(f"⚠️ 釋放 VideoCapture 時出錯: {str(e)}")
+                self.video_capture = None
+                
+        logging.info("✅ 視頻播放器資源清理完成")

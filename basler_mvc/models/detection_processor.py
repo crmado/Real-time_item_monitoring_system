@@ -139,12 +139,29 @@ class DetectionProcessor:
                 # 🧹 確保引用被清除
                 self.executor = None
         
-        # 等待工作線程結束
+        # 🔧 改善線程停止機制：先清空隊列再等待線程
+        self._clear_queues()
+        
+        # 等待工作線程結束，使用更長的超時時間
         for thread in self.processing_threads:
             if thread.is_alive():
-                thread.join(timeout=2.0)  # 增加等待時間
+                # 🔧 針對結果處理線程的特殊處理
+                if "ResultHandler" in thread.name:
+                    # 結果處理線程需要更多時間清理隊列
+                    thread.join(timeout=5.0)
+                else:
+                    thread.join(timeout=3.0)
+                    
                 if thread.is_alive():
-                    logging.warning(f"檢測工作線程 {thread.name} 未能及時停止")
+                    logging.warning(f"檢測工作線程 {thread.name} 未能及時停止，嘗試強制中斷")
+                    # 🔧 最後手段：強制設置停止標誌
+                    if hasattr(thread, '_target') and hasattr(thread._target, '__self__'):
+                        try:
+                            thread_obj = thread._target.__self__
+                            if hasattr(thread_obj, 'stop_event'):
+                                thread_obj.stop_event.set()
+                        except:
+                            pass
         
         self.processing_threads.clear()
         
@@ -306,10 +323,17 @@ class DetectionProcessor:
         
         while not self.stop_event.is_set():
             try:
+                # 🔧 關鍵修復：檢查停止狀態和處理狀態
+                if not self.is_processing:
+                    break
+                    
                 # 獲取檢測結果
                 try:
                     result = self.result_queue.get(timeout=0.1)
                 except queue.Empty:
+                    # 🔧 在隊列為空時檢查停止狀態，避免無限等待
+                    if self.stop_event.is_set() or not self.is_processing:
+                        break
                     continue
                 
                 frame_number = result['frame_info'].get('frame_number', 0)
@@ -353,20 +377,35 @@ class DetectionProcessor:
         logging.info("結果處理線程結束")
     
     def _clear_queues(self):
-        """清空隊列"""
+        """🔧 快速清空隊列，幫助線程更快停止"""
         # 清空幀隊列
+        cleared_frames = 0
         while not self.frame_queue.empty():
             try:
                 self.frame_queue.get_nowait()
+                cleared_frames += 1
+                # 避免無限循環
+                if cleared_frames > 1000:
+                    logging.warning("⚠️ 幀隊列清理超過1000個項目，強制停止清理")
+                    break
             except queue.Empty:
                 break
         
         # 清空結果隊列
+        cleared_results = 0
         while not self.result_queue.empty():
             try:
                 self.result_queue.get_nowait()
+                cleared_results += 1
+                # 避免無限循環
+                if cleared_results > 1000:
+                    logging.warning("⚠️ 結果隊列清理超過1000個項目，強制停止清理")
+                    break
             except queue.Empty:
                 break
+                
+        if cleared_frames > 0 or cleared_results > 0:
+            logging.debug(f"🧹 清理隊列: 幀={cleared_frames}, 結果={cleared_results}")
     
     def set_sync_mode(self, sync_mode: bool):
         """設置同步模式"""

@@ -1796,7 +1796,7 @@ class MainView:
         self.display_size = (int(640 * factor), int(480 * factor))
     
     def start_detection(self):
-        """開始檢測 - 增強視覺反饋和防重複點擊"""
+        """開始檢測 - 完全獨立的檢測功能，不影響影片播放"""
         try:
             # 🛡️ 防重複點擊保護
             if self.is_detecting:
@@ -1810,8 +1810,12 @@ class MainView:
                 fg_color=ColorScheme.WARNING_ORANGE
             )
             
-            # 更新狀態顯示
-            self.status_var.set("狀態: 正在啟動檢測...")
+            # 🔧 關鍵修復：檢測功能完全獨立，不干預播放狀態
+            detection_status = "檢測啟動中"
+            if self.is_playing:
+                detection_status += "（影片播放不受影響）"
+            
+            self.status_var.set(f"狀態: {detection_status}")
             
             # 重置計數
             self.object_count_var.set("000")
@@ -1857,7 +1861,7 @@ class MainView:
             self.update_button_states()
     
     def stop_detection(self):
-        """停止檢測 - 增強狀態恢復機制"""
+        """🔧 停止檢測 - 改善線程停止機制"""
         try:
             # 🎯 先顯示停止狀態，但不改變 is_detecting
             self.stop_detection_btn.configure(
@@ -1869,7 +1873,11 @@ class MainView:
             # 🔧 記錄原始狀態以便恢復
             original_detecting_state = self.is_detecting
             
-            # 停止檢測
+            # 🔧 給UI一點時間更新，避免界面卡住
+            self.root.update_idletasks()
+            
+            # 停止檢測 - 使用更長的超時時間
+            logging.info("🔄 開始停止檢測程序...")
             success = self.controller.stop_batch_detection()
             
             # 🎯 根據停止結果更新狀態
@@ -1891,8 +1899,9 @@ class MainView:
                 self.status_var.set("狀態: 檢測停止失敗")
                 logging.error("❌ 批次檢測停止失敗")
             
-            # 🎯 重要：根據最終狀態更新所有按鈕
-            self.update_button_states()
+            # 🔧 關鍵修復：延遲更新按鈕狀態，避免立即觸發其他狀態檢查
+            # 使用 after 方法延遲執行，避免在停止過程中觸發衝突
+            self.root.after(100, self._delayed_button_state_update)
             
             # 🔧 額外的恢復檢查
             if not self.is_detecting:
@@ -1917,6 +1926,17 @@ class MainView:
             self.is_detecting = False
             self.status_var.set("狀態: 停止檢測出錯，已重置")
             self.update_button_states()
+    
+    def _delayed_button_state_update(self):
+        """🔧 延遲的按鈕狀態更新，避免在停止檢測時的狀態衝突"""
+        try:
+            # 檢查UI是否仍然有效
+            if hasattr(self, 'root') and self.root and self.root.winfo_exists():
+                self.update_button_states()
+            else:
+                logging.debug("UI已銷毀，跳過延遲按鈕狀態更新")
+        except Exception as e:
+            logging.debug(f"延遲按鈕狀態更新失敗: {str(e)}")
     
     def reset_count(self):
         """重置計數"""
@@ -2213,8 +2233,22 @@ class MainView:
             return frame
     
     def on_controller_event(self, event_type: str, data: Any = None):
-        """處理控制器事件"""
+        """🔧 處理控制器事件 - 安全的UI更新機制"""
         try:
+            # 🔧 關鍵修復：在處理任何事件前檢查UI狀態
+            if not hasattr(self, 'root') or not self.root:
+                logging.debug("UI根組件不存在，跳過事件處理")
+                return
+                
+            # 檢查UI是否仍然有效
+            try:
+                if not self.root.winfo_exists():
+                    logging.debug("UI根組件已銷毀，跳過事件處理")
+                    return
+            except:
+                logging.debug("UI應用已銷毀，跳過事件處理")
+                return
+                
             if event_type == 'frame_processed':
                 if data and 'frame' in data:
                     self.update_frame(data['frame'])
@@ -2227,20 +2261,29 @@ class MainView:
                     # 🎯 更新包裝計數系統顯示 - 確保總累計與當前段顯示一致
                     if 'current_segment_count' in data:
                         count_value = data['current_segment_count']
-                        # 兩個計數顯示相同的值，使用相同格式
-                        self.total_count_var.set(f"{count_value:03d}")
-                        self.segment_count_var.set(f"{count_value:03d}")
+                        # 🔧 安全的UI更新：檢查組件是否存在
+                        if hasattr(self, 'total_count_var') and self.total_count_var:
+                            self.total_count_var.set(f"{count_value:03d}")
+                        if hasattr(self, 'segment_count_var') and self.segment_count_var:
+                            self.segment_count_var.set(f"{count_value:03d}")
                     
                     if 'package_count' in data:
-                        self.package_count_var.set(str(data['package_count']))
+                        if hasattr(self, 'package_count_var') and self.package_count_var:
+                            self.package_count_var.set(str(data['package_count']))
                     
                     # 🔍 強制顯示實時檢測數 + 累積穿越數
                     frame_objects = data.get('object_count', 0)  # 每幀檢測數
                     objects_list = data.get('objects', [])       # 檢測物件列表
                     real_count = max(frame_objects, len(objects_list))  # 確保計數正確
                     
-                    self.object_count_var.set(f"{real_count:03d}")
-                    self.object_count_status.configure(text=f"🔍檢測: {real_count} | 📊累積: {crossing_count}")
+                    # 🔧 安全的UI更新：檢查組件是否存在且有效
+                    if hasattr(self, 'object_count_var') and self.object_count_var:
+                        self.object_count_var.set(f"{real_count:03d}")
+                    if hasattr(self, 'object_count_status') and self.object_count_status:
+                        try:
+                            self.object_count_status.configure(text=f"🔍檢測: {real_count} | 📊累積: {crossing_count}")
+                        except Exception as status_error:
+                            logging.debug(f"狀態標籤更新失敗: {str(status_error)}")
                     
                     # 🔍 調試：每10幀記錄一次實時數據
                     if hasattr(self, '_debug_counter'):
@@ -2451,10 +2494,14 @@ class MainView:
                 
             current_mode = self.mode_var.get()
             
-            # 🎯 檢查是否有任何處理正在運行
+            # 🎯 檢查是否有任何處理正在運行 - 分離播放和檢測狀態
             is_processing_running = (hasattr(self.controller, 'is_running') and self.controller.is_running)
             is_live_running = (current_mode == "live" and self.is_detecting)
             is_recording_running = (current_mode == "recording" and is_processing_running)
+            
+            # 🔧 關鍵修復：播放狀態與檢測狀態完全分離
+            # 播放功能：純粹的影片播放控制
+            # 檢測功能：獨立的檢測算法開關
             
             # 📹 檢測按鈕邏輯 - 添加屬性檢查避免初始化順序問題
             can_detect = False
@@ -2473,9 +2520,12 @@ class MainView:
             try:
                 if (hasattr(self, 'start_detection_btn') and 
                     self.start_detection_btn is not None):
-                    # 更新開始檢測按鈕 - 檢測功能與播放功能分離
+                    # 🔧 關鍵修復：檢測功能與播放功能完全分離
+                    # 檢測按鈕：控制檢測算法的啟用/禁用
+                    # 播放按鈕：控制影片的播放/暫停
+                    # 兩者互不干擾，可以獨立操作
                     if can_detect and not self.is_detecting:
-                        # 在 playbook 模式下，檢測是在視頻上進行物件檢測
+                        # 在 playback 模式下，檢測是在視頻上進行物件檢測
                         if current_mode == "playback":
                             detect_text = "🔍 視頻檢測"
                         else:
@@ -2890,49 +2940,39 @@ class MainView:
                 self.update_button_states()
     
     def toggle_playback(self):
-        """🎬 影片播放/暫停控制（不影響檢測功能）"""
-        # 🎯 修復：檢查視頻是否已加載（不只是檔案名稱）
+        """🎬 影片播放/暫停控制（完全獨立，不影響檢測功能）"""
+        # 🎯 檢查視頻是否已加載
         if not self.video_loaded or self.playback_file.get() == "未選擇檔案":
             messagebox.showwarning("警告", "請先選擇視頻檔案")
             return
         
-        # 🔧 關鍵修復：檢查實際視頻播放器狀態，而不是UI狀態
         try:
-            # 從控制器獲取實際播放狀態
-            actual_playback_status = self.controller.get_video_playback_status()
-            actual_is_playing = actual_playback_status.get('is_playing', False)
-            actual_is_paused = actual_playback_status.get('is_paused', False)
-            
-            logging.debug(f"🎯 狀態檢查 - UI狀態: {self.is_playing}, 實際播放: {actual_is_playing}, 實際暫停: {actual_is_paused}")
-            
-            # 🔧 同步UI狀態與實際狀態
-            if self.is_playing != actual_is_playing:
-                logging.warning(f"⚠️ 檢測到狀態不同步，正在修復: UI={self.is_playing}, 實際={actual_is_playing}")
-                self.is_playing = actual_is_playing
-                self.play_btn.configure(text="⏸️" if actual_is_playing else "▶️")
-            
-            # 根據實際狀態決定操作
-            if not actual_is_playing:
-                # 視頻未在播放，嘗試開始播放
-                success = self.controller.start_video_playback()
+            # 🔧 簡化狀態管理：直接基於UI狀態進行操作，避免複雜的狀態同步
+            if self.is_playing:
+                # 暫停播放
+                success = self.controller.pause_video_playback()
                 if success:
-                    # 成功開始播放後，狀態會通過事件更新
-                    logging.info("🎬 影片播放已開始（檢測功能不受影響）")
-                else:
-                    # 播放失敗，確保UI狀態正確
                     self.is_playing = False
                     self.play_btn.configure(text="▶️")
-                    messagebox.showerror("錯誤", "視頻播放啟動失敗，請檢查檔案是否有效")
-                    logging.error("❌ 視頻播放啟動失敗")
+                    self.status_var.set("狀態: 視頻已暫停")
+                    logging.info("⏸️ 視頻播放已暫停")
+                else:
+                    messagebox.showerror("錯誤", "視頻暫停失敗")
             else:
-                # 視頻正在播放，暫停它
-                self.controller.pause_video_playback()
-                logging.info("⏸️ 視頻播放已暫停")
-                # 暫停後的狀態會通過事件更新
-                
+                # 開始播放
+                # 🎯 關鍵修復：播放功能完全獨立，不涉及檢測參數
+                success = self.controller.start_video_playback()
+                if success:
+                    self.is_playing = True
+                    self.play_btn.configure(text="⏸️")
+                    self.status_var.set("狀態: 視頻播放中")
+                    logging.info("▶️ 視頻播放已開始")
+                else:
+                    messagebox.showerror("錯誤", "視頻播放啟動失敗，請檢查檔案是否有效")
+                    
         except Exception as e:
             logging.error(f"切換播放狀態時出錯: {str(e)}")
-            # 發生錯誤時，嘗試同步狀態
+            # 發生錯誤時重置狀態
             self.is_playing = False
             self.play_btn.configure(text="▶️")
             messagebox.showerror("錯誤", f"播放控制出錯: {str(e)}")
