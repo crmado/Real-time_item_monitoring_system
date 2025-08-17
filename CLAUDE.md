@@ -254,8 +254,8 @@ memory-profiler         # Memory usage analysis
 # Install all dependencies at once
 pip install -r requirements.txt
 
-# Install minimal dependencies only
-pip install customtkinter opencv-python numpy pillow PyYAML
+# Install minimal dependencies only (if requirements.txt has encoding issues)
+pip install customtkinter opencv-python-headless numpy pillow PyYAML pypylon
 ```
 
 ## Troubleshooting and Diagnostics
@@ -315,6 +315,9 @@ python recording_quality_analyzer.py
 
 # Verify video frame rate accuracy
 python video_fps_verifier.py
+
+# Run all tests together
+python test_mvc_system.py && python test_thread_fix.py
 ```
 
 ### Test Coverage
