@@ -883,6 +883,14 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 """調整圖片尺寸到固定尺寸並保持比例"""
                 h, w = img.shape[:2]
                 
+                # 🔧 確保圖像是三通道的
+                if len(img.shape) == 2:  # 單通道圖像
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                elif len(img.shape) == 3 and img.shape[2] == 1:  # 單通道但有第三維
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                elif len(img.shape) == 3 and img.shape[2] == 4:  # RGBA圖像
+                    img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+                
                 # 計算縮放比例，保持圖片比例
                 scale_h = target_h / h
                 scale_w = target_w / w
@@ -893,6 +901,10 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 
                 # 縮放圖片
                 resized = cv2.resize(img, (new_w, new_h))
+                
+                # 🔧 再次確保縮放後的圖像是三通道的
+                if len(resized.shape) == 2:
+                    resized = cv2.cvtColor(resized, cv2.COLOR_GRAY2BGR)
                 
                 # 創建固定尺寸的畫布
                 canvas = np.zeros((target_h, target_w, 3), dtype=np.uint8)

@@ -282,9 +282,16 @@ class MainController:
             return False
     
     def force_stop_all(self):
-        """強制停止所有線程和連接 - 強化版本，防止線程競爭"""
+        """強制停止所有線程和連接 - 強化版本，防止線程競爭，保護錄製數據"""
         try:
             logging.info("🛑 開始強制停止所有系統組件...")
+            
+            # 🎯 錄製獨立化：強制停止不再影響錄製
+            if (hasattr(self, 'camera_model') and self.camera_model and 
+                hasattr(self.camera_model, 'recording_enabled') and 
+                self.camera_model.recording_enabled):
+                logging.info("🎬 檢測到正在錄製，錄製功能已獨立化")
+                logging.info("📝 錄製將獨立繼續，不受系統強制停止影響")
             
             # 🔄 第一步：停止處理循環
             if self.is_processing:
@@ -310,13 +317,21 @@ class MainController:
                 self.camera_model.capture_thread.is_alive()):
                 threads_to_wait.append(('相機捕獲線程', self.camera_model.capture_thread))
             
-            # 等待所有線程停止
+                            # 🎯 等待所有線程停止 - 錄製模式需更長時間
             for thread_name, thread in threads_to_wait:
-                logging.info(f"⏳ 等待 {thread_name} 停止...")
-                thread.join(timeout=1.5)  # 每個線程最多等1.5秒
+                # 檢查是否在錄製中，需要更長等待時間
+                is_recording = (hasattr(self, 'camera_model') and 
+                              self.camera_model and 
+                              hasattr(self.camera_model, 'recording_enabled') and
+                              self.camera_model.recording_enabled)
+                              
+                timeout = 5.0 if is_recording else 1.5
+                
+                logging.info(f"⏳ 等待 {thread_name} 停止... (錄製中: {is_recording})")
+                thread.join(timeout=timeout)
                 
                 if thread.is_alive():
-                    logging.warning(f"⚠️ {thread_name} 未能及時停止")
+                    logging.warning(f"⚠️ {thread_name} 未能在{timeout}秒內停止")
                 else:
                     logging.info(f"✅ {thread_name} 已停止")
             

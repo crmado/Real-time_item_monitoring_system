@@ -14,6 +14,8 @@ import time
 import logging
 from typing import Optional, Dict, Any
 
+# from basler_mvc.utils.recording_validator import RecordingInfo  # 暫時註解掉
+
 # 設定 CustomTkinter 外觀 - 明亮清晰模式
 ctk.set_appearance_mode("light")  # 使用明亮模式
 ctk.set_default_color_theme("blue")  # 藍色主題
@@ -131,6 +133,7 @@ class MainView:
         
         # 🔧 錄製時間更新定時器
         self.recording_timer_active = False
+        self.independent_recording_timer_active = False  # 獨立錄製計時器
         
         # 視頻顯示
         self.video_label = None
@@ -513,18 +516,29 @@ class MainView:
         )
         self.mode_playback.pack(anchor="w", padx=25, pady=(3, 15))
         
-        # 錄製控件區域
-        self.recording_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
-        # 預設隱藏，根據模式顯示
+        # 🎯 獨立錄製控件區域 - 始終可見
+        self.recording_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
+        self.recording_frame.pack(fill="x", padx=12, pady=(0, 8))  # 減少底部間距
         
-        # 檔名輸入
+        # 簡潔的錄製控制標題
+        recording_header = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
+        recording_header.pack(fill="x", padx=12, pady=(8, 5))
+        
+        ctk.CTkLabel(
+            recording_header, 
+            text="🎬 錄製控制", 
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            text_color=ColorScheme.ERROR_RED
+        ).pack(anchor="w")
+        
+        # 檔名輸入 - 緊湊布局
         filename_frame = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
-        filename_frame.pack(fill="x", padx=12, pady=(12, 8))
+        filename_frame.pack(fill="x", padx=12, pady=(8, 5))  # 減少間距
         
         ctk.CTkLabel(
             filename_frame, 
             text="檔名:", 
-            font=ctk.CTkFont(size=FontSizes.BODY),
+            font=ctk.CTkFont(size=FontSizes.SMALL),
             text_color=ColorScheme.TEXT_PRIMARY
         ).pack(anchor="w")
         
@@ -532,36 +546,54 @@ class MainView:
         filename_entry = ctk.CTkEntry(
             filename_frame, 
             textvariable=self.recording_filename,
-            width=180, height=28,
+            width=180, height=26,  # 稍微減少高度
             font=ctk.CTkFont(size=FontSizes.SMALL),
             fg_color=ColorScheme.BG_CARD,
             text_color=ColorScheme.TEXT_PRIMARY
         )
-        filename_entry.pack(fill="x", pady=(5, 0))
+        filename_entry.pack(fill="x", pady=(3, 0))  # 減少間距
+        
+        # 🎯 檔案格式說明 - 更緊湊
+        self.file_format_label = ctk.CTkLabel(
+            filename_frame,
+            text="自動選擇 .mp4/.avi",
+            font=ctk.CTkFont(size=FontSizes.TINY),
+            text_color=ColorScheme.TEXT_SECONDARY
+        )
+        self.file_format_label.pack(anchor="w", pady=(2, 0))
         
         # 錄製按鈕和狀態
         record_control_frame = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
-        record_control_frame.pack(fill="x", padx=12, pady=(8, 12))
+        record_control_frame.pack(fill="x", padx=12, pady=(5, 8))  # 減少間距
         
         self.record_button = ctk.CTkButton(
             record_control_frame,
-            text="● 錄製",
+            text="🔴 開始錄製",
             command=self.toggle_recording,
-            height=32,
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
+            height=28,  # 減少高度
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold"),
             fg_color=ColorScheme.ERROR_RED,
             hover_color="#b91c1c",
             text_color="white"
         )
-        self.record_button.pack(fill="x", pady=(0, 8))
+        self.record_button.pack(fill="x", pady=(0, 5))  # 減少間距
         
         self.recording_status = ctk.CTkLabel(
             record_control_frame,
             text="未錄製",
-            font=ctk.CTkFont(size=FontSizes.SMALL),
+            font=ctk.CTkFont(size=FontSizes.TINY),  # 更小字體
             text_color=ColorScheme.TEXT_SECONDARY
         )
-        self.recording_status.pack()
+        self.recording_status.pack(pady=(0, 3))  # 減少間距
+        
+        # 錄製時間顯示 - 更緊湊
+        self.recording_time_label = ctk.CTkLabel(
+            record_control_frame,
+            text="",
+            font=ctk.CTkFont(size=FontSizes.SMALL, weight="bold", family="monospace"),
+            text_color=ColorScheme.ERROR_RED
+        )
+        self.recording_time_label.pack(pady=(0, 0))
         
         # 回放控件區域
         self.playback_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
@@ -694,15 +726,20 @@ class MainView:
         )
         self.speed_label.pack()
         
-        # 初始化狀態
+        # 🎯 初始化所有狀態變量 - 確保完整性
         self.is_recording = False
         self.is_playing = False
         self.is_detecting = False
         self.camera_connected = False
         self.video_loaded = False
         
-        # 隐藏錄製和回放框架（預設為實時模式）
-        self.recording_frame.pack_forget()
+        # 確保所有狀態都有正確的預設值
+        if not hasattr(self, 'is_processing_active'):
+            self.is_processing_active = False
+        
+        # 🎯 錄製控制始終可見 - 不再隱藏錄製面板
+        # 錄製功能獨立於系統模式，永遠可用
+        # self.recording_frame.pack_forget()  # 註解掉隱藏
         self.playback_frame.pack_forget()
         
         # 初始化按鈕狀態
@@ -1392,9 +1429,14 @@ class MainView:
                     self.status_var.set("狀態: 處理啟動失敗")
                     logging.error(f"❌ {current_mode}模式處理啟動失敗")
             else:
-                # 🛑 停止處理
+                # 🛑 停止處理 - 安全版本，保護錄製數據
                 logging.info(f"🛑 停止處理 - 模式: {current_mode}")
                 
+                # 🎯 錄製獨立化：停止處理不再影響錄製
+                # 錄製功能完全獨立，用戶需要手動使用錄製按鈕控制
+                logging.info("🎬 錄製功能已獨立化，停止處理不會影響正在進行的錄製")
+                
+                # 直接停止其他處理，保持錄製不受影響
                 self.controller.stop_capture()
                 self.is_processing_active = False
                 self.start_processing_btn.configure(
@@ -2217,7 +2259,14 @@ class MainView:
                 else:
                     frame_rgb = cv2.cvtColor(frame_with_overlay, cv2.COLOR_GRAY2RGB)
                 
-                frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+                # 🎯 高品質顯示縮放：使用最佳插值演算法
+                if (display_width, display_height) != (width, height):
+                    # 使用LANCZOS4插值以獲得最佳視覺效果
+                    frame_resized = cv2.resize(frame_rgb, (display_width, display_height), 
+                                             interpolation=cv2.INTER_LANCZOS4)
+                else:
+                    # 尺寸相同時避免不必要的縮放
+                    frame_resized = frame_rgb
                 
                 pil_image = Image.fromarray(frame_resized)
                 photo = ImageTk.PhotoImage(pil_image)
@@ -2541,13 +2590,13 @@ class MainView:
                 logging.debug("UI根組件不存在，跳過按鈕狀態更新")
                 return
                 
-            # 🎯 檢查核心狀態屬性是否存在（防止初始化順序問題）
-            required_attrs = ['is_detecting', 'is_recording', 'is_playing', 'camera_connected', 'video_loaded']
+            # 🎯 確保所有必需的屬性都已初始化
+            required_attrs = ['is_detecting', 'is_recording', 'is_playing', 'camera_connected', 'is_processing_active']
             for attr in required_attrs:
                 if not hasattr(self, attr):
-                    logging.debug(f"狀態屬性 {attr} 不存在，跳過按鈕狀態更新")
+                    logging.debug(f"屬性 {attr} 尚未初始化，跳過按鈕狀態更新")
                     return
-                
+            
             try:
                 # 檢查root是否還存在
                 if not self.root.winfo_exists():
@@ -2623,39 +2672,28 @@ class MainView:
                 logging.debug(f"更新停止檢測按鈕失敗: {str(e)}")
             
 
-            # 🎥 錄製按鈕邏輯（實時模式）
+            # 🎥 獨立錄製按鈕邏輯 - 完全獨立的錄製控制
             if hasattr(self, 'record_button'):
-                if is_live_running and not self.is_recording:
-                    # 🚫 即時影像運行時禁用錄製功能
+                if self.is_recording:
+                    # 錄製中狀態 - 始終可用停止按鈕
                     self.record_button.configure(
-                        state="disabled",
-                        text="⛔ 請先停止檢測",
-                        fg_color="#666666"
+                        state="normal",
+                        text="⏹ 停止錄製",
+                        fg_color=ColorScheme.WARNING_ORANGE
                     )
-                elif current_mode == "live" and self.camera_connected and not self.is_recording and not is_live_running:
+                elif self.camera_connected:
+                    # 相機連接時始終可以錄製，不受任何其他狀態影響
                     self.record_button.configure(
                         state="normal",
                         text="🔴 開始錄製",
                         fg_color=ColorScheme.ERROR_RED
                     )
-                elif current_mode == "live" and not self.camera_connected:
+                else:
+                    # 只有在相機未連接時才禁用
                     self.record_button.configure(
                         state="disabled",
                         text="❌ 無相機",
                         fg_color="#666666"
-                    )
-                elif current_mode != "live":
-                    self.record_button.configure(
-                        state="disabled", 
-                        text="⛔ 僅限實時模式",
-                        fg_color="#666666"
-                    )
-                elif self.is_recording:
-                    # 錄製中狀態
-                    self.record_button.configure(
-                        state="normal",
-                        text="⏹ 停止錄製",
-                        fg_color=ColorScheme.WARNING_ORANGE
                     )
             
             # 🎬 模式切換按鈕控制 - 任何處理運行時禁用模式切換
@@ -2844,10 +2882,10 @@ class MainView:
             self.max_area_var.set(5000)  # 預設值
     
     def generate_recording_filename(self):
-        """產生錄製檔案名稱"""
+        """產生錄製檔案名稱 (不含附檔名)"""
         import datetime
         now = datetime.datetime.now()
-        return f"recording_{now.strftime('%Y%m%d_%H%M%S')}.avi"
+        return f"recording_{now.strftime('%Y%m%d_%H%M%S')}"
     
     def get_recording_time(self):
         """獲取錄製時間"""
@@ -2894,18 +2932,60 @@ class MainView:
             logging.debug(f"更新錄製計時器失敗: {str(e)}")
             self.recording_timer_active = False
     
+    def update_independent_recording_timer(self):
+        """🎯 獨立錄製計時器 - 專門用於錄製控制區域的時間顯示"""
+        try:
+            if hasattr(self, 'recording_time_label') and self.independent_recording_timer_active:
+                # 獲取獨立錄製時間（不依賴系統模式）
+                recording_time = self.get_independent_recording_time()
+                self.recording_time_label.configure(text=f"⏱️ {recording_time}")
+                
+                # 1秒後再次更新
+                self.root.after(1000, self.update_independent_recording_timer)
+                
+        except Exception as e:
+            logging.debug(f"更新獨立錄製計時器失敗: {str(e)}")
+            self.independent_recording_timer_active = False
+    
+    def get_independent_recording_time(self):
+        """獲取獨立錄製時間 - 直接從錄製器獲取，不依賴系統模式"""
+        try:
+            # 🎯 直接從相機模型的錄製器獲取時間，確保獨立性
+            if (hasattr(self.controller, 'camera_model') and 
+                self.controller.camera_model and
+                hasattr(self.controller.camera_model, 'video_recorder') and
+                self.controller.camera_model.video_recorder and
+                self.controller.camera_model.recording_enabled and
+                hasattr(self.controller.camera_model.video_recorder, 'recording_start_time') and
+                self.controller.camera_model.video_recorder.recording_start_time):
+                
+                import time
+                elapsed = time.time() - self.controller.camera_model.video_recorder.recording_start_time
+                
+                # 格式化為 MM:SS
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                return f"{minutes:02d}:{seconds:02d}"
+            else:
+                return "00:00"
+        except Exception as e:
+            logging.debug(f"獲取獨立錄製時間失敗: {str(e)}")
+            return "00:00"
+    
     def change_mode(self):
         """更改系統模式"""
         mode = self.mode_var.get()
         
-        # 隱藏所有面板
-        self.recording_frame.pack_forget()
+        # 隱藏模式相關面板
         self.playback_frame.pack_forget()
+        
+        # 🎯 錄製控制始終可見 - 不再隱藏錄製面板
+        # 錄製功能獨立於系統模式，永遠可用
         
         # 根據模式顯示對應的面板
         if mode == "recording":
-            # 🔧 錄製模式：系統自動管理，不顯示檔名輸入區域
-            pass  # 錄製模式下不顯示額外控制面板，透過右側「啟動處理」來錄製
+            # 錄製模式：錄製控制面板已經可見，無需額外操作
+            pass
         elif mode == "playback":
             self.playback_frame.pack(fill="x", padx=12, pady=(0, 15))
         
@@ -2918,12 +2998,15 @@ class MainView:
             logging.info(f"系統模式已切換為: {mode}")
     
     def toggle_recording(self):
-        """切換錄製狀態 - 防重複點擊版本"""
+        """🎯 切換錄製狀態 - 完全獨立的錄製控制，不受任何系統操作影響"""
         try:
             if not self.is_recording:
-                # 🛡️ 防重複點擊 - 檢查是否正在其他操作中
-                if self.is_detecting:
-                    self.recording_status.configure(text="錯誤: 請先停止檢測", text_color=ColorScheme.ERROR_RED)
+                # 🎯 完全獨立錄製：不受檢測、處理、模式等任何狀態影響
+                # 只要相機連接就可以錄製
+                
+                # 檢查相機連接狀態
+                if not self.camera_connected:
+                    self.recording_status.configure(text="錯誤: 相機未連接", text_color=ColorScheme.ERROR_RED)
                     return
                 
                 # 開始錄製
@@ -2936,17 +3019,48 @@ class MainView:
                 self.record_button.configure(text="🔄 啟動錄製...", state="disabled")
                 self.recording_status.configure(text="正在啟動錄製...", text_color=ColorScheme.WARNING_ORANGE)
                 
+                # 📝 詳細日誌：錄製開始前的系統狀態
+                current_mode = self.mode_var.get()
+                processing_active = self.is_processing_active
+                detecting = self.is_detecting
+                
+                logging.info(f"🎬 開始獨立錄製...")
+                logging.info(f"📊 系統狀態檢查:")
+                logging.info(f"   - 當前模式: {current_mode}")
+                logging.info(f"   - 處理狀態: {processing_active}")
+                logging.info(f"   - 檢測狀態: {detecting}")
+                logging.info(f"   - 相機連接: {self.camera_connected}")
+                logging.info(f"📁 錄製檔案: {filename}")
+                
                 success = self.controller.start_recording(filename)
                 if success:
                     self.is_recording = True
                     self.record_button.configure(text="⏹ 停止錄製", state="normal")
                     self.recording_status.configure(text="錄製中...", text_color=ColorScheme.ERROR_RED)
-                    logging.info(f"✅ 錄製已開始: {filename}")
+                    
+                    # 🎯 啟動獨立錄製計時器
+                    self.independent_recording_timer_active = True
+                    self.update_independent_recording_timer()
+                    
+                logging.info(f"✅ 獨立錄製已成功開始!")
+                logging.info(f"🛡️ 錄製保護機制已啟動：")
+                logging.info(f"   - 錄製將完全獨立運行")
+                logging.info(f"   - 不受模式切換影響")
+                logging.info(f"   - 不受處理停止影響")
+                logging.info(f"   - 只能通過錄製按鈕手動停止")
+                
+                # 🎯 更新檔案格式顯示
+                if hasattr(self, 'file_format_label'):
+                    self.file_format_label.configure(text="錄製中...")
                 else:
                     # 啟動失敗，恢復狀態
                     self.record_button.configure(text="🔴 開始錄製", state="normal")
                     self.recording_status.configure(text="錄製啟動失敗", text_color=ColorScheme.ERROR_RED)
                     logging.error("❌ 錄製啟動失敗")
+                    logging.error("📋 失敗原因可能包括：")
+                    logging.error("   - 相機未正確初始化")
+                    logging.error("   - 檔案路徑無效")
+                    logging.error("   - 錄製器創建失敗")
                 
                 # 🔧 更新按鈕狀態
                 self.update_button_states()
@@ -2955,13 +3069,63 @@ class MainView:
                 self.record_button.configure(text="🔄 停止中...", state="disabled")
                 self.recording_status.configure(text="正在停止錄製...", text_color=ColorScheme.WARNING_ORANGE)
                 
+                # 📝 詳細日誌：錄製停止前的狀態
+                current_time = self.get_independent_recording_time()
+                logging.info(f"🛑 用戶手動停止錄製...")
+                logging.info(f"⏱️ 錄製時長: {current_time}")
+                
                 info = self.controller.stop_recording()
                 self.is_recording = False
                 self.record_button.configure(text="🔴 開始錄製", state="normal")
                 self.recording_status.configure(text="錄製完成", text_color=ColorScheme.SUCCESS_GREEN)
                 
+                # 🎯 停止獨立錄製計時器
+                self.independent_recording_timer_active = False
+                self.recording_time_label.configure(text="")
+                
                 if info:
-                    logging.info(f"✅ 錄製已完成: {info.get('filename', 'unknown')}")
+                    duration = info.get('duration', 0)
+                    frames = info.get('frames_recorded', 0)
+                    filepath = info.get('filepath', 'unknown')
+                    
+                    logging.info(f"✅ 獨立錄製已完成!")
+                    logging.info(f"📁 檔案路徑: {filepath}")
+                    logging.info(f"📊 最終統計:")
+                    logging.info(f"   - 錄製時長: {duration:.1f}秒")
+                    logging.info(f"   - 總幀數: {frames}幀")
+                    logging.info(f"   - 平均FPS: {frames/duration if duration > 0 else 0:.1f}")
+                    
+                    # 檢查錄製完整性
+                    if duration < 1.0:
+                        logging.warning(f"⚠️ 錄製時間過短: {duration:.1f}秒")
+                    elif frames < 10:
+                        logging.warning(f"⚠️ 錄製幀數過少: {frames}幀")
+                    else:
+                        logging.info(f"🎉 錄製完整性良好")
+                    
+                    # 🎯 更新檔案格式顯示，顯示實際使用的格式
+                    full_filename = info.get('full_filename', '未知')
+                    codec = info.get('codec', '未知')
+                    if hasattr(self, 'file_format_label'):
+                        self.file_format_label.configure(
+                            text=f"已完成: {full_filename}"
+                        )
+                    
+                    # 顯示最終錄製時間
+                    final_time = f"{int(duration//60):02d}:{int(duration%60):02d}"
+                    self.recording_time_label.configure(text=f"完成: {final_time}")
+                    
+                    # 10秒後恢復預設顯示
+                    self.root.after(10000, lambda: [
+                        self.recording_time_label.configure(text=""),
+                        self.file_format_label.configure(text="自動選擇 .mp4/.avi") if hasattr(self, 'file_format_label') else None
+                    ])
+                else:
+                    logging.error("❌ 停止錄製時未獲得錄製信息")
+                    logging.error("📋 可能的問題:")
+                    logging.error("   - 錄製器狀態異常")
+                    logging.error("   - 檔案保存失敗")
+                    logging.error("   - 錄製已被意外中斷")
                 
                 # 🔧 更新按鈕狀態
                 self.update_button_states()
@@ -2969,6 +3133,9 @@ class MainView:
         except Exception as e:
             logging.error(f"錄製操作錯誤: {str(e)}")
             self.recording_status.configure(text="錄製操作失敗", text_color=ColorScheme.ERROR_RED)
+            # 錯誤時也要停止計時器
+            self.independent_recording_timer_active = False
+            self.recording_time_label.configure(text="")
             self.update_button_states()
     
     def select_playback_file(self):

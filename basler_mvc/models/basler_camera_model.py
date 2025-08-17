@@ -551,15 +551,23 @@ class BaslerCameraModel:
                         except queue.Empty:
                             pass
                     
-                    # 🎬 優化錄製功能 - 降頻錄製減少性能影響
-                    if self.recording_enabled and self.video_recorder and self.total_frames % 3 == 0:
+                    # 🎬 錄製功能 - 移除降頻限制，確保完整錄製
+                    if self.recording_enabled and self.video_recorder:
                         try:
-                            # 每3幀錄製一次，減少性能影響
-                            # 確保幀是BGR格式（OpenCV格式）
+                            # 🎯 高品質錄製：確保原始品質保持
+                            # 使用原始幀數據，避免任何不必要的轉換損失
                             if len(frame.shape) == 2:  # 灰度圖
+                                # 🔧 使用最高品質的色彩轉換
                                 recording_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                             else:
-                                recording_frame = frame
+                                # 直接使用原始BGR幀，避免重複轉換
+                                recording_frame = frame.copy()  # 使用副本避免修改原始數據
+                            
+                            # 📊 每1000幀記錄一次錄製狀態和品質信息
+                            if self.total_frames % 1000 == 0:
+                                elapsed = time.time() - self.video_recorder.recording_start_time if self.video_recorder.recording_start_time else 0
+                                frame_quality = "高品質原始" if len(frame.shape) == 2 else "彩色原始"
+                                logging.info(f"🎬 錄製進度: {self.video_recorder.frames_recorded}幀, {elapsed:.1f}秒 ({frame_quality})")
                             
                             self.video_recorder.write_frame(recording_frame)
                         except Exception as record_error:
@@ -673,8 +681,13 @@ class BaslerCameraModel:
         return self.camera_info.copy()
         
     def stop_capture(self):
-        """停止捕獲 - 強化線程安全版本"""
+        """停止捕獲 - 強化線程安全版本，保護錄製數據"""
         try:
+            # 🎯 錄製獨立化：停止捕獲不再強制停止錄製
+            if self.recording_enabled and hasattr(self, 'video_recorder'):
+                logging.info("🎬 檢測到正在錄製，錄製功能已獨立化，將繼續進行")
+                logging.info("📝 錄製將繼續使用已緩衝的幀數據，不受捕獲停止影響")
+            
             # 🔒 使用鎖確保停止操作的原子性
             with self.frame_lock:
                 if not self.is_grabbing:
@@ -704,17 +717,47 @@ class BaslerCameraModel:
                     thread_name = getattr(self.capture_thread, 'name', 'Unknown')
                     logging.info(f"⏳ 等待捕獲線程停止... [{thread_name}]")
                     
-                    # 🔧 第一次等待：較短超時
-                    self.capture_thread.join(timeout=1.0)
+                    # 🔧 第一次等待：錄製模式需要更長超時
+                    timeout_first = 3.0 if self.recording_enabled else 1.0
+                    logging.info(f"🔧 錄製狀態: {self.recording_enabled}, 第一次超時: {timeout_first}秒")
+                    self.capture_thread.join(timeout=timeout_first)
                     
                     if self.capture_thread.is_alive():
-                        # 🔧 第二次等待：更強制的方式
-                        logging.warning(f"⚠️ 捕獲線程未能在1秒內停止，等待更長時間... [{thread_name}]")
-                        self.capture_thread.join(timeout=3.0)
+                        # 🔧 第二次等待：錄製模式大幅延長等待時間
+                        timeout_second = 10.0 if self.recording_enabled else 3.0
+                        logging.warning(f"⚠️ 捕獲線程未能在{timeout_first}秒內停止，延長等待時間... [{thread_name}] (錄製狀態: {self.recording_enabled}, 第二次超時: {timeout_second}秒)")
+                        self.capture_thread.join(timeout=timeout_second)
                         
                         if self.capture_thread.is_alive():
-                            logging.error(f"❌ 捕獲線程未能在4秒內停止 [{thread_name}]，強制清理")
-                            # 🔥 強制清理：設置標記讓線程自己退出
+                            total_timeout = timeout_first + timeout_second
+                            logging.error(f"❌ 捕獲線程未能在{total_timeout}秒內停止 [{thread_name}]，強制清理")
+                            # 🎯 錄製數據保護：記錄當前錄製狀態，但不強制停止
+                            if self.recording_enabled and hasattr(self, 'video_recorder'):
+                                try:
+                                    # 計算當前錄製時長
+                                    current_time = time.time()
+                                    if hasattr(self.video_recorder, 'recording_start_time') and self.video_recorder.recording_start_time:
+                                        current_duration = current_time - self.video_recorder.recording_start_time
+                                        frames_recorded = getattr(self.video_recorder, 'frames_recorded', 0)
+                                        
+                                        logging.warning(f"⚠️ 線程超時但錄製正在進行")
+                                        logging.warning(f"📊 當前錄製狀態: 已錄製 {current_duration:.1f} 秒, {frames_recorded} 幀")
+                                        logging.warning(f"🛡️ 錄製數據保護: 錄製將繼續，不會被強制停止")
+                                        
+                                        # 記錄預期vs實際對比
+                                        if current_duration > 0:
+                                            expected_frames = int(current_duration * 280)  # 假設280 FPS
+                                            if frames_recorded > 0:
+                                                completeness = (frames_recorded / expected_frames) * 100 if expected_frames > 0 else 0
+                                                logging.warning(f"📈 錄製完整度: {completeness:.1f}% ({frames_recorded}/{expected_frames} 幀)")
+                                    
+                                    # 🎯 關鍵改變：不再強制停止錄製
+                                    logging.warning("🎬 錄製將保持獨立運行，線程清理不影響錄製")
+                                    
+                                except Exception as e:
+                                    logging.error(f"記錄錄製狀態時出錯: {str(e)}")
+                            
+                            # 只清理線程引用，不影響錄製
                             self._active_capture_thread = None
                         else:
                             logging.info(f"✅ 捕獲線程延遲停止 [{thread_name}]")
@@ -862,13 +905,15 @@ class BaslerCameraModel:
     def stop_recording(self) -> dict:
         """停止錄製"""
         if not self.recording_enabled or not self.video_recorder:
+            logging.info(f"🔧 停止錄製被跳過 - 錄製狀態: {self.recording_enabled}, 錄製器: {self.video_recorder is not None}")
             return {}
             
+        logging.info("🎬 正在停止相機錄製...")
         self.recording_enabled = False
         recording_info = self.video_recorder.stop_recording()
         
         self.notify_observers('recording_stopped', recording_info)
-        logging.info("相機錄製已停止")
+        logging.info("✅ 相機錄製已停止")
         
         return recording_info
     
