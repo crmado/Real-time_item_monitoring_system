@@ -23,41 +23,41 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.ultra_high_speed_mode = False  # 超高速模式 (206-376fps)
         self.target_fps = 280  # 目標FPS，根據相機規格動態調整
         
-        # 🎯 平衡檢測 - 減少誤判，保持準確性
-        self.min_area = 25   # 🔧 提高最小面積，過濾雜訊 (8→25)  
+        # 🎯 極小零件檢測 - 專門為小零件優化參數
+        self.min_area = 8    # 🔧 降低最小面積以捕獲極小零件 (25→8)  
         self.max_area = 3000 # 🔧 適中的上限 (4000→3000)
         
-        # 物件形狀過濾參數 - 適度嚴格，減少雜訊
-        self.min_aspect_ratio = 0.1  # 更合理的長寬比 (0.003→0.1)
+        # 物件形狀過濾參數 - 專為小零件放寬條件
+        self.min_aspect_ratio = 0.05 # 更寬鬆的長寬比適應小零件 (0.1→0.05)
         self.max_aspect_ratio = 8.0  # 適度限制極端形狀 (20.0→8.0)
-        self.min_extent = 0.2        # 合理的填充比例要求 (0.0003→0.2)
+        self.min_extent = 0.1        # 降低填充比例要求適應小零件 (0.2→0.1)
         self.max_solidity = 1.0      # 嚴格的結實性限制 (3.0→1.0)
         
-        # 🎯 適度敏感背景減除 - 平衡檢測與雜訊
+        # 🎯 高敏感背景減除 - 專為小零件檢測優化
         self.bg_history = 700    # 增加歷史幀數穩定背景 (500→700)
-        self.bg_var_threshold = 12  # 🔧 提高閾值減少雜訊 (3→12)
+        self.bg_var_threshold = 6   # 🔧 降低閾值提高小零件敏感度 (12→6)
         self.detect_shadows = False  # 關閉陰影檢測
         
-        # 🚀 高速模式下的簡化參數
+        # 🚀 高速模式下的簡化參數 - 也針對小零件優化
         self.high_speed_bg_history = 100      # 高速模式下減少歷史幀數
-        self.high_speed_bg_var_threshold = 16 # 高速模式下提高閾值
-        self.high_speed_min_area = 50         # 高速模式下提高最小面積
+        self.high_speed_bg_var_threshold = 8  # 高速模式下也降低閾值 (16→8)
+        self.high_speed_min_area = 15         # 高速模式下降低最小面積 (50→15)
         self.high_speed_max_area = 2000       # 高速模式下降低最大面積
         
-        # 🎯 保守邊緣檢測 - 減少雜訊檢測
-        self.gaussian_blur_kernel = (5, 5)  # 增加模糊減少雜訊 (3→5)
-        self.canny_low_threshold = 20        # 🔧 提高低閾值 (8→20)
-        self.canny_high_threshold = 60       # 🔧 提高高閾值 (35→60) 
-        self.binary_threshold = 15           # 🔧 提高二值化閾值 (5→15)
+        # 🎯 敏感邊緣檢測 - 專為小零件檢測優化
+        self.gaussian_blur_kernel = (3, 3)  # 減少模糊保留小零件細節 (5→3)
+        self.canny_low_threshold = 8         # 🔧 降低低閾值捕獲小零件 (20→8)
+        self.canny_high_threshold = 25       # 🔧 降低高閾值提高敏感度 (60→25) 
+        self.binary_threshold = 8            # 🔧 降低二值化閾值 (15→8)
         
         # 🔍 加強雜訊過濾 - 使用更大的形態學核
         self.dilate_kernel_size = (3, 3)    # 🔧 適度的核大小 (2→3)
         self.dilate_iterations = 1           # 🔧 保持適度膨脹
         self.close_kernel_size = (5, 5)     # 🔧 更大的核，更好的填補 (3→5)
         
-        # 🎯 額外的雜訊過濾
-        self.opening_kernel_size = (4, 4)   # 🆕 開運算核，去除小雜訊
-        self.opening_iterations = 2          # 🆕 多次開運算去噪
+        # 🎯 溫和的雜訊過濾 - 保留小零件
+        self.opening_kernel_size = (2, 2)   # 🆕 減小開運算核保留小零件 (4→2)
+        self.opening_iterations = 1          # 🆕 減少開運算次數 (2→1)
         
         # 連通組件參數
         self.connectivity = 4  # 4-連通或8-連通
@@ -68,16 +68,16 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.roi_position_ratio = 0.15  # ROI 位置比例 (調整到0.15，更靠近頂部)
         self.current_roi_y = 0  # 當前ROI的Y座標
         
-        # 🎯 物件追蹤和計數參數
+        # 🎯 物件追蹤和計數參數 - 為小零件優化
         self.enable_crossing_count = True
-        self.crossing_tolerance_x = 30  # x方向追蹤容差 (減小以提高精確度)
-        self.crossing_tolerance_y = 60  # y方向追蹤容差 (增大以適應ROI高度)
+        self.crossing_tolerance_x = 50  # x方向追蹤容差 (增大以適應小零件移動)
+        self.crossing_tolerance_y = 80  # y方向追蹤容差 (增大以適應ROI高度)
         
-        # 🎯 提高追蹤穩定性 - 減少誤判
-        self.track_lifetime = 10  # 增加追蹤週期，提高穩定性 (5→10)
-        self.min_track_frames = 3  # 需要多幀確認，減少誤判 (1→3)
-        self.crossing_threshold = 0.1   # 提高穿越閾值，更保守 (0.03→0.1)
-        self.confidence_threshold = 0.1  # 提高置信度要求 (0.03→0.1)
+        # 🎯 為小零件降低追蹤門檻 - 提高檢測率
+        self.track_lifetime = 8   # 適度的追蹤週期 (10→8)
+        self.min_track_frames = 2 # 降低多幀確認要求，提高小零件檢測 (3→2)
+        self.crossing_threshold = 0.05   # 降低穿越閾值，提高小零件敏感度 (0.1→0.05)
+        self.confidence_threshold = 0.05  # 降低置信度要求，提高小零件檢測 (0.1→0.05)
         
         # 🛡️ 簡化防重複機制 - 提升性能
         self.counted_objects_history = []  # 已計數物件的歷史記錄
@@ -101,15 +101,16 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.debug_save_enabled = True   # 🎯 啟用調試圖片保存
         self.debug_save_dir = "/Users/crmado/github/Real-time_item_monitoring_system/basler_mvc/recordings/composite_debug"
         self.debug_frame_counter = 0
-        self.max_debug_frames = 200     # 🎯 限制調試圖片數量避免占用過多空間
+        self.max_debug_frames = float('inf')  # 🎯 保存全部照片，不設限制
         
         # 🆕 合成調試圖片模式 - 預設啟用 
         self.composite_debug_enabled = True  # 合成調試圖片開關（預設啟用）
         
-        # 🎯 動態中間段計算參數
+        # 🎯 動態中間段計算參數 - 添加自定義起始幀選項
         self.total_video_frames = None   # 影片總幀數（由視頻播放器提供）
         self.skip_start_ratio = 0.3      # 跳過前30%
         self.save_middle_ratio = 0.4     # 保存中間40%（30%-70%區間）
+        self.custom_start_frame = None   # 自定義起始幀（如2500）
         self.total_processed_frames = 0  # 總處理幀數計數器
         self.current_session_dir = None  # 當前會話目錄
         self.manual_save_triggered = False  # 手動觸發保存
@@ -592,9 +593,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     # 檢查是否為重複計數（簡化版）
                     is_duplicate = self._check_duplicate_detection_simple(track)
                     
-                    # 🎯 提高計數要求：確保穩定檢測，減少誤判
+                    # 🎯 為小零件降低計數要求：提高檢測敏感度
                     valid_crossing = (
-                        y_travel >= 10 and          # 🔧 提高移動要求，確保真實移動 (1→10像素)
+                        y_travel >= 3 and           # 🔧 降低移動要求，適應小零件 (10→3像素)
                         track['in_roi_frames'] >= self.min_track_frames and  # 確保多幀穩定檢測
                         not is_duplicate            # 非重複檢測
                     )
@@ -721,9 +722,18 @@ class BackgroundSubtractionDetection(DetectionMethod):
         
         # 🚀🚀 206fps模式：簡化影片信息日誌
         logging.info(f"🎬 影片: {total_frames}幀, {fps:.1f}fps")
+        
+        # 🎯 如果設定了自定義起始幀，記錄相關信息
+        if self.custom_start_frame is not None:
+            custom_time = self.custom_start_frame / fps
+            logging.info(f"📸 自定義起始保存幀: {self.custom_start_frame} (時間: {custom_time:.1f}秒)")
     
     def _is_in_save_window(self) -> bool:
-        """檢查當前是否在保存窗口內（影片中間段）"""
+        """檢查當前是否在保存窗口內（影片中間段或自定義起始幀）"""
+        # 🎯 優先使用自定義起始幀
+        if self.custom_start_frame is not None:
+            return self.total_processed_frames >= self.custom_start_frame
+        
         if self.total_video_frames is None:
             # 如果沒有設定影片總幀數，使用舊邏輯
             return self.total_processed_frames > 100  # 簡單跳過前100幀
@@ -1078,9 +1088,63 @@ class BackgroundSubtractionDetection(DetectionMethod):
             'max_frames': self.max_debug_frames,
             'save_directory': self.debug_save_dir,
             'current_session': self.current_session_dir,
-            'progress_percentage': (self.debug_frame_counter / self.max_debug_frames) * 100 if self.max_debug_frames > 0 else 0,
-            'layout': '3x2 composite layout with annotations'
+            'progress_percentage': self.debug_frame_counter,  # 顯示已保存數量，無限制模式
+            'layout': '3x2 composite layout with annotations',
+            'custom_start_frame': self.custom_start_frame
         }
+    
+    def set_custom_start_frame(self, start_frame: int):
+        """設定自定義起始保存幀（例如2500）"""
+        self.custom_start_frame = start_frame
+        logging.info(f"🎯 已設定自定義起始保存幀: {start_frame}")
+    
+    def clear_custom_start_frame(self):
+        """清除自定義起始幀，恢復使用比例計算"""
+        self.custom_start_frame = None
+        logging.info("🔄 已清除自定義起始幀，恢復使用比例計算")
+    
+    def cleanup_early_debug_images(self, before_frame: int = None):
+        """清理指定幀數之前的調試圖片"""
+        try:
+            import os
+            import glob
+            from pathlib import Path
+            
+            if before_frame is None:
+                before_frame = self.custom_start_frame or 2500
+                
+            if not os.path.exists(self.debug_save_dir):
+                logging.info(f"📁 調試目錄不存在: {self.debug_save_dir}")
+                return 0
+            
+            # 找到所有調試圖片
+            pattern = os.path.join(self.debug_save_dir, "**", "composite_debug_*.jpg")
+            all_debug_files = glob.glob(pattern, recursive=True)
+            
+            deleted_count = 0
+            for file_path in all_debug_files:
+                try:
+                    # 從文件名提取幀號 (composite_debug_XXXX_timestamp.jpg)
+                    filename = os.path.basename(file_path)
+                    if filename.startswith("composite_debug_"):
+                        # 提取幀號
+                        frame_part = filename.split("_")[2]  # composite_debug_XXXX_timestamp.jpg
+                        frame_number = int(frame_part)
+                        
+                        if frame_number < before_frame:
+                            os.remove(file_path)
+                            deleted_count += 1
+                            
+                except (ValueError, IndexError, OSError) as e:
+                    logging.debug(f"跳過文件 {file_path}: {str(e)}")
+                    continue
+            
+            logging.info(f"🗑️ 已清理 {deleted_count} 個第{before_frame}幀之前的調試圖片")
+            return deleted_count
+            
+        except Exception as e:
+            logging.error(f"清理早期調試圖片錯誤: {str(e)}")
+            return 0
 
     @property
     def name(self) -> str:

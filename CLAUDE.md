@@ -54,6 +54,16 @@ python recording_quality_analyzer.py
 python video_fps_verifier.py
 ```
 
+### Small Component Detection Optimization
+```python
+# Apply small component detection optimization (recommended for detecting tiny parts)
+controller.apply_small_component_optimization(start_frame=2500, cleanup_early_images=True)
+
+# Manual settings (if needed)
+controller.set_debug_start_frame(2500)  # Start saving debug images from frame 2500
+controller.cleanup_early_debug_images(2500)  # Clean up debug images before frame 2500
+```
+
 ### Building Executables
 ```bash
 # Build standalone executable (Windows/Linux/Mac)
@@ -167,8 +177,24 @@ The system supports multiple detection methods via modular architecture:
 1. **Circle Detection**: HoughCircles for round objects
 2. **Contour Detection**: Morphological operations for irregular shapes  
 3. **Enhanced Detection**: Hybrid method combining multiple approaches
-4. **Background Subtraction**: Motion-based detection
+4. **Background Subtraction**: Motion-based detection with crossing count (recommended for small components)
 5. **Deep Learning**: YOLO integration (via ultralytics)
+
+### Small Component Detection Optimization
+
+The background subtraction detection method has been specifically optimized for detecting and counting small components:
+
+#### Optimized Parameters
+- **Tracking Tolerance**: X=50, Y=80 pixels (increased for small component movement)
+- **Minimum Track Frames**: 2 frames (reduced from 3 for faster detection)
+- **Movement Requirement**: 3 pixels (reduced from 10 for sensitive detection)
+- **Crossing Threshold**: 0.05 (reduced from 0.1 for higher sensitivity)
+- **Confidence Threshold**: 0.05 (reduced from 0.1 for better small object detection)
+
+#### Debug Image Management
+- **Custom Start Frame**: Save debug images only after components appear (e.g., frame 2500)
+- **Early Image Cleanup**: Automatically remove debug images before component appearance
+- **Storage Optimization**: Focus storage on frames containing actual components
 
 ### Adding New Detection Methods
 1. Inherit from `DetectionMethod` base class in `basler_mvc/models/detection_base.py`
@@ -220,9 +246,11 @@ The system includes intelligent vibration motor control for automated feeding:
 
 ### Batch Processing
 - **Automated Counting**: Real-time object counting with duplicate elimination
+- **Small Component Detection**: Optimized tracking for tiny parts with sensitive parameters
 - **Batch Management**: Multi-round processing with automatic record keeping
 - **Progress Monitoring**: Real-time progress bars and completion statistics
 - **Data Logging**: Comprehensive batch records in JSON format
+- **Debug Image Management**: Selective saving and cleanup for efficient storage
 
 ## Dependencies and Requirements
 

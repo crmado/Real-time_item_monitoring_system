@@ -54,7 +54,7 @@ def enable_composite_debug_in_system(controller):
                 method.enable_composite_debug(True)
                 
                 # 設置調試參數
-                method.max_debug_frames = 100  # 限制調試圖片數量
+                method.max_debug_frames = float('inf')  # 保存全部照片，不設限制
                 
                 # 獲取調試信息
                 debug_info = method.get_composite_debug_info()

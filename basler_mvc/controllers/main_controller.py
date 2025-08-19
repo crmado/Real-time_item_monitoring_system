@@ -1604,6 +1604,93 @@ class MainController:
             logging.error(f"手動觸發調試保存錯誤: {str(e)}")
             return False
     
+    def set_debug_start_frame(self, start_frame: int = 2500):
+        """設定調試圖片保存的起始幀"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'set_custom_start_frame'):
+                detection_method.set_custom_start_frame(start_frame)
+                
+                self.notify_views('debug_start_frame_set', {
+                    'start_frame': start_frame,
+                    'message': f"調試圖片將從第{start_frame}幀開始保存"
+                })
+                
+                logging.info(f"🎯 調試保存起始幀已設定: {start_frame}")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援設定起始幀")
+                return False
+        except Exception as e:
+            logging.error(f"設定調試起始幀錯誤: {str(e)}")
+            return False
+    
+    def cleanup_early_debug_images(self, before_frame: int = None):
+        """清理指定幀數之前的調試圖片"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'cleanup_early_debug_images'):
+                deleted_count = detection_method.cleanup_early_debug_images(before_frame)
+                
+                self.notify_views('early_debug_cleaned', {
+                    'deleted_count': deleted_count,
+                    'before_frame': before_frame or 2500,
+                    'message': f"已清理{deleted_count}個早期調試圖片"
+                })
+                
+                logging.info(f"🗑️ 已清理{deleted_count}個早期調試圖片")
+                return deleted_count
+            else:
+                logging.warning("當前檢測方法不支援清理調試圖片")
+                return 0
+        except Exception as e:
+            logging.error(f"清理早期調試圖片錯誤: {str(e)}")
+            return 0
+    
+    def apply_small_component_optimization(self, start_frame: int = 2500, cleanup_early_images: bool = True):
+        """應用小零件檢測優化設置
+        
+        Args:
+            start_frame: 調試圖片保存起始幀數 (預設2500)
+            cleanup_early_images: 是否清理早期調試圖片 (預設True)
+        """
+        try:
+            logging.info(f"🎯 開始應用小零件檢測優化...")
+            
+            # 1. 設定調試圖片起始幀
+            success = self.set_debug_start_frame(start_frame)
+            if success:
+                logging.info(f"✅ 已設定調試圖片從第{start_frame}幀開始保存")
+            
+            # 2. 清理早期調試圖片 (如果需要)
+            if cleanup_early_images:
+                deleted_count = self.cleanup_early_debug_images(start_frame)
+                if deleted_count > 0:
+                    logging.info(f"✅ 已清理{deleted_count}個第{start_frame}幀之前的調試圖片")
+            
+            # 3. 通知UI優化已完成
+            self.notify_views('small_component_optimization_applied', {
+                'start_frame': start_frame,
+                'cleanup_performed': cleanup_early_images,
+                'deleted_count': deleted_count if cleanup_early_images else 0,
+                'message': f"小零件檢測優化已應用 - 從第{start_frame}幀開始保存調試圖片"
+            })
+            
+            logging.info("✅ 小零件檢測優化設置完成")
+            logging.info("📋 優化內容:")
+            logging.info("   - 增大追蹤容差適應小零件移動")
+            logging.info("   - 降低最小追蹤幀數要求 (3→2)")
+            logging.info("   - 降低移動像素要求 (10→3)")
+            logging.info("   - 降低穿越和置信度閾值")
+            logging.info(f"   - 調試圖片從第{start_frame}幀開始保存")
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"應用小零件檢測優化錯誤: {str(e)}")
+            self.notify_views('system_error', f'小零件檢測優化失敗: {str(e)}')
+            return False
+    
     # ==================== 🚀 超高速檢測模式 ====================
     
     def enable_ultra_high_speed_detection(self, enabled: bool = True, target_fps: int = None):

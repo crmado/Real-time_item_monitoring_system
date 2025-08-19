@@ -7,7 +7,9 @@
       "Bash(sed:*)",
       "Bash(timeout:*)",
       "Bash(rm:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(source:*)",
+      "Bash(conda activate:*)"
     ],
     "deny": []
   }
