@@ -24,7 +24,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.target_fps = 280  # 目標FPS，根據相機規格動態調整
         
         # 🎯 極小零件檢測 - 專門為小零件優化參數
-        self.min_area = 3    # 🔧 極度降低以捕獲極小零件 (5→3)  
+        self.min_area = 2    # 🔧 進一步降低以捕獲極小零件 (3→2)  
         self.max_area = 3000 # 🔧 適中的上限 (4000→3000)
         
         # 物件形狀過濾參數 - 專為小零件放寬條件
@@ -42,7 +42,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
         # 🚀 高速模式下的簡化參數 - 也針對小零件優化
         self.high_speed_bg_history = 100      # 高速模式下減少歷史幀數
         self.high_speed_bg_var_threshold = 8  # 高速模式下也降低閾值 (16→8)
-        self.high_speed_min_area = 2          # 高速模式下極度降低最小面積 (15→2)
+        self.high_speed_min_area = 1          # 高速模式下最極限降低最小面積 (2→1)
         self.high_speed_max_area = 2000       # 高速模式下降低最大面積
         self.high_speed_binary_threshold = 3  # 高速模式下的二值化閾值
         
@@ -52,10 +52,11 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.canny_high_threshold = 10       # 🔧 極低闾值提高敏感度 (25→10) 
         self.binary_threshold = 1            # 🔧 極低闾值提高敏感度 (8→1)
         
-        # 🔍 極度減少形態學處理 - 最大化保留小零件
-        self.dilate_kernel_size = (1, 1)    # 🔧 最小核避免過度膨脹 (2→1)
-        self.dilate_iterations = 0           # 🔧 禁用膨脹以保留小零件 (1→0)
-        self.close_kernel_size = (1, 1)     # 🔧 最小核避免過度閉合 (3→1)
+        # 🔍 分離優化的形態學處理 - 避免粘連同時保留小零件
+        self.dilate_kernel_size = (1, 1)    # 🔧 最小核避免過度膨脹
+        self.dilate_iterations = 0           # 🔧 禁用膨脹以保留小零件
+        self.close_kernel_size = (1, 1)     # 🔧 禁用閉合避免零件粘連
+        self.enable_watershed_separation = True  # 🆕 啟用分水嶺分離算法
         
         # 🎯 最小化雜訊過濾 - 最大化保留小零件
         self.opening_kernel_size = (1, 1)   # 🆕 最小開運算核 (2→1)
@@ -260,14 +261,24 @@ class BackgroundSubtractionDetection(DetectionMethod):
             gray_roi = cv2.cvtColor(process_region, cv2.COLOR_BGR2GRAY) if len(process_region.shape) == 3 else process_region
             adaptive_thresh = cv2.adaptiveThreshold(gray_roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
             
-            # 🚀 簡化檢測策略 - 主要依賴背景減除結果
-            # 背景減除已經有很好的檢測效果，避免過度處理
+            # 🚀 智能化檢測策略 - 前景遮罩 + 輕微邊緣增強
+            # 背景減除作為主要檢測，邊緣檢測作為補強
             
-            # 5. 最小化處理 - 直接使用前景遮罩
+            # 5. 輕微邊緣增強處理
             binary_thresh = self.high_speed_binary_threshold if self.ultra_high_speed_mode else self.binary_threshold
             
-            # 6. 🚀 主要依賴前景遮罩 - 最小化干擾
-            combined = fg_cleaned.copy()  # 直接使用清理後的前景遮罩
+            # 為前景遮罩中的小點進行多重增強
+            # 方法A: 邊緣增強
+            edge_enhanced = cv2.bitwise_and(sensitive_edges, sensitive_edges, mask=fg_cleaned)
+            _, edge_thresh = cv2.threshold(edge_enhanced, 1, 255, cv2.THRESH_BINARY)
+            
+            # 方法B: 自適應閾值增強
+            adaptive_enhanced = cv2.bitwise_and(adaptive_thresh, adaptive_thresh, mask=fg_cleaned)
+            _, adaptive_thresh_clean = cv2.threshold(adaptive_enhanced, 127, 255, cv2.THRESH_BINARY)
+            
+            # 6. 🚀 三重聯合檢測 - 前景遮罩 + 邊緣增強 + 自適應閾值
+            temp_combined = cv2.bitwise_or(fg_cleaned, edge_thresh)
+            combined = cv2.bitwise_or(temp_combined, adaptive_thresh_clean)
             
             # 7. 🔧 極度簡化形態學處理 - 最大化保留小零件
             # 使用最小化的形態學操作，避免過度過濾
@@ -302,7 +313,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     'frame': frame.copy(),
                     'process_region': process_region.copy(),
                     'fg_mask': fg_mask.copy(),
-                    'fg_cleaned': fg_cleaned.copy(),
+                    'fg_cleaned': combined.copy(),  # 使用增強後的combined結果
                     'processed': processed.copy()
                 }
             else:
@@ -361,10 +372,19 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 min_a = min(min_area if min_area is not None else float('inf'), self.min_area)
                 max_a = max(max_area if max_area is not None else 0, self.max_area)
             
+            # 🔧 小零件專用增強預處理
+            enhanced_frame = processed_frame.copy()
+            
+            # 對於極小零件，進行輕微膨脹使其更容易被檢測
+            if not self.ultra_high_speed_mode:
+                # 使用極小的膨脹核來輕微增強小零件
+                tiny_kernel = np.ones((2, 2), np.uint8)
+                enhanced_frame = cv2.dilate(enhanced_frame, tiny_kernel, iterations=1)
+            
             # 連通組件標記 (Connected Component Labeling)
             # 參考 partsCounts_v1.py 的實現
             num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-                processed_frame, connectivity=self.connectivity
+                enhanced_frame, connectivity=self.connectivity
             )
             
             current_objects = []
@@ -462,6 +482,20 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         
                         # 計算等效圓半徑
                         radius = np.sqrt(area / np.pi)
+                        
+                        # 🔧 智能分離算法 - 檢查是否需要分離粘連的小零件
+                        if self.enable_watershed_separation and area > self.min_area * 3:  # 面積超過3倍最小面積時考慮分離
+                            separated_objects = self._separate_clustered_components(
+                                enhanced_frame, labels, i, x, y, w, h, area
+                            )
+                            if separated_objects:  # 如果成功分離
+                                for sep_obj in separated_objects:
+                                    sep_x, sep_y, sep_w, sep_h, sep_area, sep_radius = sep_obj
+                                    # 轉換為全圖座標
+                                    global_sep_y = sep_y + self.current_roi_y
+                                    global_sep_centroid = (sep_x + sep_w//2, global_sep_y + sep_h//2)
+                                    current_objects.append((sep_x, global_sep_y, sep_w, sep_h, global_sep_centroid, sep_area, sep_radius))
+                                continue  # 跳過原始大物件，使用分離後的結果
                         
                         # 添加到當前物件列表 (使用全圖座標)
                         # 格式: (x, global_y, w, h, global_centroid, area, radius)
@@ -1205,6 +1239,90 @@ class BackgroundSubtractionDetection(DetectionMethod):
         except Exception as e:
             logging.error(f"清理早期調試圖片錯誤: {str(e)}")
             return 0
+
+    def _separate_clustered_components(self, frame, labels, component_id, x, y, w, h, area):
+        """
+        分水嶺算法分離粘連的小零件
+        
+        Args:
+            frame: 處理後的二值圖像
+            labels: 連通組件標籤圖像
+            component_id: 當前組件ID
+            x, y, w, h: 組件的邊界框
+            area: 組件面積
+            
+        Returns:
+            List of separated objects: [(x, y, w, h, area, radius), ...]
+        """
+        try:
+            # 提取當前組件的區域
+            component_mask = (labels == component_id).astype(np.uint8) * 255
+            
+            # 提取組件區域
+            roi = component_mask[y:y+h, x:x+w]
+            if roi.size == 0:
+                return []
+            
+            # 估算預期的零件數量（基於面積比例）
+            expected_components = max(2, int(area / (self.min_area * 2)))  # 保守估算
+            
+            # 距離變換
+            dist_transform = cv2.distanceTransform(roi, cv2.DIST_L2, 5)
+            
+            # 找到局部極大值作為種子點
+            # 使用形態學操作找到峰值
+            kernel = np.ones((3, 3), np.uint8)
+            local_maxima = cv2.morphologyEx(dist_transform, cv2.MORPH_OPEN, kernel)
+            
+            # 閾值化得到種子點
+            sure_fg = np.uint8(local_maxima > 0.3 * dist_transform.max())
+            
+            # 標記種子點
+            _, markers = cv2.connectedComponents(sure_fg)
+            
+            # 如果檢測到的種子點數量合理，執行分水嶺
+            if markers.max() >= 2 and markers.max() <= expected_components + 2:
+                # 為分水嶺算法準備圖像
+                if len(roi.shape) == 2:
+                    roi_3ch = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+                else:
+                    roi_3ch = roi
+                
+                # 執行分水嶺算法
+                markers = cv2.watershed(roi_3ch, markers)
+                
+                # 提取分離後的組件
+                separated_objects = []
+                for label_id in range(2, markers.max() + 1):  # 跳過背景(0)和邊界(-1,1)
+                    mask = (markers == label_id).astype(np.uint8)
+                    
+                    # 找到輪廓
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    if contours:
+                        cnt = max(contours, key=cv2.contourArea)
+                        sep_area = cv2.contourArea(cnt)
+                        
+                        # 檢查分離後的組件是否符合最小面積要求
+                        if sep_area >= self.min_area:
+                            sep_x, sep_y, sep_w, sep_h = cv2.boundingRect(cnt)
+                            # 轉換回原圖坐標
+                            sep_x += x
+                            sep_y += y
+                            sep_radius = np.sqrt(sep_area / np.pi)
+                            
+                            separated_objects.append((sep_x, sep_y, sep_w, sep_h, sep_area, sep_radius))
+                
+                # 只有當分離後的組件數量合理時才返回結果
+                if len(separated_objects) >= 2 and len(separated_objects) <= expected_components:
+                    logging.info(f"🔧 成功分離: 原面積={area} -> {len(separated_objects)}個組件 (面積: {[obj[4] for obj in separated_objects]})")
+                    return separated_objects
+            
+            # 分離失敗，返回空列表
+            return []
+            
+        except Exception as e:
+            logging.debug(f"分離算法錯誤: {str(e)}")
+            return []
 
     @property
     def name(self) -> str:
