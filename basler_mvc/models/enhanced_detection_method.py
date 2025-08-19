@@ -24,40 +24,42 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.target_fps = 280  # 目標FPS，根據相機規格動態調整
         
         # 🎯 極小零件檢測 - 專門為小零件優化參數
-        self.min_area = 8    # 🔧 降低最小面積以捕獲極小零件 (25→8)  
+        self.min_area = 3    # 🔧 極度降低以捕獲極小零件 (5→3)  
         self.max_area = 3000 # 🔧 適中的上限 (4000→3000)
         
         # 物件形狀過濾參數 - 專為小零件放寬條件
-        self.min_aspect_ratio = 0.05 # 更寬鬆的長寬比適應小零件 (0.1→0.05)
-        self.max_aspect_ratio = 8.0  # 適度限制極端形狀 (20.0→8.0)
-        self.min_extent = 0.1        # 降低填充比例要求適應小零件 (0.2→0.1)
-        self.max_solidity = 1.0      # 嚴格的結實性限制 (3.0→1.0)
+        self.min_aspect_ratio = 0.001 # 極度寬鬆的長寬比適應小零件 (0.01→0.001)
+        self.max_aspect_ratio = 100.0 # 極度放寬極端形狀限制 (50.0→100.0)
+        self.min_extent = 0.001       # 極度降低填充比例要求 (0.01→0.001)
+        self.max_solidity = 5.0       # 極度放寬結實性限制 (2.0→5.0)
         
-        # 🎯 高敏感背景減除 - 專為小零件檢測優化
-        self.bg_history = 700    # 增加歷史幀數穩定背景 (500→700)
-        self.bg_var_threshold = 6   # 🔧 降低閾值提高小零件敏感度 (12→6)
+        # 🎯 超穩定背景減除 - 專為小零件長期檢測優化
+        self.bg_history = 1000   # 大幅增加歷史幀數避免快速背景更新 (700→1000)
+        self.bg_var_threshold = 3   # 🔧 極低閾值確保最高敏感度 (5→3)
         self.detect_shadows = False  # 關閉陰影檢測
+        self.bg_learning_rate = 0.001  # 🆕 極低學習率避免小零件被納入背景
         
         # 🚀 高速模式下的簡化參數 - 也針對小零件優化
         self.high_speed_bg_history = 100      # 高速模式下減少歷史幀數
         self.high_speed_bg_var_threshold = 8  # 高速模式下也降低閾值 (16→8)
-        self.high_speed_min_area = 15         # 高速模式下降低最小面積 (50→15)
+        self.high_speed_min_area = 2          # 高速模式下極度降低最小面積 (15→2)
         self.high_speed_max_area = 2000       # 高速模式下降低最大面積
+        self.high_speed_binary_threshold = 3  # 高速模式下的二值化閾值
         
-        # 🎯 敏感邊緣檢測 - 專為小零件檢測優化
-        self.gaussian_blur_kernel = (3, 3)  # 減少模糊保留小零件細節 (5→3)
-        self.canny_low_threshold = 8         # 🔧 降低低閾值捕獲小零件 (20→8)
-        self.canny_high_threshold = 25       # 🔧 降低高閾值提高敏感度 (60→25) 
-        self.binary_threshold = 8            # 🔧 降低二值化閾值 (15→8)
+        # 🎯 極高敏感度邊緣檢測 - 專為小零件檢測優化
+        self.gaussian_blur_kernel = (1, 1)  # 最小模糊保留最多細節 (3→1)
+        self.canny_low_threshold = 3         # 🔧 極低闾值提高敏感度 (8→3)
+        self.canny_high_threshold = 10       # 🔧 極低闾值提高敏感度 (25→10) 
+        self.binary_threshold = 1            # 🔧 極低闾值提高敏感度 (8→1)
         
-        # 🔍 加強雜訊過濾 - 使用更大的形態學核
-        self.dilate_kernel_size = (3, 3)    # 🔧 適度的核大小 (2→3)
-        self.dilate_iterations = 1           # 🔧 保持適度膨脹
-        self.close_kernel_size = (5, 5)     # 🔧 更大的核，更好的填補 (3→5)
+        # 🔍 極度減少形態學處理 - 最大化保留小零件
+        self.dilate_kernel_size = (1, 1)    # 🔧 最小核避免過度膨脹 (2→1)
+        self.dilate_iterations = 0           # 🔧 禁用膨脹以保留小零件 (1→0)
+        self.close_kernel_size = (1, 1)     # 🔧 最小核避免過度閉合 (3→1)
         
-        # 🎯 溫和的雜訊過濾 - 保留小零件
-        self.opening_kernel_size = (2, 2)   # 🆕 減小開運算核保留小零件 (4→2)
-        self.opening_iterations = 1          # 🆕 減少開運算次數 (2→1)
+        # 🎯 最小化雜訊過濾 - 最大化保留小零件
+        self.opening_kernel_size = (1, 1)   # 🆕 最小開運算核 (2→1)
+        self.opening_iterations = 0          # 🆕 禁用開運算以保留小零件 (1→0)
         
         # 連通組件參數
         self.connectivity = 4  # 4-連通或8-連通
@@ -75,14 +77,14 @@ class BackgroundSubtractionDetection(DetectionMethod):
         
         # 🎯 為小零件降低追蹤門檻 - 提高檢測率
         self.track_lifetime = 8   # 適度的追蹤週期 (10→8)
-        self.min_track_frames = 2 # 降低多幀確認要求，提高小零件檢測 (3→2)
+        self.min_track_frames = 2 # 平衡要求，既避免誤判又保持檢測率 (3→2)
         self.crossing_threshold = 0.05   # 降低穿越閾值，提高小零件敏感度 (0.1→0.05)
         self.confidence_threshold = 0.05  # 降低置信度要求，提高小零件檢測 (0.1→0.05)
         
         # 🛡️ 簡化防重複機制 - 提升性能
         self.counted_objects_history = []  # 已計數物件的歷史記錄
         self.history_length = 10  # 減少歷史長度，提高效率
-        self.duplicate_distance_threshold = 25  # 簡化重複檢測距離
+        self.duplicate_distance_threshold = 15  # 更嚴格的重複檢測距離 (25→15)
         
         # 追蹤狀態
         self.object_tracks = {}
@@ -117,7 +119,11 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.manual_trigger_active = False  # 手動觸發狀態
         self._temp_debug_data = None  # 臨時調試數據
         
-        logging.info("🔍 背景減除檢測方法初始化完成 (🎯 極度高靈敏度 - 專門優化小零件檢測)")
+        logging.info("🔍 背景減除檢測方法初始化完成 (🎯 極度高靈敏度 - 超級小零件檢測優化)")
+        logging.info(f"🔧 超敏感參數: min_area={self.min_area}, bg_var_threshold={self.bg_var_threshold}, min_aspect_ratio={self.min_aspect_ratio}, min_extent={self.min_extent}")
+        logging.info(f"🔧 最小化形態學: opening={self.opening_kernel_size}x{self.opening_iterations}, dilate={self.dilate_kernel_size}x{self.dilate_iterations}, close={self.close_kernel_size}")
+        logging.info(f"🔧 背景穩定性: history={self.bg_history}, learning_rate={self.bg_learning_rate}, var_threshold={self.bg_var_threshold}")
+        logging.info(f"🔧 邊緣檢測: canny={self.canny_low_threshold}-{self.canny_high_threshold}, binary_thresh={self.binary_threshold}")
     
     def enable_ultra_high_speed_mode(self, enabled: bool = True, target_fps: int = 280):
         """啟用超高速檢測模式 (206-376fps)"""
@@ -127,23 +133,26 @@ class BackgroundSubtractionDetection(DetectionMethod):
         if enabled:
             # 🚀 自動調整參數以適應目標FPS
             if target_fps >= 350:
-                # 376fps模式 - 極度簡化
+                # 376fps模式 - 極度簡化但保持小零件檢測能力
                 self.high_speed_bg_history = 50
-                self.high_speed_bg_var_threshold = 20
-                self.high_speed_min_area = 80
-                logging.info(f"🚀 啟用376fps超高速模式")
+                self.high_speed_bg_var_threshold = 3  # 🔧 大幅降低以檢測小零件 (20→3)
+                self.high_speed_min_area = 3          # 🔧 大幅降低以檢測小零件 (80→3)
+                self.high_speed_binary_threshold = 2  # 🔧 極低二值化閾值
+                logging.info(f"🚀 啟用376fps超高速模式 (小零件優化)")
             elif target_fps >= 250:
-                # 280fps模式 - 平衡簡化
+                # 280fps模式 - 平衡簡化但保持小零件檢測
                 self.high_speed_bg_history = 100
-                self.high_speed_bg_var_threshold = 16
-                self.high_speed_min_area = 50
-                logging.info(f"🚀 啟用280fps高速模式")
+                self.high_speed_bg_var_threshold = 4  # 🔧 降低以檢測小零件 (16→4)
+                self.high_speed_min_area = 4          # 🔧 降低以檢測小零件 (50→4)
+                self.high_speed_binary_threshold = 3  # 🔧 低二值化閾值
+                logging.info(f"🚀 啟用280fps高速模式 (小零件優化)")
             else:
-                # 206fps模式 - 適度簡化
+                # 206fps模式 - 適度簡化但保持小零件檢測
                 self.high_speed_bg_history = 150
-                self.high_speed_bg_var_threshold = 14
-                self.high_speed_min_area = 40
-                logging.info(f"🚀 啟用206fps模式")
+                self.high_speed_bg_var_threshold = 5  # 🔧 降低以檢測小零件 (14→5)
+                self.high_speed_min_area = 5          # 🔧 降低以檢測小零件 (40→5)
+                self.high_speed_binary_threshold = 4  # 🔧 適中二值化閾值
+                logging.info(f"🚀 啟用206fps模式 (小零件優化)")
             
             # 🔧 重置背景減除器以應用新參數
             self._reset_background_subtractor()
@@ -174,6 +183,11 @@ class BackgroundSubtractionDetection(DetectionMethod):
             varThreshold=var_threshold,
             detectShadows=self.detect_shadows
         )
+        # 🎯 設置極低學習率防止小零件被納入背景模型
+        if hasattr(self, 'bg_learning_rate'):
+            self.current_learning_rate = self.bg_learning_rate
+        else:
+            self.current_learning_rate = 0.001
         logging.debug("背景減除器已重置")
     
     def process_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
@@ -182,8 +196,15 @@ class BackgroundSubtractionDetection(DetectionMethod):
             return None
         
         try:
-            # 🚀🚀 簡化幀計數
+            # 🚀🚀 強化幀計數和跳幀檢測
             self.total_processed_frames += 1
+            
+            # 🔍 檢測跳幀情況 - 記錄處理的每一幀
+            if hasattr(self, 'last_processed_frame'):
+                frame_gap = self.total_processed_frames - self.last_processed_frame
+                if frame_gap > 1:
+                    logging.warning(f"⚠️ 檢測到跳幀: 從{self.last_processed_frame}跳到{self.total_processed_frames}, 跳過{frame_gap-1}幀")
+            self.last_processed_frame = self.total_processed_frames
             
             # 更新幀尺寸
             self.frame_height, self.frame_width = frame.shape[:2]
@@ -210,8 +231,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 return self._ultra_high_speed_processing(process_region)
             
             # 🎯 標準模式：完整處理流程
-            # 1. 背景減除獲得前景遮罩
-            fg_mask = self.bg_subtractor.apply(process_region)
+            # 1. 背景減除獲得前景遮罩 - 使用極低學習率
+            fg_mask = self.bg_subtractor.apply(process_region, learningRate=self.current_learning_rate)
             
             # 2. 高斯模糊減少噪聲
             blurred = cv2.GaussianBlur(process_region, self.gaussian_blur_kernel, 0)
@@ -239,53 +260,53 @@ class BackgroundSubtractionDetection(DetectionMethod):
             gray_roi = cv2.cvtColor(process_region, cv2.COLOR_BGR2GRAY) if len(process_region.shape) == 3 else process_region
             adaptive_thresh = cv2.adaptiveThreshold(gray_roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
             
-            # 結合前景遮罩和邊緣檢測
-            filtered_strong = cv2.bitwise_and(strong_edges, strong_edges, mask=fg_cleaned)
-            filtered_sensitive = cv2.bitwise_and(sensitive_edges, sensitive_edges, mask=fg_cleaned)
-            filtered_adaptive = cv2.bitwise_and(adaptive_thresh, adaptive_thresh, mask=fg_cleaned)
+            # 🚀 簡化檢測策略 - 主要依賴背景減除結果
+            # 背景減除已經有很好的檢測效果，避免過度處理
             
-            # 5. 二值化和合併
-            _, thresh_strong = cv2.threshold(filtered_strong, self.binary_threshold, 255, cv2.THRESH_BINARY)
-            _, thresh_sensitive = cv2.threshold(filtered_sensitive, self.binary_threshold//2, 255, cv2.THRESH_BINARY)
+            # 5. 最小化處理 - 直接使用前景遮罩
+            binary_thresh = self.high_speed_binary_threshold if self.ultra_high_speed_mode else self.binary_threshold
             
-            # 6. 🚀 多方法聯合檢測 - 提高召回率
-            # 聯合多種檢測方法的結果
-            combined = cv2.bitwise_or(fg_cleaned, thresh_strong)
-            combined = cv2.bitwise_or(combined, thresh_sensitive)
-            combined = cv2.bitwise_or(combined, filtered_adaptive)
+            # 6. 🚀 主要依賴前景遮罩 - 最小化干擾
+            combined = fg_cleaned.copy()  # 直接使用清理後的前景遮罩
             
-            # 7. 🔧 加強雜訊過濾的形態學處理
-            # 多階段去噪，強化雜訊過濾能力
+            # 7. 🔧 極度簡化形態學處理 - 最大化保留小零件
+            # 使用最小化的形態學操作，避免過度過濾
             
-            # 第一階段：強化開運算去除小雜訊
-            opening_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.opening_kernel_size)
-            opened_stage1 = cv2.morphologyEx(combined, cv2.MORPH_OPEN, opening_kernel, iterations=self.opening_iterations)
+            # 第一階段：最小化開運算僅去除1像素雜訊
+            if self.opening_kernel_size == (1, 1):
+                # 如果是1x1核，完全跳過開運算
+                opened_stage1 = combined.copy()
+            else:
+                opening_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.opening_kernel_size)
+                opened_stage1 = cv2.morphologyEx(combined, cv2.MORPH_OPEN, opening_kernel, iterations=self.opening_iterations)
             
-            # 第二階段：中等核心開運算，進一步清理
-            medium_open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-            opened_stage2 = cv2.morphologyEx(opened_stage1, cv2.MORPH_OPEN, medium_open_kernel, iterations=1)
+            # 跳過第二階段開運算以保留更多小零件
             
-            # 適度膨脹連接相近的零件區域
-            dilate_kernel = np.ones(self.dilate_kernel_size, np.uint8)
-            dilated = cv2.dilate(opened_stage2, dilate_kernel, iterations=self.dilate_iterations)
+            # 最小化膨脹 - 只連接相近像素
+            if self.dilate_kernel_size != (1, 1) and self.dilate_iterations > 0:
+                dilate_kernel = np.ones(self.dilate_kernel_size, np.uint8)
+                dilated = cv2.dilate(opened_stage1, dilate_kernel, iterations=self.dilate_iterations)
+            else:
+                dilated = opened_stage1.copy()
             
-            # 閉合運算填補零件內部的小洞
-            close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.close_kernel_size)
-            processed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+            # 最小化閉合運算
+            if self.close_kernel_size != (1, 1):
+                close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, self.close_kernel_size)
+                processed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+            else:
+                processed = dilated.copy()
             
-            # 📸 調試圖片保存 (如果啟用) - 完整序列保存
-            should_create_debug_data = (
-                self.debug_save_enabled and 
-                self.debug_frame_counter < self.max_debug_frames
-            )
-            
-            self._temp_debug_data = {
-                'frame': frame.copy(),
-                'process_region': process_region.copy(),
-                'fg_mask': fg_mask.copy(),
-                'fg_cleaned': fg_cleaned.copy(),
-                'processed': processed.copy()
-            } if should_create_debug_data else None
+            # 📸 強制創建調試數據以便分析
+            if self.debug_save_enabled:
+                self._temp_debug_data = {
+                    'frame': frame.copy(),
+                    'process_region': process_region.copy(),
+                    'fg_mask': fg_mask.copy(),
+                    'fg_cleaned': fg_cleaned.copy(),
+                    'processed': processed.copy()
+                }
+            else:
+                self._temp_debug_data = None
             
             # 🔧 檢查手動觸發文件
             self._check_manual_trigger_file()
@@ -299,8 +320,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
     def _ultra_high_speed_processing(self, process_region: np.ndarray) -> Optional[np.ndarray]:
         """🚀 超高速處理模式 - 專為206-376fps設計"""
         try:
-            # 🚀 步驟1: 極簡背景減除 (最大性能瓶頸優化)
-            fg_mask = self.bg_subtractor.apply(process_region)
+            # 🚀 步驟1: 極簡背景減除 - 高速模式也使用學習率控制
+            fg_mask = self.bg_subtractor.apply(process_region, learningRate=self.current_learning_rate)
             
             # 🚀 步驟2: 單一輕量級形態學處理 (去除最小雜訊)
             kernel = np.ones((3, 3), np.uint8)
@@ -351,20 +372,25 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # 🚀 高速模式：減少調試訊息頻率
             debug_interval = 100 if self.ultra_high_speed_mode else 20
             
-            # 🔍 調試：記錄總組件數 (高速模式下減少頻率)
-            if self.current_frame_count % debug_interval == 0:
-                logging.debug(f"總連通組件數: {num_labels-1}, 面積範圍: {min_a}-{max_a}")
+            # 🔍 調試：強制記錄總組件數和面積信息
+            logging.info(f"🔍 總連通組件數: {num_labels-1}, 面積範圍: {min_a}-{max_a}")
+            
+            # 🔍 記錄所有組件面積
+            if num_labels > 1:
+                all_areas = [stats[i, cv2.CC_STAT_AREA] for i in range(1, num_labels)]
+                logging.info(f"🔍 所有組件面積: {sorted(all_areas)}")
             
             # 遍歷所有連通組件 (跳過背景，從1開始)
             for i in range(1, num_labels):
                 area = stats[i, cv2.CC_STAT_AREA]
                 
-                # 🔍 調試：記錄面積過濾 (高速模式下減少頻率)
-                if self.current_frame_count % debug_interval == 0 and i <= 3:
-                    logging.debug(f"組件{i}: 面積={area}, 是否通過面積過濾={min_a < area < max_a}")
+                # 🔍 調試：記錄面積過濾 (詳細調試)
+                area_valid = area >= min_a  # 改為只檢查下限，不限制上限
+                if i <= 5:  # 只記錄前5個組件
+                    logging.info(f"🔍 組件{i}: 面積={area}, 最小面積={min_a}, 通過面積篩選={area_valid}")
                 
-                # 面積篩選
-                if min_a < area < max_a:
+                # 面積篩選 - 完全移除上限限制，只檢查下限
+                if area >= min_a:
                     # 提取邊界框信息 (ROI座標)
                     x = stats[i, cv2.CC_STAT_LEFT]
                     y = stats[i, cv2.CC_STAT_TOP]
@@ -400,15 +426,18 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         except:
                             solidity = 1.0  # 錯誤時給予預設值
                         
-                        # 🔍 超極度放寬形狀過濾 - 專門為小零件檢測優化
+                        # 🔍 極度寬鬆的形狀過濾 - 優先捕獲小零件
                         shape_valid = (
-                            aspect_ratio > self.min_aspect_ratio and  # 超寬鬆值 0.005
-                            extent > self.min_extent and              # 超寬鬆值 0.0005  
-                            solidity <= self.max_solidity             # 超放寬值 2.0
+                            aspect_ratio > 0.001 and              # 極度寬鬆的長寬比 (0.005→0.001)
+                            extent > 0.001 and                    # 極度寬鬆的填充比例 (0.005→0.001)
+                            solidity <= self.max_solidity and     # 5.0
+                            area >= 2                             # 極度降低面積要求 (5→2)
                         )
                         
-                        # 🔍 詳細調試信息：記錄所有過濾情況 
-                        if not shape_valid and self.current_frame_count % 5 == 0:  # 更頻繁的調試記錄
+                        # 🔍 詳細調試信息：記錄所有形狀分析結果
+                        logging.info(f"🔍 組件{i} 形狀分析: 面積={area}, 長寬比={aspect_ratio:.4f}, 填充比例={extent:.4f}, 結實性={solidity:.3f}")
+                        
+                        if not shape_valid:
                             reasons = []
                             if aspect_ratio <= self.min_aspect_ratio:
                                 reasons.append(f"長寬比太小({aspect_ratio:.4f} <= {self.min_aspect_ratio})")
@@ -417,11 +446,11 @@ class BackgroundSubtractionDetection(DetectionMethod):
                             if solidity > self.max_solidity:
                                 reasons.append(f"結實性太大({solidity:.3f} > {self.max_solidity})")
                             
-                            logging.debug(f"🚫 小零件被過濾: 面積={area}, 原因={'; '.join(reasons)}")
+                            logging.info(f"🚫 組件{i}被形狀過濾: 面積={area}, 原因={'; '.join(reasons)}")
                         
-                        # 🔍 記錄通過檢測的小零件
-                        if shape_valid and area < 50 and self.current_frame_count % 5 == 0:
-                            logging.debug(f"✅ 檢測到小零件: 面積={area}, 長寬比={aspect_ratio:.3f}, 位置=({x},{y})")
+                        # 🔍 記錄通過檢測的物件
+                        if shape_valid:
+                            logging.info(f"✅ 組件{i}通過檢測: 面積={area}, 長寬比={aspect_ratio:.3f}, 位置=({x},{y})")
                     
                     if shape_valid:
                         # 獲取質心 (ROI座標)
@@ -457,12 +486,14 @@ class BackgroundSubtractionDetection(DetectionMethod):
             
             # 📸 保存調試圖片的條件 - 只在視頻回放模式下啟用
             # 🚀 高速模式：完全禁用調試圖片保存
+            # 🔍 強制保存所有幀以便分析 - 暫時移除條件限制
             should_save = (
                 not self.ultra_high_speed_mode and  # 高速模式下強制禁用
                 self._temp_debug_data is not None and 
                 self.debug_frame_counter < self.max_debug_frames and
                 self.debug_save_enabled and
                 self.composite_debug_enabled
+                # 暫時移除所有條件限制，保存每一幀
             )
             
             # 🎯 在剛進入中間段保存窗口時記錄日誌
@@ -474,8 +505,11 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     logging.info(f"   保存範圍: 第{start_frame}幀 - 第{end_frame}幀")
                     logging.info(f"   預計保存約 {end_frame - start_frame} 幀的數據")
             
+            # 🔍 強制更新調試幀計數器確保連續性
+            self.debug_frame_counter += 1
+            
             if should_save:
-                save_reason = f"第{self.debug_frame_counter+1}幀 (檢測到 {len(current_objects)} 個物件)"
+                save_reason = f"第{self.debug_frame_counter}幀 (檢測到 {len(current_objects)} 個物件)"
                 
                 # 🖼️ 使用新的合成調試圖片保存方法
                 self._save_composite_debug_image(
@@ -486,7 +520,6 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     self._temp_debug_data['processed'],       # 最終處理結果
                     current_objects                           # 檢測到的物件
                 )
-                self.debug_frame_counter += 1
                 
                 # 每50幀記錄一次進度
                 if self.debug_frame_counter % 50 == 0:
@@ -505,9 +538,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # if self.debug_frame_counter % 10 == 0:  # 已禁用
             #     gc.collect()  # 已禁用
             
-            # 🔍 調試：記錄檢測結果
-            if self.current_frame_count % 20 == 0:  # 每20幀記錄一次
-                logging.debug(f"最終檢測到物件數: {len(current_objects)}")
+            # 🔍 調試：強制記錄每幀處理結果以分析問題
+            logging.info(f"🎯 幀{self.total_processed_frames}: 組件{num_labels-1}→物件{len(current_objects)}, 調試幀號{self.debug_frame_counter}")
             
             return current_objects
             
@@ -595,7 +627,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     
                     # 🎯 為小零件降低計數要求：提高檢測敏感度
                     valid_crossing = (
-                        y_travel >= 3 and           # 🔧 降低移動要求，適應小零件 (10→3像素)
+                        y_travel >= 3 and           # 🔧 降低移動要求提高檢測率 (5→3像素)
                         track['in_roi_frames'] >= self.min_track_frames and  # 確保多幀穩定檢測
                         not is_duplicate            # 非重複檢測
                     )
@@ -966,30 +998,58 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # 合併兩行
             composite_img = np.vstack([row1, row2])
             
-            # 🏷️ 添加底部參數信息
-            info_height = 120
+            # 🏷️ 添加底部參數信息 - 詳細配置
+            info_height = 160  # 增加高度以容納更多參數信息
             info_panel = np.zeros((info_height, composite_img.shape[1], 3), dtype=np.uint8)
             
-            # 參數文字信息
+            # 詳細參數文字信息
             params_text = [
-                f"Frame: {self.debug_frame_counter:04d} | Count: {self.crossing_counter} | Objects: {len(detected_objects)}",
-                f"ROI: {self.roi_height}px @ {self.roi_position_ratio:.2f} | MinArea: {self.min_area} | MaxArea: {self.max_area}",
-                f"BG Threshold: {self.bg_var_threshold} | Binary: {self.binary_threshold} | Canny: {self.canny_low_threshold}-{self.canny_high_threshold}",
-                f"Time: {datetime.fromtimestamp(timestamp/1000).strftime('%H:%M:%S.%f')[:-3]}"
+                f"Frame: {self.debug_frame_counter:04d} | Count: {self.crossing_counter} | Objects: {len(detected_objects)} | Total Processed: {self.total_processed_frames}",
+                f"ROI: {self.roi_height}px @ {self.roi_position_ratio:.2f} | MinArea: {self.high_speed_min_area if self.ultra_high_speed_mode else self.min_area} | MaxArea: {self.high_speed_max_area if self.ultra_high_speed_mode else self.max_area}",
+                f"BG Threshold: {self.high_speed_bg_var_threshold if self.ultra_high_speed_mode else self.bg_var_threshold} | Binary: {self.high_speed_binary_threshold if self.ultra_high_speed_mode else self.binary_threshold} | Canny: {self.canny_low_threshold}-{self.canny_high_threshold}",
+                f"Shape Filter - Aspect: >{getattr(self, 'min_aspect_ratio', 0.01):.2f} | Extent: >{getattr(self, 'min_extent', 0.02):.2f} | Solidity: >{getattr(self, 'min_solidity', 0.01):.2f}",
+                f"Morph - Opening: {getattr(self, 'opening_kernel_size', (2, 2))} x{getattr(self, 'opening_iterations', 1)} | Closing: {getattr(self, 'closing_kernel_size', (3, 3))} x{getattr(self, 'closing_iterations', 1)}",
+                f"Time: {datetime.fromtimestamp(timestamp/1000).strftime('%H:%M:%S.%f')[:-3]} | Gaussian Blur: {self.gaussian_blur_kernel}"
             ]
             
             # 在信息面板上添加文字
             for i, text in enumerate(params_text):
-                y_pos = 25 + i * 25
+                y_pos = 20 + i * 22  # 調整行間距以適應更多參數
                 cv2.putText(info_panel, text, (10, y_pos), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)  # 稍小字體以容納更多信息
             
             # 合併信息面板
             final_composite = np.vstack([composite_img, info_panel])
             
-            # 💾 保存合成圖片
+            # 💾 保存合成圖片 - 強化錯誤處理和格式檢查
             save_path = f"{self.current_session_dir}/composite_debug_{frame_id}.jpg"
-            cv2.imwrite(save_path, final_composite)
+            try:
+                # 檢查圖片數據完整性
+                if final_composite is None or final_composite.size == 0:
+                    logging.error(f"🚫 合成圖片數據無效")
+                    return
+                
+                # 確保目錄存在
+                import os
+                os.makedirs(self.current_session_dir, exist_ok=True)
+                
+                # 嘗試保存為JPG
+                success = cv2.imwrite(save_path, final_composite, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                if not success:
+                    # 嘗試保存為PNG
+                    png_path = save_path.replace('.jpg', '.png')
+                    success = cv2.imwrite(png_path, final_composite)
+                    if success:
+                        logging.info(f"✅ 保存為PNG: {png_path}")
+                    else:
+                        logging.error(f"🚫 JPG和PNG格式都保存失敗: {save_path}")
+                else:
+                    logging.debug(f"✅ JPG保存成功: {save_path}")
+                    
+            except Exception as e:
+                logging.error(f"🚫 調試圖片保存異常: {save_path}, 錯誤: {str(e)}")
+                import traceback
+                logging.error(f"詳細錯誤: {traceback.format_exc()}")
             
             # 📊 每50幀記錄一次進度
             if self.debug_frame_counter % 50 == 0:

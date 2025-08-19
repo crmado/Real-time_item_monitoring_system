@@ -30,23 +30,23 @@ class DetectionProcessor:
         # 自動設定線程數量（優化記憶體使用）
         if max_workers is None:
             cpu_count = multiprocessing.cpu_count()
-            # 減少線程數量以降低記憶體消耗
-            self.max_workers = max(1, cpu_count // 2)
+            # 🔧 增加線程數量以減少跳幀問題 - 針對視頻回放優化
+            self.max_workers = max(2, cpu_count)  # 使用全部CPU核心
         else:
             self.max_workers = max_workers
             
         # 線程池
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         
-        # 🎯 記憶體優化：進一步減少隊列大小以降低記憶體占用
-        self.frame_queue = queue.Queue(maxsize=3)     # 最小化隊列大小
+        # 🎯 跳幀優化：增加隊列大小以減少丟幀
+        self.frame_queue = queue.Queue(maxsize=8)     # 增加緩衝區避免跳幀
         
         # 結果隊列（UI消費）
-        self.result_queue = queue.Queue(maxsize=5)    # 最小化結果隊列
+        self.result_queue = queue.Queue(maxsize=10)   # 結果隊列也相應增加
         
         # 同步控制 - 記憶體優化
         self.sync_mode = False  # 🎯 預設使用非同步模式，減少阻塞
-        self.processing_semaphore = threading.Semaphore(self.max_workers)      # 進一步減少並發許可數
+        self.processing_semaphore = threading.Semaphore(self.max_workers * 2)  # 🔧 增加並發許可數減少跳幀
         
         # 統計資料
         self.total_frames_processed = 0
@@ -64,7 +64,11 @@ class DetectionProcessor:
         # 觀察者
         self.observers = []
         
-        logging.info(f"檢測處理器初始化完成 - {self.max_workers} 工作線程")
+        logging.info(f"🚀 檢測處理器初始化完成 - 跳幀優化版")
+        logging.info(f"   線程數: {self.max_workers} (CPU核心: {multiprocessing.cpu_count()})")
+        logging.info(f"   幀隊列: {self.frame_queue.maxsize}, 結果隊列: {self.result_queue.maxsize}")
+        logging.info(f"   信號量: {self.processing_semaphore._value} (並發許可)")
+        logging.info(f"   🎯 優化目標: 減少跳幀、提高150顆小零件檢測準確率")
     
     def add_observer(self, observer: Callable):
         """添加觀察者"""
