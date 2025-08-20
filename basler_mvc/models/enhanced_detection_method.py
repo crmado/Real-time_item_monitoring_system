@@ -67,28 +67,52 @@ class BackgroundSubtractionDetection(DetectionMethod):
         
         # 🎯 ROI 檢測區域參數 (根據影像分析結果優化)
         self.roi_enabled = True
-        self.roi_height = 80  # ROI 區域高度 (保持80以捕獲完整零件)
-        self.roi_position_ratio = 0.15  # ROI 位置比例 (調整到0.15，更靠近頂部)
+        self.roi_height = 120  # 🔧 擴大ROI區域高度 (80→120以增加檢測面積)
+        self.roi_position_ratio = 0.12  # 🔧 調整位置比例 (0.15→0.12，稍微上移以配合擴大高度)
         self.current_roi_y = 0  # 當前ROI的Y座標
         
         # 🎯 物件追蹤和計數參數 - 為小零件優化
         self.enable_crossing_count = True
-        self.crossing_tolerance_x = 50  # x方向追蹤容差 (增大以適應小零件移動)
-        self.crossing_tolerance_y = 80  # y方向追蹤容差 (增大以適應ROI高度)
+        self.crossing_tolerance_x = 40  # 🔧 適度收緊x方向容差 (50→40，改善多物件分離)
+        self.crossing_tolerance_y = 80  # 🔧 適度收緊y方向容差 (120→80，避免多物件沖突)
         
-        # 🎯 為小零件降低追蹤門檻 - 提高檢測率
-        self.track_lifetime = 8   # 適度的追蹤週期 (10→8)
-        self.min_track_frames = 2 # 平衡要求，既避免誤判又保持檢測率 (3→2)
-        self.crossing_threshold = 0.05   # 降低穿越閾值，提高小零件敏感度 (0.1→0.05)
-        self.confidence_threshold = 0.05  # 降低置信度要求，提高小零件檢測 (0.1→0.05)
+        # 🎯 提升追蹤穩定性 - 減少誤檢同時保持小零件檢測能力
+        self.track_lifetime = 20  # 🔧 延長追蹤週期避免中斷 (8→20)
+        self.min_track_frames = 4 # 🔧 提高穩定性要求，減少誤判 (2→4)
+        self.crossing_threshold = 0.15   # 🔧 提高穿越閾值，減少誤檢 (0.05→0.15)
+        self.confidence_threshold = 0.12  # 🔧 適度提高置信度要求 (0.05→0.12)
         
-        # 🛡️ 簡化防重複機制 - 提升性能
-        self.counted_objects_history = []  # 已計數物件的歷史記錄
-        self.history_length = 10  # 減少歷史長度，提高效率
-        self.duplicate_distance_threshold = 15  # 更嚴格的重複檢測距離 (25→15)
+        # 🛡️ 增強防重複機制 - 避免追蹤中斷造成的重複計算
+        self.counted_objects_history = []  # 已計數物件的歷史記錄 [(position, frame_number), ...]
+        self.history_length = 30  # 🔧 增加歷史長度以增強重複檢測 (10→30)
+        self.duplicate_distance_threshold = 15  # 🔧 收緊重複檢測距離減少誤檢 (25→15)
+        self.temporal_tolerance = 5  # 🔧 降低時間容忍度提高檢測精度 (10→5)
+        
+        # 🧠 智能大小統計模型 - 用於判斷粘連情況
+        self.component_sizes = []  # 記錄所有檢測到的零件大小
+        self.size_statistics = {
+            'mean_size': 0,
+            'std_size': 0,
+            'median_size': 0,
+            'size_range': (0, 0),
+            'sample_count': 0
+        }
+        self.min_samples_for_stats = 50  # 需要多少樣本才開始統計分析
+        self.clustering_threshold_ratio = 2.5  # 超過平均大小多少倍視為可能的粘連
+        
+        # 🎯 空間網格追蹤系統 - 基於XY位置的精確追蹤
+        self.grid_cell_size = 30  # 網格單元大小 (pixels)
+        self.position_based_tracking = True  # 啟用位置基礎追蹤
+        self.spatial_grid = {}  # 空間網格：{(grid_x, grid_y): track_id}
+        
+        # 🧠 推斷式追蹤系統 - 處理檢測中斷
+        self.enable_predictive_tracking = True  # 啟用推斷追蹤
+        self.prediction_tolerance = 15  # 推斷位置的容忍範圍
+        self.max_prediction_frames = 5  # 最大連續推斷幀數
         
         # 追蹤狀態
         self.object_tracks = {}
+        self.lost_tracks = {}  # 🆕 失去的追蹤（暫時消失但可能恢復的物件）
         self.crossing_counter = 0
         self.frame_width = 640  # 預設寬度，會在第一幀時更新
         self.frame_height = 480  # 預設高度，會在第一幀時更新
@@ -243,14 +267,21 @@ class BackgroundSubtractionDetection(DetectionMethod):
             
             # 4. 🚀 多角度檢測策略 - 結合多種方法提高檢測率
             
-            # 🔧 方法1: 超極小化形態學處理 - 最大化保留小零件
-            # 使用多層次微型開運算，漸進式去噪，保留極小零件
-            micro_kernel = np.ones((1, 1), np.uint8)  # 微型核保留最小特徵
-            fg_step1 = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, micro_kernel, iterations=1)
+            # 🔧 方法1: 增強前景遮罩濾波 - 減少噪點干擾同時保留小零件
+            # Step 1: 中值濾波去除椒鹽噪點
+            fg_median = cv2.medianBlur(fg_mask, 5)
             
-            # 第二層：稍大一點的核，但迭代次數減少
-            nano_kernel = np.ones((2, 2), np.uint8)  
-            fg_cleaned = cv2.morphologyEx(fg_step1, cv2.MORPH_OPEN, nano_kernel, iterations=1)
+            # Step 2: 增強形態學開運算去除獨立噪點
+            enhanced_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  # 從(2,2)增加到(5,5)
+            fg_step1 = cv2.morphologyEx(fg_median, cv2.MORPH_OPEN, enhanced_kernel, iterations=1)
+            
+            # Step 3: 閉運算填補物件內部空洞
+            close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            fg_step2 = cv2.morphologyEx(fg_step1, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+            
+            # Step 4: 最終微調開運算，移除剩餘小噪點但保留真實小零件
+            final_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            fg_cleaned = cv2.morphologyEx(fg_step2, cv2.MORPH_OPEN, final_kernel, iterations=1)
             
             # 🔧 方法2: 多敏感度邊緣檢測
             # 使用兩種不同敏感度的邊緣檢測
@@ -409,8 +440,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 if i <= 5:  # 只記錄前5個組件
                     logging.info(f"🔍 組件{i}: 面積={area}, 最小面積={min_a}, 通過面積篩選={area_valid}")
                 
-                # 面積篩選 - 完全移除上限限制，只檢查下限
-                if area >= min_a:
+                # 🔧 增強面積篩選 - 加入物件大小驗證減少噪點誤檢
+                area_valid = self._validate_object_size(area, min_a, max_a)
+                if area_valid:
                     # 提取邊界框信息 (ROI座標)
                     x = stats[i, cv2.CC_STAT_LEFT]
                     y = stats[i, cv2.CC_STAT_TOP]
@@ -483,19 +515,45 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         # 計算等效圓半徑
                         radius = np.sqrt(area / np.pi)
                         
-                        # 🔧 智能分離算法 - 檢查是否需要分離粘連的小零件
-                        if self.enable_watershed_separation and area > self.min_area * 3:  # 面積超過3倍最小面積時考慮分離
+                        # 🧠 更新大小統計模型
+                        self._update_size_statistics(area)
+                        
+                        # 🔧 智能粘連檢測與分離
+                        should_separate = False
+                        separation_reason = ""
+                        
+                        # 方法1: 基於統計大小的智能判斷
+                        if self._is_clustered_component(area):
+                            should_separate = True
+                            estimated_count = self._estimate_component_count(area)
+                            separation_reason = f"統計分析(估算{estimated_count}個零件)"
+                            
+                        # 方法2: 傳統方法作為後備 (面積超過合理閾值)
+                        elif (self.enable_watershed_separation and 
+                              self.size_statistics['sample_count'] < self.min_samples_for_stats and 
+                              area > 500):  # 🔧 調整為更合理的閾值，只在統計不足時使用
+                            should_separate = True
+                            separation_reason = f"統計不足時的保守分離(面積>{500})"
+                        
+                        if should_separate:
+                            logging.info(f"🔧 嘗試分離粘連零件: 面積={area:.0f}, 原因={separation_reason}")
                             separated_objects = self._separate_clustered_components(
                                 enhanced_frame, labels, i, x, y, w, h, area
                             )
+                            
                             if separated_objects:  # 如果成功分離
+                                logging.info(f"✅ 成功分離出{len(separated_objects)}個零件")
                                 for sep_obj in separated_objects:
                                     sep_x, sep_y, sep_w, sep_h, sep_area, sep_radius = sep_obj
                                     # 轉換為全圖座標
                                     global_sep_y = sep_y + self.current_roi_y
                                     global_sep_centroid = (sep_x + sep_w//2, global_sep_y + sep_h//2)
                                     current_objects.append((sep_x, global_sep_y, sep_w, sep_h, global_sep_centroid, sep_area, sep_radius))
+                                    # 為分離出的零件也更新統計
+                                    self._update_size_statistics(sep_area)
                                 continue  # 跳過原始大物件，使用分離後的結果
+                            else:
+                                logging.warning(f"❌ 分離失敗，保留原始物件: 面積={area:.0f}")
                         
                         # 添加到當前物件列表 (使用全圖座標)
                         # 格式: (x, global_y, w, h, global_centroid, area, radius)
@@ -591,62 +649,227 @@ class BackgroundSubtractionDetection(DetectionMethod):
             roi_bottom = self.current_roi_y + self.roi_height
             roi_center = self.current_roi_y + self.roi_height // 2
             
-            # 新的追蹤字典
+            # 🔧 改進的追蹤匹配邏輯：實現一對一匹配，避免多物件沖突
             new_tracks = {}
+            used_track_ids = set()  # 記錄已經匹配的追蹤ID
             
-            # 為每個檢測到的物件尋找匹配的追蹤
-            for obj in current_objects:
+            # 🎯 清理空間網格並重建 (每幀重新計算網格佔用)
+            self.spatial_grid.clear()
+            
+            # 🧠 推斷式追蹤：為可能失去檢測的物件生成虛擬檢測
+            virtual_objects = []
+            if self.enable_predictive_tracking:
+                # 當檢測較少或有失去的追蹤時，嘗試推斷
+                virtual_objects = self._generate_predictive_objects()
+                if virtual_objects:
+                    logging.debug(f"🔮 生成{len(virtual_objects)}個推斷物件（檢測到{len(current_objects)}個真實物件）")
+            
+            # 合併實際檢測和推斷物件
+            all_objects = current_objects + virtual_objects
+            
+            # 🎯 第一階段：為每個檢測物件找到最佳匹配
+            object_track_matches = []  # [(object_index, track_id, distance, is_virtual), ...]
+            
+            for obj_idx, obj in enumerate(all_objects):
                 x, y, w, h, centroid, area, radius = obj
                 cx, cy = centroid
+                is_virtual = obj_idx >= len(current_objects)  # 判斷是否為虛擬物件
                 
-                matched = False
                 best_match_id = None
                 best_match_distance = float('inf')
                 
                 # 與現有追蹤進行匹配 (找最佳匹配)
                 for track_id, track in self.object_tracks.items():
+                    if track_id in used_track_ids:  # 跳過已經被匹配的追蹤
+                        continue
+                        
                     # 計算距離
                     distance = np.sqrt((cx - track['x'])**2 + (cy - track['y'])**2)
                     
+                    # 🧠 對虛擬物件使用更寬鬆的容差
+                    tolerance_x = self.crossing_tolerance_x * (2 if is_virtual else 1)
+                    tolerance_y = self.crossing_tolerance_y * (2 if is_virtual else 1)
+                    
                     # 檢查是否在容差範圍內
-                    if (abs(cx - track['x']) < self.crossing_tolerance_x and 
-                        abs(cy - track['y']) < self.crossing_tolerance_y and
+                    if (abs(cx - track['x']) < tolerance_x and 
+                        abs(cy - track['y']) < tolerance_y and
                         distance < best_match_distance):
                         
                         best_match_distance = distance
                         best_match_id = track_id
-                        matched = True
                 
-                if matched and best_match_id is not None:
-                    # 更新現有追蹤
-                    old_track = self.object_tracks[best_match_id]
-                    new_tracks[best_match_id] = {
-                        'x': cx,
-                        'y': cy,
-                        'first_frame': old_track.get('first_frame', self.current_frame_count),
-                        'last_frame': self.current_frame_count,
-                        'positions': old_track.get('positions', []) + [(cx, cy)],
-                        'counted': old_track.get('counted', False),
-                        'in_roi_frames': old_track.get('in_roi_frames', 0) + 1,
-                        'max_y': max(old_track.get('max_y', cy), cy),
-                        'min_y': min(old_track.get('min_y', cy), cy)
-                    }
-                else:
-                    # 創建新的追蹤
-                    new_track_id = max(self.object_tracks.keys()) + 1 if self.object_tracks else 0
-                    new_tracks[new_track_id] = {
-                        'x': cx,
-                        'y': cy,
-                        'first_frame': self.current_frame_count,
-                        'last_frame': self.current_frame_count,
-                        'positions': [(cx, cy)],
-                        'counted': False,
-                        'in_roi_frames': 1,
-                        'max_y': cy,
-                        'min_y': cy
-                    }
+                # 記錄匹配結果
+                if best_match_id is not None:
+                    object_track_matches.append((obj_idx, best_match_id, best_match_distance, is_virtual))
             
-            # 🔍 調試：記錄軌跡狀態 (每20幀記錄一次)
+            # 🎯 第二階段：按距離排序，確保最佳匹配優先
+            object_track_matches.sort(key=lambda x: x[2])  # 按距離排序
+            
+            # 🎯 第三階段：執行一對一匹配（含網格驗證）
+            # grid_conflicted_objects = set()  # 🔧 記錄因網格衝突被跳過的物件
+            
+            for match_data in object_track_matches:
+                if len(match_data) == 4:
+                    obj_idx, track_id, distance, is_virtual = match_data
+                else:
+                    obj_idx, track_id, distance = match_data
+                    is_virtual = False
+                    
+                if track_id not in used_track_ids:
+                    # 執行匹配
+                    obj = all_objects[obj_idx]
+                    x, y, w, h, centroid, area, radius = obj
+                    cx, cy = centroid
+                    
+                    # 🎯 網格驗證：檢查空間衝突
+                    grid_pos = self._get_grid_position(cx, cy)
+                    grid_conflict = grid_pos in self.spatial_grid
+                    
+                    if not grid_conflict or not self.position_based_tracking:
+                        # 無網格衝突或未啟用位置追蹤，執行匹配
+                        old_track = self.object_tracks[track_id]
+                        new_tracks[track_id] = {
+                            'x': cx,
+                            'y': cy,
+                            'first_frame': old_track.get('first_frame', self.current_frame_count),
+                            'last_frame': self.current_frame_count,
+                            'positions': old_track.get('positions', []) + [(cx, cy)],
+                            'counted': old_track.get('counted', False),
+                            'in_roi_frames': old_track.get('in_roi_frames', 0) + 1,
+                            'max_y': max(old_track.get('max_y', cy), cy),
+                            'min_y': min(old_track.get('min_y', cy), cy),
+                            'grid_position': grid_pos,  # 記錄網格位置
+                            # 🧠 為推斷式追蹤添加尺寸信息
+                            'avg_w': int((old_track.get('avg_w', w) + w) / 2),
+                            'avg_h': int((old_track.get('avg_h', h) + h) / 2),
+                            'avg_area': (old_track.get('avg_area', area) + area) / 2
+                        }
+                        used_track_ids.add(track_id)
+                        
+                        # 佔用網格
+                        if self.position_based_tracking:
+                            self.spatial_grid[grid_pos] = track_id
+                            
+                        logging.debug(f"🔗 物件{obj_idx}匹配到追蹤{track_id}, 距離={distance:.1f}px, 網格={grid_pos}")
+                    else:
+                        # 有網格衝突，記錄並跳過，防止重複創建
+                        conflicted_track = self.spatial_grid[grid_pos]
+                        # grid_conflicted_objects.add(obj_idx)  # 🔧 記錄衝突物件
+                        logging.warning(f"⚠️ 網格衝突: 物件{obj_idx}與追蹤{conflicted_track}在網格{grid_pos}衝突，跳過匹配")
+            
+            # 🎯 第四階段：為未匹配的物件（包括虛擬物件）創建新追蹤或嘗試恢復
+            matched_objects = {match[0] for match in object_track_matches if match[1] in used_track_ids}
+            
+            for obj_idx, obj in enumerate(all_objects):
+                if obj_idx not in matched_objects:
+                    x, y, w, h, centroid, area, radius = obj
+                    cx, cy = centroid
+                    is_virtual = obj_idx >= len(current_objects)  # 判斷是否為虛擬物件
+                    
+                    # 🔄 追蹤恢復機制：嘗試從lost_tracks中恢復匹配的追蹤
+                    recovered_track_id = None
+                    best_recovery_distance = float('inf')
+                    best_recovery_track_id = None
+                    
+                    # 遍歷失去的追蹤尋找可能的恢復匹配
+                    for lost_track_id, lost_track in self.lost_tracks.items():
+                        # 計算空間距離
+                        spatial_distance = np.sqrt((cx - lost_track['x'])**2 + (cy - lost_track['y'])**2)
+                        # 計算時間間隔
+                        temporal_distance = self.current_frame_count - lost_track['last_frame']
+                        
+                        # 恢復條件：空間距離稍微寬鬆，時間間隔在容忍範圍內
+                        recovery_tolerance_x = self.crossing_tolerance_x * 1.5
+                        recovery_tolerance_y = self.crossing_tolerance_y * 1.5
+                        
+                        if (abs(cx - lost_track['x']) < recovery_tolerance_x and 
+                            abs(cy - lost_track['y']) < recovery_tolerance_y and
+                            temporal_distance <= self.temporal_tolerance and
+                            spatial_distance < best_recovery_distance):
+                            
+                            best_recovery_distance = spatial_distance
+                            best_recovery_track_id = lost_track_id
+                    
+                    # 如果找到合適的恢復匹配
+                    if best_recovery_track_id is not None:
+                        recovered_track_id = best_recovery_track_id
+                        recovered_track = self.lost_tracks[recovered_track_id]
+                        
+                        # 🎯 檢查恢復位置的網格衝突
+                        recovery_grid_pos = self._get_grid_position(cx, cy)
+                        if recovery_grid_pos not in self.spatial_grid or not self.position_based_tracking:
+                            # 恢復追蹤到new_tracks
+                            new_tracks[recovered_track_id] = {
+                                'x': cx,
+                                'y': cy,
+                                'first_frame': recovered_track.get('first_frame', self.current_frame_count),
+                                'last_frame': self.current_frame_count,
+                                'positions': recovered_track.get('positions', []) + [(cx, cy)],
+                                'counted': recovered_track.get('counted', False),
+                                'in_roi_frames': recovered_track.get('in_roi_frames', 0) + 1,
+                                'max_y': max(recovered_track.get('max_y', cy), cy),
+                                'min_y': min(recovered_track.get('min_y', cy), cy),
+                                'grid_position': recovery_grid_pos,
+                                # 🧠 為推斷式追蹤添加尺寸信息
+                                'avg_w': int((recovered_track.get('avg_w', w) + w) / 2),
+                                'avg_h': int((recovered_track.get('avg_h', h) + h) / 2),
+                                'avg_area': (recovered_track.get('avg_area', area) + area) / 2
+                            }
+                            
+                            # 佔用網格
+                            if self.position_based_tracking:
+                                self.spatial_grid[recovery_grid_pos] = recovered_track_id
+                        else:
+                            # 恢復位置有網格衝突，放棄恢復
+                            recovered_track_id = None
+                            logging.warning(f"⚠️ 追蹤恢復失敗: 網格{recovery_grid_pos}已被佔用")
+                        
+                        # 從lost_tracks中移除已恢復的追蹤
+                        del self.lost_tracks[recovered_track_id]
+                        
+                        logging.info(f"🔄 成功恢復追蹤{recovered_track_id}: 距離={best_recovery_distance:.1f}px, 時間間隔={self.current_frame_count - recovered_track['last_frame']}幀")
+                    
+                    if not recovered_track_id:
+                        # 🧠 對於虛擬物件：優先恢復而非創建新追蹤
+                        if is_virtual:
+                            logging.debug(f"🔮 虛擬物件{obj_idx}未找到恢復目標，跳過創建新追蹤")
+                            continue
+                        
+                        # 🎯 檢查新追蹤位置的網格衝突（僅對真實物件）
+                        new_grid_pos = self._get_grid_position(cx, cy)
+                        if new_grid_pos not in self.spatial_grid or not self.position_based_tracking:
+                            # 創建新的追蹤
+                            new_track_id = max(list(self.object_tracks.keys()) + list(new_tracks.keys()) + [0]) + 1
+                            new_tracks[new_track_id] = {
+                                'x': cx,
+                                'y': cy,
+                                'first_frame': self.current_frame_count,
+                                'last_frame': self.current_frame_count,
+                                'positions': [(cx, cy)],
+                                'counted': False,
+                                'in_roi_frames': 1,
+                                'max_y': cy,
+                                'min_y': cy,
+                                'grid_position': new_grid_pos,
+                                # 🧠 為推斷式追蹤添加尺寸信息
+                                'avg_w': w,
+                                'avg_h': h,
+                                'avg_area': area
+                            }
+                            
+                            # 佔用網格
+                            if self.position_based_tracking:
+                                self.spatial_grid[new_grid_pos] = new_track_id
+                                
+                            logging.debug(f"🆕 物件{obj_idx}創建新追蹤{new_track_id}, 網格={new_grid_pos}")
+                        else:
+                            # 新位置有網格衝突，跳過創建
+                            conflicted_track = self.spatial_grid[new_grid_pos]
+                            logging.warning(f"⚠️ 新追蹤創建失敗: 物件{obj_idx}在網格{new_grid_pos}與追蹤{conflicted_track}衝突")
+                    else:
+                        logging.debug(f"🔄 物件{obj_idx}恢復追蹤{recovered_track_id}")
+            
+            # 🔍 調試：記錄軌跡狀態和網格衝突統計 (每20幀記錄一次)
             if self.current_frame_count % 20 == 0:
                 logging.debug(f"🎯 軌跡狀態: 總軌跡數={len(new_tracks)}, 當前穿越計數={self.crossing_counter}")
             
@@ -659,9 +882,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     # 檢查是否為重複計數（簡化版）
                     is_duplicate = self._check_duplicate_detection_simple(track)
                     
-                    # 🎯 為小零件降低計數要求：提高檢測敏感度
+                    # 🎯 提升追蹤穩定性：適度提高移動要求減少誤檢
                     valid_crossing = (
-                        y_travel >= 3 and           # 🔧 降低移動要求提高檢測率 (5→3像素)
+                        y_travel >= 8 and           # 🔧 提高移動要求減少誤檢 (3→8像素)
                         track['in_roi_frames'] >= self.min_track_frames and  # 確保多幀穩定檢測
                         not is_duplicate            # 非重複檢測
                     )
@@ -680,12 +903,22 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         # 🔍 重要：記錄每次成功計數 (性能影響小但很重要)
                         logging.info(f"✅ 成功計數 #{self.crossing_counter} - 物件{track_id} (Y移動: {y_travel}px)")
             
-            # 清理過期的追蹤 (生命週期管理)
+            # 🔧 改進的追蹤生命週期管理：移動失去的追蹤到lost_tracks
             current_time = self.current_frame_count
-            for track_id in list(new_tracks.keys()):
-                track = new_tracks[track_id]
-                if current_time - track['last_frame'] > self.track_lifetime:
-                    del new_tracks[track_id]
+            
+            # 將當前未匹配的追蹤移動到lost_tracks
+            for track_id, track in self.object_tracks.items():
+                if track_id not in new_tracks:
+                    # 追蹤失去匹配，移動到lost_tracks
+                    self.lost_tracks[track_id] = track
+                    logging.debug(f"🔄 追蹤{track_id}失去匹配，移動到lost_tracks")
+            
+            # 清理過期的lost_tracks
+            for track_id in list(self.lost_tracks.keys()):
+                track = self.lost_tracks[track_id]
+                if current_time - track['last_frame'] > self.temporal_tolerance:
+                    del self.lost_tracks[track_id]
+                    logging.debug(f"🗑️ 清理過期lost_track {track_id}")
             
             # 更新追蹤狀態
             self.object_tracks = new_tracks
@@ -694,33 +927,56 @@ class BackgroundSubtractionDetection(DetectionMethod):
             logging.error(f"物件追蹤更新錯誤: {str(e)}")
     
     def _check_duplicate_detection_simple(self, track: Dict) -> bool:
-        """簡化版重複檢測 - 提升性能"""
+        """🔧 增強版重複檢測 - 加入時間與空間雙重考量"""
         try:
             current_pos = (track['x'], track['y'])
+            current_frame = self.current_frame_count
             
-            # 只檢查最近的幾個歷史記錄
-            recent_history = self.counted_objects_history[-5:] if len(self.counted_objects_history) > 5 else self.counted_objects_history
-            
-            for hist_pos in recent_history:
-                distance = abs(current_pos[0] - hist_pos[0]) + abs(current_pos[1] - hist_pos[1])  # 使用曼哈頓距離，更快
-                
-                if distance < self.duplicate_distance_threshold:
-                    return True  # 發現重複
+            # 🆕 檢查歷史記錄中的時空重複
+            for hist_entry in self.counted_objects_history:
+                if isinstance(hist_entry, tuple) and len(hist_entry) == 2:
+                    # 新格式：(position, frame_number)
+                    hist_pos, hist_frame = hist_entry
+                    
+                    # 🎯 時空距離檢測：同時考慮空間距離和時間間隔
+                    spatial_distance = abs(current_pos[0] - hist_pos[0]) + abs(current_pos[1] - hist_pos[1])
+                    temporal_distance = current_frame - hist_frame
+                    
+                    # 🛡️ 如果空間距離小且時間間隔在容忍範圍內，視為重複
+                    if (spatial_distance < self.duplicate_distance_threshold and 
+                        temporal_distance <= self.temporal_tolerance):
+                        logging.debug(f"🚫 檢測到重複: 空間距離={spatial_distance}, 時間間隔={temporal_distance}幀")
+                        return True
+                        
+                elif isinstance(hist_entry, tuple) and len(hist_entry) == 2 and isinstance(hist_entry[0], (int, float)):
+                    # 舊格式：(x, y) - 向後相容
+                    hist_pos = hist_entry
+                    spatial_distance = abs(current_pos[0] - hist_pos[0]) + abs(current_pos[1] - hist_pos[1])
+                    
+                    if spatial_distance < self.duplicate_distance_threshold:
+                        return True
             
             return False
             
-        except Exception:
+        except Exception as e:
+            logging.debug(f"重複檢測錯誤: {str(e)}")
             return False
     
     def _add_to_history(self, track: Dict):
-        """添加已計數物件到歷史記錄"""
+        """🔧 添加已計數物件到歷史記錄 - 包含時間信息"""
         try:
             position = (track['x'], track['y'])
-            self.counted_objects_history.append(position)
+            frame_number = self.current_frame_count
+            
+            # 🆕 新格式：同時記錄位置和時間
+            history_entry = (position, frame_number)
+            self.counted_objects_history.append(history_entry)
             
             # 保持歷史記錄在限制範圍內
             if len(self.counted_objects_history) > self.history_length:
                 self.counted_objects_history.pop(0)
+                
+            logging.debug(f"📝 添加到歷史: 位置={position}, 幀號={frame_number}")
                 
         except Exception as e:
             logging.error(f"添加歷史記錄錯誤: {str(e)}")
@@ -732,11 +988,13 @@ class BackgroundSubtractionDetection(DetectionMethod):
     def get_tracking_stats(self) -> Dict[str, Any]:
         """獲取追蹤統計信息 (用於調試)"""
         active_tracks = len(self.object_tracks)
+        lost_tracks_count = len(self.lost_tracks)  # 🔧 新增失去追蹤統計
         counted_tracks = sum(1 for track in self.object_tracks.values() if track.get('counted', False))
         
         return {
             'crossing_count': self.crossing_counter,
             'active_tracks': active_tracks,
+            'lost_tracks': lost_tracks_count,  # 🔧 新增lost_tracks統計
             'counted_tracks': counted_tracks,
             'frame_count': self.current_frame_count,
             'roi_height': self.roi_height,
@@ -745,7 +1003,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
             'accuracy_features': {
                 'min_track_frames': self.min_track_frames,
                 'confidence_threshold': self.confidence_threshold,
-                'duplicate_prevention': True
+                'duplicate_prevention': True,
+                'track_recovery_enabled': True,  # 🔧 新增追蹤恢復功能標記
+                'temporal_tolerance': self.temporal_tolerance
             }
         }
     
@@ -768,11 +1028,14 @@ class BackgroundSubtractionDetection(DetectionMethod):
         """重置穿越計數"""
         self.crossing_counter = 0
         self.object_tracks = {}
+        self.lost_tracks = {}  # 🔧 重置失去的追蹤
+        self.spatial_grid = {}  # 🔧 重置空間網格
         self.current_frame_count = 0
         self.total_processed_frames = 0  # 🎯 重置總幀數計數器
         self.debug_frame_counter = 0     # 🎯 重置調試圖片計數器
         self.counted_objects_history = []  # 清理歷史記錄
-        logging.info("🔄 穿越計數、追蹤、歷史記錄和調試計數器已重置")
+        # 🧠 保留大小統計模型（不重置，繼續學習）
+        logging.info("🔄 穿越計數、追蹤、失去追蹤、網格、歷史記錄和調試計數器已重置")
     
     def set_video_info(self, total_frames: int, fps: float = 206):
         """設定影片信息，用於動態計算中間段"""
@@ -873,6 +1136,33 @@ class BackgroundSubtractionDetection(DetectionMethod):
         except Exception as e:
             logging.error(f"設置背景減除檢測參數錯誤: {str(e)}")
             return False
+    
+    def _validate_object_size(self, area: int, min_area: int, max_area: int) -> bool:
+        """🔧 物件大小驗證 - 減少噪點誤檢同時保留真實小零件"""
+        try:
+            # 基本面積檢查
+            if area < min_area:
+                return False
+                
+            # 動態上限檢查：允許合理範圍內的大物件
+            # 對於小零件系統，設定較為寬鬆但有界的上限
+            reasonable_max_area = max_area if max_area and max_area > 0 else 500
+            
+            # 如果物件過大，可能是粘連或背景噪點
+            if area > reasonable_max_area:
+                logging.debug(f"🚫 物件面積過大: {area} > {reasonable_max_area}")
+                return False
+                
+            # 過小物件可能是噪點
+            if area < 10:  # 極小噪點過濾
+                logging.debug(f"🚫 物件面積過小: {area} < 10")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logging.error(f"物件大小驗證錯誤: {str(e)}")
+            return True  # 發生錯誤時預設接受，避免系統中斷
     
     # 🧹 已移除不需要的統計和自適應函數，專注於核心檢測
     
@@ -1263,25 +1553,44 @@ class BackgroundSubtractionDetection(DetectionMethod):
             if roi.size == 0:
                 return []
             
-            # 估算預期的零件數量（基於面積比例）
-            expected_components = max(2, int(area / (self.min_area * 2)))  # 保守估算
+            # 🔧 智能估算預期零件數量
+            if self.size_statistics['sample_count'] >= self.min_samples_for_stats:
+                # 使用統計模型估算
+                expected_components = self._estimate_component_count(area)
+            else:
+                # 統計不足時的保守估算
+                expected_components = max(2, min(4, int(area / 200)))  # 限制在2-4個之間
             
-            # 距離變換
-            dist_transform = cv2.distanceTransform(roi, cv2.DIST_L2, 5)
+            # 🔧 改進的距離變換和種子點檢測
+            dist_transform = cv2.distanceTransform(roi, cv2.DIST_L2, 3)  # 使用較小的mask
             
-            # 找到局部極大值作為種子點
-            # 使用形態學操作找到峰值
-            kernel = np.ones((3, 3), np.uint8)
+            # 🔧 自適應峰值檢測
+            # 對於小零件，使用較小的形態學核心
+            kernel_size = 2 if area < 400 else 3
+            kernel = np.ones((kernel_size, kernel_size), np.uint8)
             local_maxima = cv2.morphologyEx(dist_transform, cv2.MORPH_OPEN, kernel)
             
-            # 閾值化得到種子點
-            sure_fg = np.uint8(local_maxima > 0.3 * dist_transform.max())
+            # 🔧 自適應閾值設定
+            # 對於小零件使用較低的閾值
+            threshold_ratio = 0.4 if area < 400 else 0.3
+            sure_fg = np.uint8(local_maxima > threshold_ratio * dist_transform.max())
+            
+            # 🔧 進一步過濾：移除過小的種子點
+            if area < 400:
+                # 對小零件，確保種子點有最小大小
+                seed_kernel = np.ones((2, 2), np.uint8)
+                sure_fg = cv2.morphologyEx(sure_fg, cv2.MORPH_OPEN, seed_kernel)
             
             # 標記種子點
             _, markers = cv2.connectedComponents(sure_fg)
             
-            # 如果檢測到的種子點數量合理，執行分水嶺
-            if markers.max() >= 2 and markers.max() <= expected_components + 2:
+            # 🔧 改進的種子點驗證邏輯
+            num_seeds = markers.max()
+            seeds_reasonable = (num_seeds >= 2 and num_seeds <= expected_components + 1)
+            
+            logging.debug(f"🔧 分離分析: 面積={area}, 種子點={num_seeds}, 期望組件={expected_components}, 合理={seeds_reasonable}")
+            
+            if seeds_reasonable:
                 # 為分水嶺算法準備圖像
                 if len(roi.shape) == 2:
                     roi_3ch = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
@@ -1302,8 +1611,10 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         cnt = max(contours, key=cv2.contourArea)
                         sep_area = cv2.contourArea(cnt)
                         
-                        # 檢查分離後的組件是否符合最小面積要求
-                        if sep_area >= self.min_area:
+                        # 🔧 改進的分離組件驗證
+                        # 設定合理的最小面積（比檢測最小面積稍大）
+                        min_separated_area = max(self.min_area, 20)
+                        if sep_area >= min_separated_area:
                             sep_x, sep_y, sep_w, sep_h = cv2.boundingRect(cnt)
                             # 轉換回原圖坐標
                             sep_x += x
@@ -1312,10 +1623,24 @@ class BackgroundSubtractionDetection(DetectionMethod):
                             
                             separated_objects.append((sep_x, sep_y, sep_w, sep_h, sep_area, sep_radius))
                 
-                # 只有當分離後的組件數量合理時才返回結果
-                if len(separated_objects) >= 2 and len(separated_objects) <= expected_components:
-                    logging.info(f"🔧 成功分離: 原面積={area} -> {len(separated_objects)}個組件 (面積: {[obj[4] for obj in separated_objects]})")
+                # 🔧 改進的分離成功驗證
+                total_separated_area = sum(obj[4] for obj in separated_objects)
+                area_conservation = 0.7 <= (total_separated_area / area) <= 1.3  # 允許30%的面積變化
+                
+                success_criteria = (
+                    len(separated_objects) >= 2 and 
+                    len(separated_objects) <= expected_components and
+                    area_conservation
+                )
+                
+                if success_criteria:
+                    logging.info(f"✅ 成功分離: 原面積={area} -> {len(separated_objects)}個組件")
+                    logging.debug(f"   分離面積: {[f'{obj[4]:.0f}' for obj in separated_objects]}, 總面積比例={total_separated_area/area:.2f}")
                     return separated_objects
+                else:
+                    logging.debug(f"❌ 分離驗證失敗: 組件數={len(separated_objects)}, 面積比例={total_separated_area/area:.2f}")
+            else:
+                logging.debug(f"❌ 種子點不合理，跳過分離")
             
             # 分離失敗，返回空列表
             return []
@@ -1323,6 +1648,136 @@ class BackgroundSubtractionDetection(DetectionMethod):
         except Exception as e:
             logging.debug(f"分離算法錯誤: {str(e)}")
             return []
+
+    def _get_grid_position(self, x: int, y: int) -> Tuple[int, int]:
+        """將像素座標轉換為網格座標"""
+        grid_x = x // self.grid_cell_size
+        grid_y = y // self.grid_cell_size
+        return (grid_x, grid_y)
+    
+    def _update_size_statistics(self, area: float):
+        """更新零件大小統計模型"""
+        self.component_sizes.append(area)
+        
+        # 保持合理的樣本數量（最多1000個樣本）
+        if len(self.component_sizes) > 1000:
+            self.component_sizes = self.component_sizes[-1000:]
+        
+        # 如果有足夠的樣本，計算統計數據
+        if len(self.component_sizes) >= self.min_samples_for_stats:
+            import numpy as np
+            sizes = np.array(self.component_sizes)
+            
+            self.size_statistics.update({
+                'mean_size': float(np.mean(sizes)),
+                'std_size': float(np.std(sizes)),
+                'median_size': float(np.median(sizes)),
+                'size_range': (float(np.min(sizes)), float(np.max(sizes))),
+                'sample_count': len(sizes)
+            })
+            
+            logging.debug(f"📊 大小統計更新: 平均={self.size_statistics['mean_size']:.1f}, 標準差={self.size_statistics['std_size']:.1f}")
+    
+    def _is_clustered_component(self, area: float) -> bool:
+        """判斷是否為粘連的零件（基於大小統計）"""
+        if self.size_statistics['sample_count'] < self.min_samples_for_stats:
+            return False  # 樣本不足，不進行判斷
+            
+        mean_size = self.size_statistics['mean_size']
+        threshold = mean_size * self.clustering_threshold_ratio
+        
+        is_clustered = area > threshold
+        if is_clustered:
+            logging.info(f"🔗 檢測到可能的粘連零件: 面積={area:.0f} > 閾值={threshold:.0f} (平均大小={mean_size:.0f})")
+        
+        return is_clustered
+    
+    def _estimate_component_count(self, area: float) -> int:
+        """根據面積估算粘連零件的數量"""
+        if self.size_statistics['sample_count'] < self.min_samples_for_stats:
+            return 1
+            
+        mean_size = self.size_statistics['mean_size']
+        estimated_count = max(1, round(area / mean_size))
+        
+        logging.debug(f"📏 面積={area:.0f}, 平均大小={mean_size:.0f}, 估算數量={estimated_count}")
+        return estimated_count
+    
+    def get_size_statistics(self) -> Dict[str, Any]:
+        """獲取大小統計信息"""
+        return {
+            'statistics': self.size_statistics.copy(),
+            'clustering_threshold_ratio': self.clustering_threshold_ratio,
+            'grid_cell_size': self.grid_cell_size,
+            'position_based_tracking': self.position_based_tracking
+        }
+
+    def _generate_predictive_objects(self) -> List[Tuple]:
+        """🧠 推斷式追蹤：根據現有追蹤軌跡預測物件位置"""
+        virtual_objects = []
+        
+        try:
+            current_frame = self.current_frame_count
+            
+            # 分析活躍追蹤和最近失去的追蹤
+            all_tracks = {**self.object_tracks, **self.lost_tracks}
+            
+            for track_id, track in all_tracks.items():
+                # 檢查追蹤是否需要預測
+                frames_since_last = current_frame - track['last_frame']
+                
+                if (1 <= frames_since_last <= self.max_prediction_frames and 
+                    len(track.get('positions', [])) >= 2):
+                    
+                    # 🔮 基於歷史位置預測下一個位置
+                    positions = track['positions'][-3:]  # 使用最近3個位置
+                    
+                    if len(positions) >= 2:
+                        # 簡單線性預測
+                        last_pos = positions[-1]
+                        prev_pos = positions[-2]
+                        
+                        # 計算移動向量
+                        dx = last_pos[0] - prev_pos[0]
+                        dy = last_pos[1] - prev_pos[1]
+                        
+                        # 預測新位置
+                        predicted_x = int(last_pos[0] + dx * frames_since_last)
+                        predicted_y = int(last_pos[1] + dy * frames_since_last)
+                        
+                        # 檢查預測位置是否在合理範圍內
+                        if (0 <= predicted_x < self.frame_width and 
+                            0 <= predicted_y < self.frame_height):
+                            
+                            # 使用平均尺寸創建虛擬物件
+                            avg_w = track.get('avg_w', 20)
+                            avg_h = track.get('avg_h', 20) 
+                            avg_area = track.get('avg_area', 300)
+                            avg_radius = max(5, int(np.sqrt(avg_area / np.pi)))
+                            
+                            # 創建虛擬物件 (格式與真實檢測一致)
+                            virtual_obj = (
+                                max(0, predicted_x - avg_w//2),  # x
+                                max(0, predicted_y - avg_h//2),  # y  
+                                avg_w,                           # w
+                                avg_h,                           # h
+                                (predicted_x, predicted_y),     # centroid
+                                avg_area,                        # area
+                                avg_radius                       # radius
+                            )
+                            
+                            virtual_objects.append(virtual_obj)
+                            
+                            logging.debug(f"🔮 生成虛擬物件 track_{track_id}: 位置({predicted_x},{predicted_y}), "
+                                        f"移動向量({dx},{dy}), 預測幀數={frames_since_last}")
+            
+            if virtual_objects:
+                logging.info(f"🧠 推斷式追蹤: 生成了 {len(virtual_objects)} 個虛擬物件用於追蹤連續性")
+                
+        except Exception as e:
+            logging.error(f"生成預測物件錯誤: {str(e)}")
+        
+        return virtual_objects
 
     @property
     def name(self) -> str:

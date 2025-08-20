@@ -12,5 +12,6 @@
       "Bash(conda activate:*)"
     ],
     "deny": []
-  }
+  },
+  "outputStyle": "Explanatory"
 }
