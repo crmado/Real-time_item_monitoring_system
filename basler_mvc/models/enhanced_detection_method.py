@@ -71,22 +71,22 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.roi_position_ratio = 0.12  # 🔧 調整位置比例 (0.15→0.12，稍微上移以配合擴大高度)
         self.current_roi_y = 0  # 當前ROI的Y座標
         
-        # 🎯 物件追蹤和計數參數 - 為小零件優化
+        # 🎯 物件追蹤和計數參數 - 為小零件優化 (甜蜜點參數)
         self.enable_crossing_count = True
-        self.crossing_tolerance_x = 40  # 🔧 適度收緊x方向容差 (50→40，改善多物件分離)
-        self.crossing_tolerance_y = 80  # 🔧 適度收緊y方向容差 (120→80，避免多物件沖突)
+        self.crossing_tolerance_x = 25  # 🍯 甜蜜點: 平衡檢測框變動與追蹤穩定性
+        self.crossing_tolerance_y = 45  # 🍯 甜蜜點: 考慮ROI高度(120px)的37.5%，避免跨ROI匹配
         
         # 🎯 提升追蹤穩定性 - 減少誤檢同時保持小零件檢測能力
         self.track_lifetime = 20  # 🔧 延長追蹤週期避免中斷 (8→20)
-        self.min_track_frames = 4 # 🔧 提高穩定性要求，減少誤判 (2→4)
-        self.crossing_threshold = 0.15   # 🔧 提高穿越閾值，減少誤檢 (0.05→0.15)
-        self.confidence_threshold = 0.12  # 🔧 適度提高置信度要求 (0.05→0.12)
+        self.min_track_frames = 3 # 🍯 甜蜜點: 平衡響應速度與穩定性 (4→3)
+        self.crossing_threshold = 0.12   # 🍯 甜蜜點: 適度降低以增加檢測敏感度 (0.15→0.12)
+        self.confidence_threshold = 0.10  # 🍯 甜蜜點: 適度降低以減少漏檢 (0.12→0.10)
         
         # 🛡️ 增強防重複機制 - 避免追蹤中斷造成的重複計算
         self.counted_objects_history = []  # 已計數物件的歷史記錄 [(position, frame_number), ...]
-        self.history_length = 30  # 🔧 增加歷史長度以增強重複檢測 (10→30)
-        self.duplicate_distance_threshold = 15  # 🔧 收緊重複檢測距離減少誤檢 (25→15)
-        self.temporal_tolerance = 5  # 🔧 降低時間容忍度提高檢測精度 (10→5)
+        self.history_length = 25  # 🍯 甜蜜點: 平衡記憶體使用與重複檢測效果
+        self.duplicate_distance_threshold = 20  # 🍯 甜蜜點: 稍微放寬以配合容忍度調整
+        self.temporal_tolerance = 8  # 🍯 甜蜜點: 增加時間容忍度減少過度敏感 (5→8)
         
         # 🧠 智能大小統計模型 - 用於判斷粘連情況
         self.component_sizes = []  # 記錄所有檢測到的零件大小
@@ -105,10 +105,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.position_based_tracking = True  # 啟用位置基礎追蹤
         self.spatial_grid = {}  # 空間網格：{(grid_x, grid_y): track_id}
         
-        # 🧠 推斷式追蹤系統 - 處理檢測中斷
-        self.enable_predictive_tracking = True  # 啟用推斷追蹤
-        self.prediction_tolerance = 15  # 推斷位置的容忍範圍
-        self.max_prediction_frames = 5  # 最大連續推斷幀數
+        # 🚫 移除推斷式追蹤系統 - 避免虛擬物件影響計數準確性
         
         # 追蹤狀態
         self.object_tracks = {}
@@ -656,16 +653,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # 🎯 清理空間網格並重建 (每幀重新計算網格佔用)
             self.spatial_grid.clear()
             
-            # 🧠 推斷式追蹤：為可能失去檢測的物件生成虛擬檢測
-            virtual_objects = []
-            if self.enable_predictive_tracking:
-                # 當檢測較少或有失去的追蹤時，嘗試推斷
-                virtual_objects = self._generate_predictive_objects()
-                if virtual_objects:
-                    logging.debug(f"🔮 生成{len(virtual_objects)}個推斷物件（檢測到{len(current_objects)}個真實物件）")
-            
-            # 合併實際檢測和推斷物件
-            all_objects = current_objects + virtual_objects
+            # 🚫 移除虛擬物件生成邏輯 - 只使用真實檢測物件
+            all_objects = current_objects
             
             # 🎯 第一階段：為每個檢測物件找到最佳匹配
             object_track_matches = []  # [(object_index, track_id, distance, is_virtual), ...]
@@ -673,7 +662,6 @@ class BackgroundSubtractionDetection(DetectionMethod):
             for obj_idx, obj in enumerate(all_objects):
                 x, y, w, h, centroid, area, radius = obj
                 cx, cy = centroid
-                is_virtual = obj_idx >= len(current_objects)  # 判斷是否為虛擬物件
                 
                 best_match_id = None
                 best_match_distance = float('inf')
@@ -686,9 +674,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     # 計算距離
                     distance = np.sqrt((cx - track['x'])**2 + (cy - track['y'])**2)
                     
-                    # 🧠 對虛擬物件使用更寬鬆的容差
-                    tolerance_x = self.crossing_tolerance_x * (2 if is_virtual else 1)
-                    tolerance_y = self.crossing_tolerance_y * (2 if is_virtual else 1)
+                    # 使用標準追蹤容差
+                    tolerance_x = self.crossing_tolerance_x
+                    tolerance_y = self.crossing_tolerance_y
                     
                     # 檢查是否在容差範圍內
                     if (abs(cx - track['x']) < tolerance_x and 
@@ -700,7 +688,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 
                 # 記錄匹配結果
                 if best_match_id is not None:
-                    object_track_matches.append((obj_idx, best_match_id, best_match_distance, is_virtual))
+                    object_track_matches.append((obj_idx, best_match_id, best_match_distance))
             
             # 🎯 第二階段：按距離排序，確保最佳匹配優先
             object_track_matches.sort(key=lambda x: x[2])  # 按距離排序
@@ -709,11 +697,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # grid_conflicted_objects = set()  # 🔧 記錄因網格衝突被跳過的物件
             
             for match_data in object_track_matches:
-                if len(match_data) == 4:
-                    obj_idx, track_id, distance, is_virtual = match_data
-                else:
-                    obj_idx, track_id, distance = match_data
-                    is_virtual = False
+                obj_idx, track_id, distance = match_data
                     
                 if track_id not in used_track_ids:
                     # 執行匹配
@@ -739,10 +723,6 @@ class BackgroundSubtractionDetection(DetectionMethod):
                             'max_y': max(old_track.get('max_y', cy), cy),
                             'min_y': min(old_track.get('min_y', cy), cy),
                             'grid_position': grid_pos,  # 記錄網格位置
-                            # 🧠 為推斷式追蹤添加尺寸信息
-                            'avg_w': int((old_track.get('avg_w', w) + w) / 2),
-                            'avg_h': int((old_track.get('avg_h', h) + h) / 2),
-                            'avg_area': (old_track.get('avg_area', area) + area) / 2
                         }
                         used_track_ids.add(track_id)
                         
@@ -764,7 +744,6 @@ class BackgroundSubtractionDetection(DetectionMethod):
                 if obj_idx not in matched_objects:
                     x, y, w, h, centroid, area, radius = obj
                     cx, cy = centroid
-                    is_virtual = obj_idx >= len(current_objects)  # 判斷是否為虛擬物件
                     
                     # 🔄 追蹤恢復機制：嘗試從lost_tracks中恢復匹配的追蹤
                     recovered_track_id = None
@@ -778,9 +757,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         # 計算時間間隔
                         temporal_distance = self.current_frame_count - lost_track['last_frame']
                         
-                        # 恢復條件：空間距離稍微寬鬆，時間間隔在容忍範圍內
-                        recovery_tolerance_x = self.crossing_tolerance_x * 1.5
-                        recovery_tolerance_y = self.crossing_tolerance_y * 1.5
+                        # 🍯 甜蜜點恢復條件：精確平衡恢復範圍與預防錯誤匹配
+                        recovery_tolerance_x = self.crossing_tolerance_x * 1.3  # 25*1.3=32.5px
+                        recovery_tolerance_y = self.crossing_tolerance_y * 1.2  # 45*1.2=54px
                         
                         if (abs(cx - lost_track['x']) < recovery_tolerance_x and 
                             abs(cy - lost_track['y']) < recovery_tolerance_y and
@@ -798,23 +777,26 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         # 🎯 檢查恢復位置的網格衝突
                         recovery_grid_pos = self._get_grid_position(cx, cy)
                         if recovery_grid_pos not in self.spatial_grid or not self.position_based_tracking:
-                            # 恢復追蹤到new_tracks
+                            # 🍯 關鍵修正：恢復追蹤時保持完整狀態，特別是計數狀態
+                            was_counted = recovered_track.get('counted', False)
                             new_tracks[recovered_track_id] = {
                                 'x': cx,
                                 'y': cy,
                                 'first_frame': recovered_track.get('first_frame', self.current_frame_count),
                                 'last_frame': self.current_frame_count,
                                 'positions': recovered_track.get('positions', []) + [(cx, cy)],
-                                'counted': recovered_track.get('counted', False),
+                                'counted': was_counted,  # 🛡️ 嚴格保持原始計數狀態
                                 'in_roi_frames': recovered_track.get('in_roi_frames', 0) + 1,
                                 'max_y': max(recovered_track.get('max_y', cy), cy),
                                 'min_y': min(recovered_track.get('min_y', cy), cy),
                                 'grid_position': recovery_grid_pos,
-                                # 🧠 為推斷式追蹤添加尺寸信息
-                                'avg_w': int((recovered_track.get('avg_w', w) + w) / 2),
-                                'avg_h': int((recovered_track.get('avg_h', h) + h) / 2),
-                                'avg_area': (recovered_track.get('avg_area', area) + area) / 2
+                                'recovered': True,  # 🆕 標記為恢復的追蹤
+                                'recovery_frame': self.current_frame_count
                             }
+                            
+                            # 🔍 調試：記錄恢復狀態
+                            if was_counted:
+                                logging.debug(f"🔄 恢復已計數追蹤{recovered_track_id}，跳過重複計數")
                             
                             # 佔用網格
                             if self.position_based_tracking:
@@ -827,13 +809,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         # 從lost_tracks中移除已恢復的追蹤
                         del self.lost_tracks[recovered_track_id]
                         
-                        logging.info(f"🔄 成功恢復追蹤{recovered_track_id}: 距離={best_recovery_distance:.1f}px, 時間間隔={self.current_frame_count - recovered_track['last_frame']}幀")
+                        logging.info(f"🔄 成功恢復追蹤{recovered_track_id}(counted={recovered_track.get('counted', False)}): 距離={best_recovery_distance:.1f}px, 時間間隔={self.current_frame_count - recovered_track['last_frame']}幀")
                     
                     if not recovered_track_id:
-                        # 🧠 對於虛擬物件：優先恢復而非創建新追蹤
-                        if is_virtual:
-                            logging.debug(f"🔮 虛擬物件{obj_idx}未找到恢復目標，跳過創建新追蹤")
-                            continue
                         
                         # 🎯 檢查新追蹤位置的網格衝突（僅對真實物件）
                         new_grid_pos = self._get_grid_position(cx, cy)
@@ -850,11 +828,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
                                 'in_roi_frames': 1,
                                 'max_y': cy,
                                 'min_y': cy,
-                                'grid_position': new_grid_pos,
-                                # 🧠 為推斷式追蹤添加尺寸信息
-                                'avg_w': w,
-                                'avg_h': h,
-                                'avg_area': area
+                                'grid_position': new_grid_pos
                             }
                             
                             # 佔用網格
@@ -873,9 +847,13 @@ class BackgroundSubtractionDetection(DetectionMethod):
             if self.current_frame_count % 20 == 0:
                 logging.debug(f"🎯 軌跡狀態: 總軌跡數={len(new_tracks)}, 當前穿越計數={self.crossing_counter}")
             
-            # 🎯 簡化高效穿越計數邏輯 - 提升檢測速度
+            # 🎯 增強的穿越計數邏輯 - 加入恢復追蹤安全檢查
             for track_id, track in new_tracks.items():
-                if not track['counted'] and track['in_roi_frames'] >= self.min_track_frames:
+                # 🛡️ 多重安全檢查：防止恢復的已計數追蹤被重複計數
+                is_recovered = track.get('recovered', False)
+                already_counted = track.get('counted', False)
+                
+                if not already_counted and track['in_roi_frames'] >= self.min_track_frames:
                     # 簡化檢查：只要物件在ROI中出現就計數
                     y_travel = track['max_y'] - track['min_y']
                     
@@ -889,29 +867,38 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         not is_duplicate            # 非重複檢測
                     )
                     
-                    # 🔍 調試：記錄計數邏輯 (每10幀記錄一次)
+                    # 🔍 增強調試：記錄計數邏輯和恢復狀態 (每10幀記錄一次)
                     if self.current_frame_count % 10 == 0 and track_id in list(new_tracks.keys())[:2]:
-                        logging.debug(f"物件{track_id}: Y移動={y_travel}px, 重複={is_duplicate}, 在ROI幀數={track['in_roi_frames']}, 有效穿越={valid_crossing}")
+                        logging.debug(f"物件{track_id}: Y移動={y_travel}px, 重複={is_duplicate}, 在ROI幀數={track['in_roi_frames']}, 恢復={is_recovered}, 有效穿越={valid_crossing}")
                     
                     if valid_crossing:
-                        # 記錄到歷史中防止重複
-                        self._add_to_history(track)
-                        
-                        self.crossing_counter += 1
-                        track['counted'] = True
-                        
-                        # 🔍 重要：記錄每次成功計數 (性能影響小但很重要)
-                        logging.info(f"✅ 成功計數 #{self.crossing_counter} - 物件{track_id} (Y移動: {y_travel}px)")
+                        # 🛡️ 最終安全檢查：再次確認未計數
+                        if not track.get('counted', False):
+                            # 記錄到歷史中防止重複
+                            self._add_to_history(track)
+                            
+                            self.crossing_counter += 1
+                            track['counted'] = True
+                            
+                            # 🔍 重要：記錄每次成功計數 (性能影響小但很重要)
+                            recovery_status = "恢復" if is_recovered else "新建"
+                            logging.info(f"✅ 成功計數 #{self.crossing_counter} - 物件{track_id}({recovery_status}) (Y移動: {y_travel}px)")
+                        else:
+                            logging.warning(f"⚠️ 阻止重複計數: 物件{track_id}已被計數")
             
             # 🔧 改進的追蹤生命週期管理：移動失去的追蹤到lost_tracks
             current_time = self.current_frame_count
             
-            # 將當前未匹配的追蹤移動到lost_tracks
+            # 🔧 改進的追蹤生命週期管理：確保完整狀態保存
             for track_id, track in self.object_tracks.items():
                 if track_id not in new_tracks:
-                    # 追蹤失去匹配，移動到lost_tracks
-                    self.lost_tracks[track_id] = track
-                    logging.debug(f"🔄 追蹤{track_id}失去匹配，移動到lost_tracks")
+                    # 🛡️ 確保完整狀態保存，特別是計數狀態
+                    self.lost_tracks[track_id] = {
+                        **track,  # 保留所有原始狀態
+                        'lost_frame': current_time,  # 記錄失去的時間
+                        'lost_reason': 'no_detection'  # 記錄失去原因
+                    }
+                    logging.debug(f"🔄 追蹤{track_id}失去匹配(counted={track.get('counted', False)})，移動到lost_tracks")
             
             # 清理過期的lost_tracks
             for track_id in list(self.lost_tracks.keys()):
@@ -1712,72 +1699,7 @@ class BackgroundSubtractionDetection(DetectionMethod):
             'position_based_tracking': self.position_based_tracking
         }
 
-    def _generate_predictive_objects(self) -> List[Tuple]:
-        """🧠 推斷式追蹤：根據現有追蹤軌跡預測物件位置"""
-        virtual_objects = []
-        
-        try:
-            current_frame = self.current_frame_count
-            
-            # 分析活躍追蹤和最近失去的追蹤
-            all_tracks = {**self.object_tracks, **self.lost_tracks}
-            
-            for track_id, track in all_tracks.items():
-                # 檢查追蹤是否需要預測
-                frames_since_last = current_frame - track['last_frame']
-                
-                if (1 <= frames_since_last <= self.max_prediction_frames and 
-                    len(track.get('positions', [])) >= 2):
-                    
-                    # 🔮 基於歷史位置預測下一個位置
-                    positions = track['positions'][-3:]  # 使用最近3個位置
-                    
-                    if len(positions) >= 2:
-                        # 簡單線性預測
-                        last_pos = positions[-1]
-                        prev_pos = positions[-2]
-                        
-                        # 計算移動向量
-                        dx = last_pos[0] - prev_pos[0]
-                        dy = last_pos[1] - prev_pos[1]
-                        
-                        # 預測新位置
-                        predicted_x = int(last_pos[0] + dx * frames_since_last)
-                        predicted_y = int(last_pos[1] + dy * frames_since_last)
-                        
-                        # 檢查預測位置是否在合理範圍內
-                        if (0 <= predicted_x < self.frame_width and 
-                            0 <= predicted_y < self.frame_height):
-                            
-                            # 使用平均尺寸創建虛擬物件
-                            avg_w = track.get('avg_w', 20)
-                            avg_h = track.get('avg_h', 20) 
-                            avg_area = track.get('avg_area', 300)
-                            avg_radius = max(5, int(np.sqrt(avg_area / np.pi)))
-                            
-                            # 創建虛擬物件 (格式與真實檢測一致)
-                            virtual_obj = (
-                                max(0, predicted_x - avg_w//2),  # x
-                                max(0, predicted_y - avg_h//2),  # y  
-                                avg_w,                           # w
-                                avg_h,                           # h
-                                (predicted_x, predicted_y),     # centroid
-                                avg_area,                        # area
-                                avg_radius                       # radius
-                            )
-                            
-                            virtual_objects.append(virtual_obj)
-                            
-                            logging.debug(f"🔮 生成虛擬物件 track_{track_id}: 位置({predicted_x},{predicted_y}), "
-                                        f"移動向量({dx},{dy}), 預測幀數={frames_since_last}")
-            
-            if virtual_objects:
-                logging.info(f"🧠 推斷式追蹤: 生成了 {len(virtual_objects)} 個虛擬物件用於追蹤連續性")
-                
-        except Exception as e:
-            logging.error(f"生成預測物件錯誤: {str(e)}")
-        
-        return virtual_objects
+    # 🚫 推斷式追蹤功能已移除 - 避免虛擬物件影響計數準確性
 
     @property
     def name(self) -> str:
