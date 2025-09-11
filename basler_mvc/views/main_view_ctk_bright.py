@@ -233,30 +233,16 @@ class MainView:
         )
         self.start_processing_btn.pack(side="left", padx=(0, 15))
         
-        # 檢測方法選擇
+        # 檢測方法 - 固定使用 background 方法（最佳小零件檢測）
         method_frame = ctk.CTkFrame(left_frame, fg_color=ColorScheme.BG_SECONDARY)
         method_frame.pack(side="left")
         
         ctk.CTkLabel(
             method_frame, 
-            text="檢測方法:", 
-            font=ctk.CTkFont(size=FontSizes.BODY),
+            text="檢測方法: Background", 
+            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
             text_color=ColorScheme.TEXT_PRIMARY
         ).pack(side="left", padx=(12, 6), pady=8)
-        
-        self.detection_method = ctk.CTkOptionMenu(
-            method_frame,
-            values=["background", "hybrid", "circle", "contour"],
-            variable=self.method_var,
-            command=self.on_method_changed,
-            width=120,
-            font=ctk.CTkFont(size=FontSizes.BODY),
-            dropdown_font=ctk.CTkFont(size=FontSizes.BODY),
-            fg_color=ColorScheme.BG_CARD,
-            button_color=ColorScheme.ACCENT_BLUE,
-            text_color=ColorScheme.TEXT_PRIMARY
-        )
-        self.detection_method.pack(side="left", padx=(0, 6), pady=8)
         
         # 🎯 100%準確率指示器
         self.accuracy_indicator = ctk.CTkLabel(
@@ -266,7 +252,7 @@ class MainView:
             text_color="#10b981",  # 綠色
             width=50
         )
-        self.accuracy_indicator.pack(side="left", padx=(0, 12), pady=8)
+        self.accuracy_indicator.pack(side="left", padx=(6, 12), pady=8)
         
         # 右側設定按鈕
         self.settings_btn = ctk.CTkButton(
@@ -731,6 +717,9 @@ class MainView:
         
         # 初始化按鈕狀態
         self.update_button_states()
+        
+        # 初始化背景檢測方法
+        self.initialize_detection_method()
     
     def create_center_panel(self, parent):
         """創建中央視頻面板"""
@@ -1254,54 +1243,25 @@ class MainView:
             self.is_processing_active = False
             self.update_button_states()
     
-    def on_method_changed(self, method):
-        """檢測方法改變"""
-        self.controller.set_detection_method(method)
+    def initialize_detection_method(self):
+        """初始化檢測方法 - 固定使用 background 方法"""
+        # 設定為 background 方法（最佳小零件檢測）
+        self.controller.set_detection_method("background")
         
-        # 🎯 更新準確率指示器
-        if method == "background":
-            self.accuracy_indicator.configure(
-                text="🎯 100%",
-                text_color="#10b981"  # 綠色
-            )
-        elif method == "hybrid":
-            self.accuracy_indicator.configure(
-                text="🔄 混合",
-                text_color="#f59e0b"  # 橙色
-            )
-        else:
-            self.accuracy_indicator.configure(
-                text="⚠️ 標準",
-                text_color="#6b7280"  # 灰色
-            )
+        # 🖼️ 啟用合成調試功能
+        try:
+            detection_method = self.controller.detection_model.current_method
+            if hasattr(detection_method, 'enable_composite_debug'):
+                current_mode = self.mode_var.get()
+                detection_method.enable_composite_debug(True, mode=current_mode)
+                logging.info(f"🖼️ Background檢測方法已啟用 (100%準確率模式+合成調試)")
+        except Exception as e:
+            logging.warning(f"設置合成調試功能失敗: {str(e)}")
         
-        # 🖼️ 根據系統模式啟用合成調試功能
-        if method == "background":
-            try:
-                detection_method = self.controller.detection_model.current_method
-                if hasattr(detection_method, 'enable_composite_debug'):
-                    # 獲取當前系統模式
-                    current_mode = self.mode_var.get()
-                    detection_method.enable_composite_debug(True, mode=current_mode)
-                    
-                    if current_mode == "playback":
-                        debug_info = detection_method.get_composite_debug_info()
-                        logging.info(f"🖼️ 合成調試功能已啟用 (回放模式)，保存目錄: {debug_info['save_directory']}")
-                    else:
-                        logging.info(f"🖼️ {current_mode}模式下調試圖片保存已禁用（性能優化）")
-            except Exception as e:
-                logging.warning(f"設置合成調試功能失敗: {str(e)}")
-        
-        logging.info(f"檢測方法已改為: {method} {'(100%準確率模式+合成調試)' if method == 'background' else ''}")
-        
-        # 🔄 根據方法顯示/隱藏重置按鈕
+        # 顯示重置按鈕（background方法專用）
         if hasattr(self, 'reset_button_frame'):
-            if method == "background":
-                self.reset_button_frame.pack(fill="x", padx=12, pady=(0, 15))
-                # 🔄 切換到background方法時立即同步計數
-                self.root.after(100, self.sync_count_display)
-            else:
-                self.reset_button_frame.pack_forget()
+            self.reset_button_frame.pack(fill="x", padx=12, pady=(0, 15))
+            self.root.after(100, self.sync_count_display)
     
     
     def reset_crossing_count(self):
