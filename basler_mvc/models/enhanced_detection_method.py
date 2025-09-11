@@ -9,6 +9,7 @@ import numpy as np
 import logging
 from typing import List, Tuple, Optional, Dict, Any
 from .detection_base import DetectionMethod
+from ..utils.gpu_accelerator import get_global_gpu_accelerator
 
 
 class BackgroundSubtractionDetection(DetectionMethod):
@@ -48,6 +49,10 @@ class BackgroundSubtractionDetection(DetectionMethod):
         
         # 🎯 極高敏感度邊緣檢測 - 專為小零件檢測優化
         self.gaussian_blur_kernel = (1, 1)  # 最小模糊保留最多細節 (3→1)
+        
+        # 🚀 GPU加速支援
+        self.gpu_accelerator = get_global_gpu_accelerator()
+        self.use_gpu_acceleration = self.gpu_accelerator.is_gpu_available()
         self.canny_low_threshold = 3         # 🔧 極低闾值提高敏感度 (8→3)
         self.canny_high_threshold = 10       # 🔧 極低闾值提高敏感度 (25→10) 
         self.binary_threshold = 1            # 🔧 極低闾值提高敏感度 (8→1)
@@ -141,7 +146,12 @@ class BackgroundSubtractionDetection(DetectionMethod):
         self.manual_trigger_active = False  # 手動觸發狀態
         self._temp_debug_data = None  # 臨時調試數據
         
-        logging.info("🔍 背景減除檢測方法初始化完成 (🎯 極度高靈敏度 - 超級小零件檢測優化)")
+        gpu_status = "🚀 GPU加速已啟用" if self.use_gpu_acceleration else "⚙️ CPU模式"
+        logging.info(f"🔍 背景減除檢測方法初始化完成 (🎯 極度高靈敏度 - 超級小零件檢測優化) - {gpu_status}")
+        
+        if self.use_gpu_acceleration:
+            gpu_info = self.gpu_accelerator.get_gpu_info()
+            logging.info(f"🎮 GPU信息: {gpu_info}")
         logging.info(f"🔧 超敏感參數: min_area={self.min_area}, bg_var_threshold={self.bg_var_threshold}, min_aspect_ratio={self.min_aspect_ratio}, min_extent={self.min_extent}")
         logging.info(f"🔧 最小化形態學: opening={self.opening_kernel_size}x{self.opening_iterations}, dilate={self.dilate_kernel_size}x{self.dilate_iterations}, close={self.close_kernel_size}")
         logging.info(f"🔧 背景穩定性: history={self.bg_history}, learning_rate={self.bg_learning_rate}, var_threshold={self.bg_var_threshold}")
@@ -256,29 +266,47 @@ class BackgroundSubtractionDetection(DetectionMethod):
             # 1. 背景減除獲得前景遮罩 - 使用極低學習率
             fg_mask = self.bg_subtractor.apply(process_region, learningRate=self.current_learning_rate)
             
-            # 2. 高斯模糊減少噪聲
-            blurred = cv2.GaussianBlur(process_region, self.gaussian_blur_kernel, 0)
+            # 2. 高斯模糊減少噪聲 - GPU加速
+            if self.use_gpu_acceleration:
+                blurred = self.gpu_accelerator.gaussian_blur(process_region, self.gaussian_blur_kernel, 0)
+            else:
+                blurred = cv2.GaussianBlur(process_region, self.gaussian_blur_kernel, 0)
             
-            # 3. Canny邊緣檢測
-            edges = cv2.Canny(blurred, self.canny_low_threshold, self.canny_high_threshold)
+            # 3. Canny邊緣檢測 - GPU加速
+            if self.use_gpu_acceleration:
+                edges = self.gpu_accelerator.canny_edge_detection(blurred, self.canny_low_threshold, self.canny_high_threshold)
+            else:
+                edges = cv2.Canny(blurred, self.canny_low_threshold, self.canny_high_threshold)
             
             # 4. 🚀 多角度檢測策略 - 結合多種方法提高檢測率
             
             # 🔧 方法1: 增強前景遮罩濾波 - 減少噪點干擾同時保留小零件
-            # Step 1: 中值濾波去除椒鹽噪點
-            fg_median = cv2.medianBlur(fg_mask, 5)
+            # Step 1: 中值濾波去除椒鹽噪點 - GPU加速
+            if self.use_gpu_acceleration:
+                fg_median = self.gpu_accelerator.median_blur(fg_mask, 5)
+            else:
+                fg_median = cv2.medianBlur(fg_mask, 5)
             
-            # Step 2: 增強形態學開運算去除獨立噪點
+            # Step 2: 增強形態學開運算去除獨立噪點 - GPU加速
             enhanced_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  # 從(2,2)增加到(5,5)
-            fg_step1 = cv2.morphologyEx(fg_median, cv2.MORPH_OPEN, enhanced_kernel, iterations=1)
+            if self.use_gpu_acceleration:
+                fg_step1 = self.gpu_accelerator.morphology_operations(fg_median, cv2.MORPH_OPEN, enhanced_kernel, iterations=1)
+            else:
+                fg_step1 = cv2.morphologyEx(fg_median, cv2.MORPH_OPEN, enhanced_kernel, iterations=1)
             
-            # Step 3: 閉運算填補物件內部空洞
+            # Step 3: 閉運算填補物件內部空洞 - GPU加速
             close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-            fg_step2 = cv2.morphologyEx(fg_step1, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+            if self.use_gpu_acceleration:
+                fg_step2 = self.gpu_accelerator.morphology_operations(fg_step1, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+            else:
+                fg_step2 = cv2.morphologyEx(fg_step1, cv2.MORPH_CLOSE, close_kernel, iterations=1)
             
-            # Step 4: 最終微調開運算，移除剩餘小噪點但保留真實小零件
+            # Step 4: 最終微調開運算，移除剩餘小噪點但保留真實小零件 - GPU加速
             final_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-            fg_cleaned = cv2.morphologyEx(fg_step2, cv2.MORPH_OPEN, final_kernel, iterations=1)
+            if self.use_gpu_acceleration:
+                fg_cleaned = self.gpu_accelerator.morphology_operations(fg_step2, cv2.MORPH_OPEN, final_kernel, iterations=1)
+            else:
+                fg_cleaned = cv2.morphologyEx(fg_step2, cv2.MORPH_OPEN, final_kernel, iterations=1)
             
             # 🔧 方法2: 多敏感度邊緣檢測
             # 使用兩種不同敏感度的邊緣檢測

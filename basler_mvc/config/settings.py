@@ -79,8 +79,11 @@ PERFORMANCE_CONFIG = {
     
     # 統計設置
     'stats_update_interval': 0.5,  # 秒
-    'fps_calculation_window': 50,  # 幀數 - 減少記憶體使用
-    'enable_performance_logging': True
+    'fps_calculation_window': 100,  # 增加計算視窗提升高速模式準確性
+    'enable_performance_logging': True,
+    'dynamic_ui_update': True,      # 動態調整UI更新頻率
+    'adaptive_frame_skip': True,    # 自適應跳幀
+    'memory_optimization': True     # 記憶體優化模式
 }
 
 # ==================== UI 配置 ====================
@@ -122,10 +125,16 @@ LOGGING_CONFIG = {
     'log_level': 'INFO',
     'log_format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     'log_file': 'basler_mvc.log',
-    'max_log_size': 10 * 1024 * 1024,  # 10MB
-    'backup_count': 5,
+    'max_log_size': 50 * 1024 * 1024,  # 提升至50MB應對高速模式
+    'backup_count': 10,                 # 增加備份數量
     'enable_console_logging': True,
-    'enable_file_logging': True
+    'enable_file_logging': True,
+    'enable_structured_logging': True,  # 新增結構化日誌
+    'performance_logging': True,        # 新增性能日誌
+    'enable_rotation': True,            # 啟用日誌輪轉
+    'log_rotation_when': 'midnight',    # 每日輪轉
+    'log_rotation_interval': 1,         # 輪轉間隔
+    'log_compression': True             # 壓縮舊日誌檔案
 }
 
 # ==================== 系統路徑 ====================
@@ -231,9 +240,41 @@ def update_config(section: str, updates: Dict[str, Any]) -> bool:
     except Exception:
         return False
 
+# ==================== 配置熱重載支援 ====================
+
+def init_config_manager():
+    """初始化配置管理器並載入當前配置"""
+    try:
+        from ..utils.config_manager import init_config_manager
+        
+        all_config = get_all_config()
+        init_config_manager(all_config, PROJECT_ROOT / 'config' / 'runtime_config.json')
+        
+        logging.info("✅ 配置管理器初始化完成，支援熱重載")
+        return True
+        
+    except ImportError as e:
+        logging.warning(f"配置管理器不可用: {str(e)}")
+        return False
+
+def hot_reload_config(section: str, updates: Dict[str, Any]) -> bool:
+    """熱重載配置"""
+    try:
+        from ..utils.config_manager import hot_reload_config
+        return hot_reload_config(section, updates)
+    except ImportError:
+        logging.warning("配置熱重載不可用，使用靜態更新")
+        return update_config(section, updates)
+
 # 自動驗證配置
 if __name__ == "__main__":
     if validate_config():
         print("✅ 配置驗證通過")
+        
+        # 嘗試初始化配置管理器
+        if init_config_manager():
+            print("✅ 配置管理器初始化完成")
+        else:
+            print("⚠️ 配置管理器初始化失敗，將使用靜態配置")
     else:
         print("❌ 配置驗證失敗")

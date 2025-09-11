@@ -16,16 +16,18 @@ import os
 class MemoryMonitor:
     """記憶體監控器 - 預防記憶體洩漏"""
     
-    def __init__(self, check_interval: float = 30.0, memory_limit_mb: float = 1024.0):
+    def __init__(self, check_interval: float = 30.0, memory_limit_mb: float = 1024.0, auto_cleanup: bool = True):
         """
         初始化記憶體監控器
         
         Args:
             check_interval: 檢查間隔（秒）
             memory_limit_mb: 記憶體使用警告閾值（MB）
+            auto_cleanup: 是否啟用自動清理功能
         """
         self.check_interval = check_interval
         self.memory_limit_bytes = memory_limit_mb * 1024 * 1024
+        self.auto_cleanup = auto_cleanup
         
         # 監控狀態
         self.is_monitoring = False
@@ -33,8 +35,12 @@ class MemoryMonitor:
         self.stop_event = threading.Event()
         
         # 記憶體歷史記錄 - 優化記憶體使用
-        self.memory_history = deque(maxlen=50)   # 保留最近50次記錄
-        self.gc_history = deque(maxlen=25)       # GC歷史
+        self.memory_history = deque(maxlen=100)   # 增加歷史記錄容量
+        self.gc_history = deque(maxlen=50)        # 增加GC歷史容量
+        
+        # 自動清理配置
+        self.cleanup_threshold = 0.85  # 85%記憶體使用率觸發清理
+        self.aggressive_cleanup_threshold = 0.95  # 95%觸發激進清理
         
         # 統計數據
         self.max_memory_used = 0
@@ -106,9 +112,16 @@ class MemoryMonitor:
                 # 檢查記憶體使用情況
                 self._check_memory_usage(memory_info)
                 
-                # 自動垃圾回收（如果記憶體使用過高）
-                if current_memory > self.memory_limit_bytes * 0.8:  # 80%閾值
-                    self._perform_gc()
+                # 自動清理功能
+                if self.auto_cleanup:
+                    memory_usage_ratio = current_memory / self.memory_limit_bytes
+                    
+                    # 激進清理模式
+                    if memory_usage_ratio > self.aggressive_cleanup_threshold:
+                        self._perform_aggressive_cleanup()
+                    # 標準清理模式  
+                    elif memory_usage_ratio > self.cleanup_threshold:
+                        self._perform_gc()
                 
             except Exception as e:
                 logging.error(f"記憶體監控錯誤: {str(e)}")
@@ -203,6 +216,47 @@ class MemoryMonitor:
             
         except Exception as e:
             logging.error(f"垃圾回收執行失敗: {str(e)}")
+    
+    def _perform_aggressive_cleanup(self):
+        """執行激進清理 - 記憶體使用嚴重過高時"""
+        try:
+            before_memory = self.process.memory_info().rss
+            logging.warning("🚨 執行激進記憶體清理...")
+            
+            # 多次垃圾回收
+            total_collected = 0
+            for _ in range(3):  # 執行3輪清理
+                for generation in range(3):
+                    total_collected += gc.collect(generation)
+            
+            # 強制釋放未使用的記憶體池
+            import ctypes
+            if hasattr(ctypes, 'pythonapi'):
+                try:
+                    ctypes.pythonapi.PyGC_Collect()
+                except:
+                    pass  # 忽略平台相容性問題
+            
+            after_memory = self.process.memory_info().rss
+            freed_mb = (before_memory - after_memory) / (1024 * 1024)
+            
+            # 記錄激進清理結果
+            gc_info = {
+                'timestamp': time.time(),
+                'objects_collected': total_collected,
+                'memory_freed_mb': freed_mb,
+                'cleanup_type': 'aggressive',
+                'before_memory_mb': before_memory / (1024 * 1024),
+                'after_memory_mb': after_memory / (1024 * 1024)
+            }
+            
+            self.gc_history.append(gc_info)
+            self.total_gc_collections += 1
+            
+            logging.warning(f"🧹 激進清理完成: 釋放 {freed_mb:.1f}MB, 回收 {total_collected} 個物件")
+            
+        except Exception as e:
+            logging.error(f"激進清理執行失敗: {str(e)}")
     
     def force_gc(self) -> Dict[str, Any]:
         """手動執行垃圾回收"""
