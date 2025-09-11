@@ -120,8 +120,6 @@ class MainView:
         
         # 相機參數變量
         self.exposure_var = tk.DoubleVar(value=1000.0)
-        self.min_area_var = tk.IntVar(value=100)
-        self.max_area_var = tk.IntVar(value=5000)
         self.target_count_var = tk.IntVar(value=100)
         
         # 模式變量
@@ -516,20 +514,9 @@ class MainView:
         )
         self.mode_playback.pack(anchor="w", padx=25, pady=(3, 15))
         
-        # 🎯 獨立錄製控件區域 - 始終可見
-        self.recording_frame = ctk.CTkFrame(left_panel, fg_color=ColorScheme.BG_SECONDARY)
-        self.recording_frame.pack(fill="x", padx=12, pady=(0, 8))  # 減少底部間距
-        
-        # 簡潔的錄製控制標題
-        recording_header = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
-        recording_header.pack(fill="x", padx=12, pady=(8, 5))
-        
-        ctk.CTkLabel(
-            recording_header, 
-            text="🎬 錄製控制", 
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.ERROR_RED
-        ).pack(anchor="w")
+        # 錄製控制區域 - 無標題，直接顯示內容（與回放控制一致）
+        self.recording_frame = ctk.CTkFrame(left_scrollable, fg_color=ColorScheme.BG_SECONDARY)
+        # 預設不顯示，只在錄影模式時顯示
         
         # 檔名輸入 - 緊湊布局
         filename_frame = ctk.CTkFrame(self.recording_frame, fg_color="transparent")
@@ -737,9 +724,9 @@ class MainView:
         if not hasattr(self, 'is_processing_active'):
             self.is_processing_active = False
         
-        # 🎯 錄製控制始終可見 - 不再隱藏錄製面板
-        # 錄製功能獨立於系統模式，永遠可用
-        # self.recording_frame.pack_forget()  # 註解掉隱藏
+        # 🎯 錄製控制折疊式設計 - 預設隱藏
+        # 錄製功能可以按需展開
+        self.recording_frame.pack_forget()  # 預設隱藏
         self.playback_frame.pack_forget()
         
         # 初始化按鈕狀態
@@ -1099,141 +1086,8 @@ class MainView:
             text_color="white"
         ).pack(pady=(10, 10))
         
-        # 參數調整區域
-        params_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_SECONDARY)
-        params_frame.pack(fill="x", padx=12, pady=(0, 15))
-        
-        # 最小面積 - 增強版
-        min_area_container = ctk.CTkFrame(params_frame, fg_color="transparent")
-        min_area_container.pack(fill="x", padx=12, pady=(15, 10))
-        
-        # 標題和輸入框
-        min_label_frame = ctk.CTkFrame(min_area_container, fg_color="transparent")
-        min_label_frame.pack(fill="x", pady=(0, 5))
-        
-        ctk.CTkLabel(
-            min_label_frame, 
-            text="最小面積", 
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(side="left")
-        
-        # 右側輸入控件組
-        min_input_frame = ctk.CTkFrame(min_label_frame, fg_color="transparent")
-        min_input_frame.pack(side="right")
-        
-        # 數字輸入框
-        self.min_area_entry = ctk.CTkEntry(
-            min_input_frame, 
-            textvariable=self.min_area_var,
-            width=60, height=28,
-            justify="center",
-            font=ctk.CTkFont(size=FontSizes.BODY),
-            fg_color=ColorScheme.BG_CARD,
-            text_color=ColorScheme.TEXT_PRIMARY
-        )
-        self.min_area_entry.pack(side="left")
-        self.min_area_entry.bind('<Return>', self.on_min_area_entry_changed)
-        self.min_area_entry.bind('<FocusOut>', self.on_min_area_entry_changed)
-        
-        # 箭頭按鈕
-        arrow_frame = ctk.CTkFrame(min_input_frame, fg_color="transparent")
-        arrow_frame.pack(side="left", padx=(5, 0))
-        
-        ctk.CTkButton(
-            arrow_frame, text="▲", width=20, height=14,
-            command=lambda: self.adjust_min_area(10),
-            font=ctk.CTkFont(size=10),
-            fg_color=ColorScheme.SUCCESS_GREEN,
-            hover_color="#047857"
-        ).pack()
-        
-        ctk.CTkButton(
-            arrow_frame, text="▼", width=20, height=14,
-            command=lambda: self.adjust_min_area(-10),
-            font=ctk.CTkFont(size=10),
-            fg_color=ColorScheme.SUCCESS_GREEN,
-            hover_color="#047857"
-        ).pack()
-        
-        # 滑動條
-        self.min_area_slider = ctk.CTkSlider(
-            min_area_container,
-            from_=10,
-            to=500,
-            variable=self.min_area_var,
-            command=self.update_detection_params,
-            progress_color=ColorScheme.SUCCESS_GREEN,
-            button_color=ColorScheme.SUCCESS_GREEN,
-            fg_color=ColorScheme.BG_CARD
-        )
-        self.min_area_slider.pack(fill="x", padx=8, pady=3)
-        
-        # 最大面積 - 增強版
-        max_area_container = ctk.CTkFrame(params_frame, fg_color="transparent")
-        max_area_container.pack(fill="x", padx=12, pady=(10, 15))
-        
-        # 標題和輸入框
-        max_label_frame = ctk.CTkFrame(max_area_container, fg_color="transparent")
-        max_label_frame.pack(fill="x", pady=(0, 5))
-        
-        ctk.CTkLabel(
-            max_label_frame, 
-            text="最大面積", 
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(side="left")
-        
-        # 右側輸入控件組
-        max_input_frame = ctk.CTkFrame(max_label_frame, fg_color="transparent")
-        max_input_frame.pack(side="right")
-        
-        # 數字輸入框
-        self.max_area_entry = ctk.CTkEntry(
-            max_input_frame, 
-            textvariable=self.max_area_var,
-            width=60, height=28,
-            justify="center",
-            font=ctk.CTkFont(size=FontSizes.BODY),
-            fg_color=ColorScheme.BG_CARD,
-            text_color=ColorScheme.TEXT_PRIMARY
-        )
-        self.max_area_entry.pack(side="left")
-        self.max_area_entry.bind('<Return>', self.on_max_area_entry_changed)
-        self.max_area_entry.bind('<FocusOut>', self.on_max_area_entry_changed)
-        
-        # 箭頭按鈕
-        arrow_frame2 = ctk.CTkFrame(max_input_frame, fg_color="transparent")
-        arrow_frame2.pack(side="left", padx=(5, 0))
-        
-        ctk.CTkButton(
-            arrow_frame2, text="▲", width=20, height=14,
-            command=lambda: self.adjust_max_area(100),
-            font=ctk.CTkFont(size=10),
-            fg_color=ColorScheme.WARNING_ORANGE,
-            hover_color="#b45309"
-        ).pack()
-        
-        ctk.CTkButton(
-            arrow_frame2, text="▼", width=20, height=14,
-            command=lambda: self.adjust_max_area(-100),
-            font=ctk.CTkFont(size=10),
-            fg_color=ColorScheme.WARNING_ORANGE,
-            hover_color="#b45309"
-        ).pack()
-        
-        # 滑動條
-        self.max_area_slider = ctk.CTkSlider(
-            max_area_container,
-            from_=1000,
-            to=10000,
-            variable=self.max_area_var,
-            command=self.update_detection_params,
-            progress_color=ColorScheme.WARNING_ORANGE,
-            button_color=ColorScheme.WARNING_ORANGE,
-            fg_color=ColorScheme.BG_CARD
-        )
-        self.max_area_slider.pack(fill="x", padx=8, pady=3)
+        # 參數調整區域 (簡化版 - 移除面積設定)
+        # 保留框架以便未來新增其他參數
         
         # 即時統計區域 - 重點改善！
         stats_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_ACCENT)
@@ -2024,20 +1878,9 @@ class MainView:
     
     def update_detection_params(self, value):
         """更新檢測參數"""
-        try:
-            min_area = int(self.min_area_var.get())
-            max_area = int(self.max_area_var.get())
-            
-            # 🔧 安全檢查：只有當標籤存在時才更新
-            if hasattr(self, 'min_area_label') and self.min_area_label:
-                self.min_area_label.configure(text=str(min_area))
-            if hasattr(self, 'max_area_label') and self.max_area_label:
-                self.max_area_label.configure(text=str(max_area))
-            
-            params = {'min_area': min_area, 'max_area': max_area}
-            self.controller.update_detection_parameters(params)
-        except Exception as e:
-            logging.error(f"更新檢測參數錯誤: {str(e)}")
+        # 目前使用固定的預設值
+        # 未來可以在這裡加入其他參數的更新
+        pass
     
     def toggle_detection(self):
         """切換檢測開關"""
@@ -2739,41 +2582,8 @@ class MainView:
         except (ValueError, TypeError):
             self.exposure_var.set(1000)  # 預設值
     
-    def adjust_min_area(self, delta):
-        """調整最小面積"""
-        current = self.min_area_var.get()
-        new_value = max(1, min(1000, current + delta))
-        self.min_area_var.set(new_value)
-        self.update_detection_params(new_value)
-    
-    def adjust_max_area(self, delta):
-        """調整最大面積"""
-        current = self.max_area_var.get()
-        new_value = max(1000, min(10000, current + delta))
-        self.max_area_var.set(new_value)
-        self.update_detection_params(new_value)
-    
-    def on_min_area_entry_changed(self, event=None):
-        """最小面積輸入框變化回調"""
-        try:
-            min_area = self.min_area_var.get()
-            if min_area < 1 or min_area > 1000:
-                self.min_area_var.set(max(1, min(1000, min_area)))
-                return
-            self.update_detection_params(min_area)
-        except (ValueError, TypeError):
-            self.min_area_var.set(100)  # 預設值
-    
-    def on_max_area_entry_changed(self, event=None):
-        """最大面積輸入框變化回調"""
-        try:
-            max_area = self.max_area_var.get()
-            if max_area < 1000 or max_area > 10000:
-                self.max_area_var.set(max(1000, min(10000, max_area)))
-                return
-            self.update_detection_params(max_area)
-        except (ValueError, TypeError):
-            self.max_area_var.set(5000)  # 預設值
+    # 移除了面積調整相關方法
+    # adjust_min_area, adjust_max_area, on_min_area_entry_changed, on_max_area_entry_changed
     
     def generate_recording_filename(self):
         """產生錄製檔案名稱 (不含附檔名)"""
@@ -2870,17 +2680,16 @@ class MainView:
         """更改系統模式"""
         mode = self.mode_var.get()
         
-        # 隱藏模式相關面板
+        # 隱藏所有模式相關面板
         self.playback_frame.pack_forget()
-        
-        # 🎯 錄製控制始終可見 - 不再隱藏錄製面板
-        # 錄製功能獨立於系統模式，永遠可用
+        self.recording_frame.pack_forget()
         
         # 根據模式顯示對應的面板
         if mode == "recording":
-            # 錄製模式：錄製控制面板已經可見，無需額外操作
-            pass
+            # 錄影模式：顯示錄製控制（無標題，與回放控制一致）
+            self.recording_frame.pack(fill="x", padx=12, pady=(0, 15))
         elif mode == "playback":
+            # 回放模式：顯示回放控制
             self.playback_frame.pack(fill="x", padx=12, pady=(0, 15))
         
         # 通知控制器
