@@ -73,8 +73,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
         
         # 🎯 物件追蹤和計數參數 - 為小零件優化 (甜蜜點參數)
         self.enable_crossing_count = True
-        self.crossing_tolerance_x = 25  # 🍯 甜蜜點: 平衡檢測框變動與追蹤穩定性
-        self.crossing_tolerance_y = 45  # 🍯 甜蜜點: 考慮ROI高度(120px)的37.5%，避免跨ROI匹配
+        self.crossing_tolerance_x = 35  # 🔧 精密微調: 增加容忍度以處理ID頻繁變更問題 (25→35)
+        self.crossing_tolerance_y = 50  # 🔧 精密微調: 稍微增加Y容忍度以減少追蹤中斷 (45→50)
         
         # 🎯 提升追蹤穩定性 - 減少誤檢同時保持小零件檢測能力
         self.track_lifetime = 20  # 🔧 延長追蹤週期避免中斷 (8→20)
@@ -85,8 +85,8 @@ class BackgroundSubtractionDetection(DetectionMethod):
         # 🛡️ 增強防重複機制 - 避免追蹤中斷造成的重複計算
         self.counted_objects_history = []  # 已計數物件的歷史記錄 [(position, frame_number), ...]
         self.history_length = 25  # 🍯 甜蜜點: 平衡記憶體使用與重複檢測效果
-        self.duplicate_distance_threshold = 20  # 🍯 甜蜜點: 稍微放寬以配合容忍度調整
-        self.temporal_tolerance = 8  # 🍯 甜蜜點: 增加時間容忍度減少過度敏感 (5→8)
+        self.duplicate_distance_threshold = 30  # 🔧 精密微調: 增加重複檢測範圍以處理ID變更 (20→30)
+        self.temporal_tolerance = 12  # 🔧 精密微調: 大幅增加時間容忍度防止過度敏感 (8→12)
         
         # 🧠 智能大小統計模型 - 用於判斷粘連情況
         self.component_sizes = []  # 記錄所有檢測到的零件大小
@@ -674,16 +674,19 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     # 計算距離
                     distance = np.sqrt((cx - track['x'])**2 + (cy - track['y'])**2)
                     
-                    # 使用標準追蹤容差
+                    # 🔧 精密微調: 增強匹配穩定性，使用更寬鬆的容差
                     tolerance_x = self.crossing_tolerance_x
                     tolerance_y = self.crossing_tolerance_y
+                    
+                    # 🍯 加入距離穩定性加權: 近距離匹配優先權更高
+                    distance_weight = 1.0 + (distance / 100.0)  # 距離越近優先權越高
                     
                     # 檢查是否在容差範圍內
                     if (abs(cx - track['x']) < tolerance_x and 
                         abs(cy - track['y']) < tolerance_y and
-                        distance < best_match_distance):
+                        distance / distance_weight < best_match_distance):
                         
-                        best_match_distance = distance
+                        best_match_distance = distance / distance_weight  # 使用加權後的距離
                         best_match_id = track_id
                 
                 # 記錄匹配結果
@@ -757,9 +760,9 @@ class BackgroundSubtractionDetection(DetectionMethod):
                         # 計算時間間隔
                         temporal_distance = self.current_frame_count - lost_track['last_frame']
                         
-                        # 🍯 甜蜜點恢復條件：精確平衡恢復範圍與預防錯誤匹配
-                        recovery_tolerance_x = self.crossing_tolerance_x * 1.3  # 25*1.3=32.5px
-                        recovery_tolerance_y = self.crossing_tolerance_y * 1.2  # 45*1.2=54px
+                        # 🔧 精密微調恢復條件：適度擴大恢復範圍以減少ID變更
+                        recovery_tolerance_x = self.crossing_tolerance_x * 1.4  # 35*1.4=49px
+                        recovery_tolerance_y = self.crossing_tolerance_y * 1.3  # 50*1.3=65px
                         
                         if (abs(cx - lost_track['x']) < recovery_tolerance_x and 
                             abs(cy - lost_track['y']) < recovery_tolerance_y and
@@ -914,10 +917,14 @@ class BackgroundSubtractionDetection(DetectionMethod):
             logging.error(f"物件追蹤更新錯誤: {str(e)}")
     
     def _check_duplicate_detection_simple(self, track: Dict) -> bool:
-        """🔧 增強版重複檢測 - 加入時間與空間雙重考量"""
+        """🔧 增強版重複檢測 - 加入時間與空間雙重考量 🔍 特別針對ID變更的重複計數問題"""
         try:
             current_pos = (track['x'], track['y'])
             current_frame = self.current_frame_count
+            
+            # 🛡️ 特別檢查: 如果是恢復的追蹤，適度放寬檢查範圍
+            is_recovered = track.get('recovered', False)
+            detection_threshold = self.duplicate_distance_threshold * (1.2 if is_recovered else 1.0)
             
             # 🆕 檢查歷史記錄中的時空重複
             for hist_entry in self.counted_objects_history:
@@ -929,10 +936,11 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     spatial_distance = abs(current_pos[0] - hist_pos[0]) + abs(current_pos[1] - hist_pos[1])
                     temporal_distance = current_frame - hist_frame
                     
-                    # 🛡️ 如果空間距離小且時間間隔在容忍範圍內，視為重複
-                    if (spatial_distance < self.duplicate_distance_threshold and 
+                    # 🛡️ 精密微調的重複檢測：使用動態闾值
+                    if (spatial_distance < detection_threshold and 
                         temporal_distance <= self.temporal_tolerance):
-                        logging.debug(f"🚫 檢測到重複: 空間距離={spatial_distance}, 時間間隔={temporal_distance}幀")
+                        status = "恢復" if is_recovered else "新建"
+                        logging.debug(f"🚫 檢測到重複({status}): 空間距離={spatial_distance:.1f}<{detection_threshold:.1f}, 時間間隔={temporal_distance}幀")
                         return True
                         
                 elif isinstance(hist_entry, tuple) and len(hist_entry) == 2 and isinstance(hist_entry[0], (int, float)):
@@ -940,7 +948,10 @@ class BackgroundSubtractionDetection(DetectionMethod):
                     hist_pos = hist_entry
                     spatial_distance = abs(current_pos[0] - hist_pos[0]) + abs(current_pos[1] - hist_pos[1])
                     
-                    if spatial_distance < self.duplicate_distance_threshold:
+                    # 🔧 使用動態闾值處理舊格式記錄
+                    if spatial_distance < detection_threshold:
+                        status = "恢復" if is_recovered else "新建"
+                        logging.debug(f"🚫 檢測到舊格式重複({status}): 空間距離={spatial_distance:.1f}<{detection_threshold:.1f}")
                         return True
             
             return False
