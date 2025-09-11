@@ -1084,66 +1084,11 @@ class MainView:
             text_color=ColorScheme.PURPLE_ACCENT
         ).pack(pady=(10, 10))
         
-        # 🎯 ROI設定區域 (僅在background方法時顯示)
-        self.roi_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_ACCENT)
-        self.roi_frame.pack(fill="x", padx=12, pady=(0, 15))
-        
-        # ROI標題
-        ctk.CTkLabel(
-            self.roi_frame,
-            text="🎯 100%準確率 ROI 設定",
-            font=ctk.CTkFont(size=FontSizes.SUBTITLE, weight="bold"),
-            text_color=ColorScheme.TEXT_SUCCESS
-        ).pack(pady=(15, 10))
-        
-        # ROI高度控制
-        roi_height_container = ctk.CTkFrame(self.roi_frame, fg_color="transparent")
-        roi_height_container.pack(fill="x", padx=12, pady=(0, 10))
-        
-        ctk.CTkLabel(
-            roi_height_container,
-            text="ROI高度 (像素):",
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(side="left")
-        
-        self.roi_height_var = tk.IntVar(value=50)
-        self.roi_height_entry = ctk.CTkEntry(
-            roi_height_container,
-            textvariable=self.roi_height_var,
-            width=80,
-            font=ctk.CTkFont(size=FontSizes.BODY)
-        )
-        self.roi_height_entry.pack(side="right", padx=(5, 0))
-        self.roi_height_entry.bind('<Return>', self.update_roi_settings)
-        
-        # ROI位置控制  
-        roi_position_container = ctk.CTkFrame(self.roi_frame, fg_color="transparent")
-        roi_position_container.pack(fill="x", padx=12, pady=(0, 15))
-        
-        ctk.CTkLabel(
-            roi_position_container,
-            text="ROI位置比例:",
-            font=ctk.CTkFont(size=FontSizes.BODY, weight="bold"),
-            text_color=ColorScheme.TEXT_PRIMARY
-        ).pack(side="left")
-        
-        self.roi_position_var = tk.DoubleVar(value=0.1)
-        self.roi_position_slider = ctk.CTkSlider(
-            roi_position_container,
-            from_=0.0,
-            to=0.8,
-            variable=self.roi_position_var,
-            command=self.update_roi_settings,
-            width=150,
-            progress_color=ColorScheme.TEXT_SUCCESS,
-            button_color=ColorScheme.TEXT_SUCCESS
-        )
-        self.roi_position_slider.pack(side="right", padx=(10, 0))
-        
-        # ROI重置按鈕
+        # 重置計數按鈕 (簡化版，移除ROI設定)
+        # 只在使用background方法時顯示重置按鈕
+        self.reset_button_frame = ctk.CTkFrame(scrollable_frame, fg_color="transparent")
         ctk.CTkButton(
-            self.roi_frame,
+            self.reset_button_frame,
             text="🔄 重置計數",
             command=self.reset_crossing_count,
             width=120,
@@ -1152,7 +1097,7 @@ class MainView:
             fg_color=ColorScheme.WARNING_ORANGE,
             hover_color="#b45309",
             text_color="white"
-        ).pack(pady=(0, 15))
+        ).pack(pady=(10, 10))
         
         # 參數調整區域
         params_frame = ctk.CTkFrame(scrollable_frame, fg_color=ColorScheme.BG_SECONDARY)
@@ -1495,33 +1440,15 @@ class MainView:
         
         logging.info(f"檢測方法已改為: {method} {'(100%準確率模式+合成調試)' if method == 'background' else ''}")
         
-        # 🎯 根據方法顯示/隱藏ROI設定
-        if hasattr(self, 'roi_frame'):
+        # 🔄 根據方法顯示/隱藏重置按鈕
+        if hasattr(self, 'reset_button_frame'):
             if method == "background":
-                self.roi_frame.pack(fill="x", padx=12, pady=(0, 15))
+                self.reset_button_frame.pack(fill="x", padx=12, pady=(0, 15))
                 # 🔄 切換到background方法時立即同步計數
                 self.root.after(100, self.sync_count_display)
             else:
-                self.roi_frame.pack_forget()
+                self.reset_button_frame.pack_forget()
     
-    def update_roi_settings(self, event=None):
-        """更新ROI設定"""
-        try:
-            if self.method_var.get() == "background":
-                roi_height = self.roi_height_var.get()
-                roi_position = self.roi_position_var.get()
-                
-                # 更新檢測方法的ROI設定
-                detection_method = self.controller.detection_model.current_method
-                if hasattr(detection_method, 'roi_height'):
-                    detection_method.roi_height = roi_height
-                if hasattr(detection_method, 'roi_position_ratio'):
-                    detection_method.roi_position_ratio = roi_position
-                
-                logging.info(f"🎯 ROI設定已更新: 高度={roi_height}px, 位置={roi_position:.2f}")
-                
-        except Exception as e:
-            logging.error(f"更新ROI設定錯誤: {str(e)}")
     
     def reset_crossing_count(self):
         """重置穿越計數"""
@@ -2290,44 +2217,11 @@ class MainView:
             
             height, width = frame.shape[:2]
             
-            # 🎯 繪製ROI區域 (僅當使用background方法時)
-            if self.method_var.get() == "background":
-                # 獲取ROI設定
-                try:
-                    detection_method = self.controller.detection_model.current_method
-                    if hasattr(detection_method, 'roi_enabled') and detection_method.roi_enabled:
-                        roi_height = getattr(detection_method, 'roi_height', 50)
-                        roi_position_ratio = getattr(detection_method, 'roi_position_ratio', 0.1)
-                        
-                        # 計算ROI位置
-                        roi_y = int(height * roi_position_ratio)
-                        roi_bottom = roi_y + roi_height
-                        
-                        # 繪製ROI區域 (綠色半透明矩形)
-                        overlay = frame.copy()
-                        cv2.rectangle(overlay, (0, roi_y), (width, roi_bottom), (0, 255, 0), -1)
-                        frame = cv2.addWeighted(frame, 0.8, overlay, 0.2, 0)
-                        
-                        # 繪製ROI邊界線 (亮綠色)
-                        cv2.line(frame, (0, roi_y), (width, roi_y), (0, 255, 0), 2)
-                        cv2.line(frame, (0, roi_bottom), (width, roi_bottom), (0, 255, 0), 2)
-                        
-                        # 添加ROI標籤
-                        cv2.putText(frame, f"ROI ({roi_height}px)", (10, roi_y - 10), 
-                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                        
-                        # 移除重複的影像計數顯示，只使用右側面板計數
-                        # 注釋掉重複的黃色計數顯示
-                        # if hasattr(detection_method, 'get_crossing_count'):
-                        #     count = detection_method.get_crossing_count()
-                        #     cv2.putText(frame, f"Count: {count:03d}", (10, 40), 
-                        #               cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-                        
-                except Exception as roi_error:
-                    logging.debug(f"ROI繪製錯誤: {str(roi_error)}")
+            # 簡化顯示（移除ROI區域繪製）
+            # 現在所有檢測方法都使用統一的顯示方式
             
-            # 🔍 為其他檢測方法顯示基本計數
-            else:
+            # 🔍 顯示基本計數（適用於所有檢測方法）
+            if self.method_var.get() != "background":
                 # 對於非background方法，顯示基本物件計數
                 try:
                     count_text = self.object_count_var.get()

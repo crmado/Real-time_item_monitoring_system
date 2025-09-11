@@ -1,16 +1,40 @@
 #!/usr/bin/env python3
 """
-Basler MVC CustomTkinter 版本快速啟動腳本
+Basler MVC 統一啟動腳本
+支援正常模式和調試模式
 解決跨平台顯示模糊問題
 """
 
 import sys
 import os
+import argparse
+import logging
 from pathlib import Path
+
+def setup_debug_logging():
+    """設置調試模式的日誌"""
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('debug.log')
+        ]
+    )
+    print("🔍 調試模式已啟用 - 日誌將保存到 debug.log")
 
 def main():
     """主函數"""
-    print("🚀 啟動 Basler MVC CustomTkinter 高清版本")
+    parser = argparse.ArgumentParser(description='Basler MVC 系統啟動器')
+    parser.add_argument('--debug', action='store_true', help='啟用調試模式')
+    args = parser.parse_args()
+    
+    if args.debug:
+        print("🔍 啟動 Basler MVC 調試模式")
+        setup_debug_logging()
+    else:
+        print("🚀 啟動 Basler MVC CustomTkinter 高清版本")
+    
     print("=" * 50)
     
     # 檢查必要依賴

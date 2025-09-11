@@ -19,6 +19,9 @@ python run_ctk_version.py
 # Alternative: Direct launch
 cd basler_mvc && python main.py
 
+# Debug mode
+python run_ctk_version.py --debug
+
 # Test system components
 python test_mvc_system.py
 ```
@@ -69,9 +72,6 @@ controller.cleanup_early_debug_images(2500)  # Clean up debug images before fram
 # Build standalone executable (Windows/Linux/Mac)
 # Note: No .spec file found in current codebase
 pyinstaller --onefile basler_mvc/main.py --name basler_mvc_system
-
-# Alternative: Use existing launcher
-python basler_mvc_launcher.py
 ```
 
 ## Core Architecture
@@ -210,13 +210,13 @@ The system uses CustomTkinter to solve high-DPI display issues:
 - **Solution**: CustomTkinter provides automatic DPI scaling and crisp rendering
 - **Theme Support**: Multiple themes in `styles/` directory
 
-### Running Different UI Versions
+### Running Different Modes
 ```bash
-# CustomTkinter version (recommended)
+# Normal mode (recommended)
 python run_ctk_version.py
 
-# Version selector
-cd basler_mvc && python main_selector.py
+# Debug mode with detailed logging
+python run_ctk_version.py --debug
 ```
 
 ## Video Recording and Analysis
