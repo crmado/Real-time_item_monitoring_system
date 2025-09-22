@@ -31,4 +31,6 @@ build/*
 __pycache__/*
 .vscode/*
 venv/*
+recordings/*
+basler_mvc/recordings/*
 

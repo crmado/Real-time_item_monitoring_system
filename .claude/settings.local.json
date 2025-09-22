@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(awk:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(timeout:*)",
+      "Bash(rm:*)",
+      "Bash(find:*)",
+      "Bash(source:*)",
+      "Bash(conda activate:*)"
+    ],
+    "deny": []
+  },
+  "outputStyle": "Explanatory"
+}

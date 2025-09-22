@@ -25,8 +25,10 @@ class VideoPlayerModel:
         # 播放控制
         self.current_frame_number = 0
         self.total_frames = 0
-        self.fps = 30
+        self.fps = None  # 🔧 修正：不設預設值，完全依賴視頻實際FPS
+        self.original_fps = None  # 🎯 新增：保存原始視頻FPS
         self.playback_speed = 1.0  # 播放速度倍數
+        self.high_speed_detection_mode = True  # 🚀 高速檢測模式：跳過時間同步，盡快處理所有幀
         
         # 當前加載的視頻
         self.current_video_path = None
@@ -55,23 +57,95 @@ class VideoPlayerModel:
     def load_video(self, video_path: str) -> bool:
         """加載視頻"""
         try:
-            # 停止當前播放
-            self.stop_playback()
+            # 🔧 確保完全重置播放狀態
+            if self.is_playing:
+                self.stop_playback()
+                # 等待播放線程完全停止
+                if hasattr(self, 'playback_thread') and self.playback_thread:
+                    self.playback_thread.join(timeout=2.0)
             
-            # 釋放舊的視頻捕獲
+            # 強制重置所有狀態變量
+            self.is_playing = False
+            self.is_paused = False
+            self.current_frame_number = 0
+            
+            # 🔧 安全釋放舊的視頻捕獲，避免 FFmpeg 線程衝突
             if self.video_capture:
+                # 先確保完全停止播放，避免線程競爭
+                self.stop_event.set()
+                if hasattr(self, 'playback_thread') and self.playback_thread:
+                    self.playback_thread.join(timeout=3.0)
+                    
+                # 延遲釋放，給 FFmpeg 時間清理內部線程
+                time.sleep(0.1)
                 self.video_capture.release()
+                time.sleep(0.1)  # 額外延遲確保完全釋放
                 
+            # 🔧 避免 FFmpeg 線程問題：優先使用預設後端，謹慎使用 FFMPEG
             self.video_capture = cv2.VideoCapture(video_path)
+            
+            # 只有在預設後端完全失敗時才嘗試 FFMPEG 後端
             if not self.video_capture.isOpened():
-                logging.error(f"無法打開視頻: {video_path}")
-                return False
+                logging.warning(f"預設後端無法打開視頻: {video_path}")
+                self.video_capture.release()
+                time.sleep(0.2)  # 給系統時間清理
                 
-            # 獲取視頻信息
+                # 🔧 關鍵修復：設置 FFmpeg 線程數為 1，避免多線程衝突
+                try:
+                    # 嘗試使用單線程 FFMPEG 後端
+                    logging.info("⚠️ 嘗試使用單線程 FFMPEG 後端...")
+                    self.video_capture = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+                    
+                    if self.video_capture.isOpened():
+                        logging.info("✅ 使用 FFMPEG 後端成功開啟視頻（單線程模式）")
+                    else:
+                        logging.error(f"❌ 無法打開視頻檔案: {video_path}")
+                        logging.error("請確認視頻檔案格式受支援（推薦使用MP4格式）")
+                        return False
+                except Exception as e:
+                    logging.error(f"FFMPEG 後端初始化失敗: {str(e)}")
+                    return False
+            else:
+                logging.info("✅ 使用預設後端成功開啟視頻")
+                
+            # 獲取視頻信息並進行驗證
             self.total_frames = int(self.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.fps = self.video_capture.get(cv2.CAP_PROP_FPS)
+            detected_fps = self.video_capture.get(cv2.CAP_PROP_FPS)
             width = int(self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # 🔧 驗證視頻參數的有效性
+            if self.total_frames <= 0:
+                logging.error(f"❌ 無效的幀數: {self.total_frames}")
+                return False
+            
+            # 🎯 增強FPS驗證和自動修正
+            if detected_fps <= 0 or detected_fps > 300:  # 合理的FPS範圍
+                logging.warning(f"⚠️ 檢測到異常FPS: {detected_fps}")
+                # 嘗試通過檔案特性推測FPS
+                if 'fps' in str(video_path).lower():
+                    # 從檔名中提取FPS信息 (例如: video_30fps.mp4)
+                    import re
+                    fps_match = re.search(r'(\d+)fps', str(video_path).lower())
+                    if fps_match:
+                        self.fps = float(fps_match.group(1))
+                        logging.info(f"🔍 從檔名推測FPS: {self.fps}")
+                    else:
+                        self.fps = 206.0  # 🚀 高速預設值
+                        logging.warning(f"⚠️ 使用高速預設FPS: {self.fps}")
+                else:
+                    self.fps = 206.0  # 🚀 高速預設值
+                    logging.warning(f"⚠️ 使用高速預設FPS: {self.fps}")
+            else:
+                self.fps = detected_fps
+                logging.info(f"✅ 使用視頻實際FPS: {self.fps:.2f}")
+            
+            # 🎯 保存原始FPS用於檢測參數優化
+            self.original_fps = self.fps
+            
+            if width <= 0 or height <= 0:
+                logging.error(f"❌ 無效的解析度: {width}x{height}")
+                return False
             
             self.current_frame_number = 0
             self.current_video_path = video_path
@@ -108,16 +182,40 @@ class VideoPlayerModel:
     
     def start_playback(self) -> bool:
         """開始播放"""
-        if not self.video_capture or self.is_playing:
+        # 🔧 診斷：詳細的錯誤日誌
+        if not self.video_capture:
+            logging.error("❌ 視頻播放啟動失敗: 沒有視頻捕獲對象")
+            return False
+        
+        if not self.video_capture.isOpened():
+            logging.error("❌ 視頻播放啟動失敗: 視頻檔案未正確開啟")
             return False
             
-        self.is_playing = True
-        self.is_paused = False
+        if self.is_playing:
+            logging.warning("⚠️ 視頻播放啟動失敗: 視頻已在播放中")
+            return False
+            
+        # 🔧 線程安全的播放啟動機制
         self.stop_event.clear()
         
-        # 啟動播放線程
-        self.playback_thread = threading.Thread(target=self._playback_loop)
+        # 確保舊線程完全停止
+        if hasattr(self, 'playback_thread') and self.playback_thread and self.playback_thread.is_alive():
+            logging.warning("⚠️ 檢測到舊播放線程仍在運行，等待停止...")
+            self.playback_thread.join(timeout=2.0)
+            
+        # 線程安全地設置狀態
+        self.is_playing = True
+        self.is_paused = False
+        
+        # 🔧 創建新的播放線程，添加更好的同步保護
+        self.playback_thread = threading.Thread(
+            target=self._playback_loop, 
+            name=f"VideoPlayback-{id(self)}"  # 唯一線程名稱
+        )
         self.playback_thread.daemon = True
+        
+        # 延遲啟動，確保狀態完全設置
+        time.sleep(0.05)
         self.playback_thread.start()
         
         self.notify_observers('playback_started', {
@@ -149,14 +247,25 @@ class VideoPlayerModel:
             self.is_paused = False
             self.stop_event.set()
             
-            if self.playback_thread and self.playback_thread.is_alive():
-                self.playback_thread.join(timeout=1.0)
+            # 🔧 確保播放線程完全停止
+            if hasattr(self, 'playback_thread') and self.playback_thread and self.playback_thread.is_alive():
+                self.playback_thread.join(timeout=2.0)
+                if self.playback_thread.is_alive():
+                    logging.warning("⚠️ 播放線程停止超時")
+            
+            # 🔧 重置播放線程引用
+            self.playback_thread = None
+            
+            # 🔧 修復：停止播放時重置到開頭
+            self.current_frame_number = 0
+            if self.video_capture:
+                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
             
             self.notify_observers('playback_stopped', {
                 'current_frame': self.current_frame_number
             })
             
-            logging.info("視頻播放停止")
+            logging.info("✅ 視頻播放已完全停止")
     
     def _playback_loop(self):
         """播放循環 - 嚴格按秒數時間軸播放"""
@@ -175,16 +284,19 @@ class VideoPlayerModel:
                 playback_start_time = time.time() - (self.current_frame_number / self.fps)
                 continue
             
-            # 計算當前應該播放的視頻時間點
-            current_video_time = self.current_frame_number / self.fps if self.fps > 0 else 0
-            target_real_time = playback_start_time + (current_video_time / self.playback_speed)
-            current_real_time = time.time()
-            
-            # 🚀 關鍵：等待直到實際時間達到視頻時間點
-            if current_real_time < target_real_time:
-                wait_time = target_real_time - current_real_time
-                if wait_time > 0:
-                    time.sleep(wait_time)
+            # 🚀 高速檢測模式：跳過時間同步，盡快處理所有幀
+            if not self.high_speed_detection_mode:
+                # 正常播放模式：按影片時間線播放
+                current_video_time = self.current_frame_number / self.fps if self.fps > 0 else 0
+                target_real_time = playback_start_time + (current_video_time / self.playback_speed)
+                current_real_time = time.time()
+                
+                # 等待直到實際時間達到視頻時間點
+                if current_real_time < target_real_time:
+                    wait_time = target_real_time - current_real_time
+                    if wait_time > 0:
+                        time.sleep(wait_time)
+            # 高速檢測模式：不等待，直接處理下一幀
             
             # 讀取下一幀
             ret, frame = self.video_capture.read()
@@ -235,14 +347,12 @@ class VideoPlayerModel:
             # 🎯 發送幀給檢測處理器（同步模式下會等待處理完成）
             self.notify_observers('frame_ready', frame_data)
             
-            # 每50幀記錄一次時間同步狀態
-            if self.current_frame_number % 50 == 0:
+            # 🚀🚀 206fps模式：大幅減少時間同步日誌
+            if self.current_frame_number % 1000 == 0:  # 每1000幀才記錄一次
                 sync_error_ms = frame_data['time_sync_error'] * 1000
-                logging.debug(f"幀 {self.current_frame_number}/{self.total_frames}: 時間同步誤差 {sync_error_ms:.1f}ms")
-                
-                # 如果時間誤差過大，發出警告
-                if sync_error_ms > 100:  # 超過100ms
-                    logging.warning(f"時間同步誤差過大: {sync_error_ms:.1f}ms")
+                # 只在高速檢測模式下且誤差極大時才警告
+                if self.high_speed_detection_mode and sync_error_ms > 50000:  # 50秒才警告
+                    logging.debug(f"幀{self.current_frame_number}: {sync_error_ms:.0f}ms")
     
     def _wait_for_processor_ready(self):
         """等待檢測處理器準備好 - 簡化版本"""
@@ -311,6 +421,17 @@ class VideoPlayerModel:
             'playback_speed': self.playback_speed
         })
     
+    def set_high_speed_detection_mode(self, enable: bool):
+        """🚀 設置高速檢測模式 - 盡快處理所有幀，不等待時間同步"""
+        self.high_speed_detection_mode = enable
+        mode_text = "高速檢測" if enable else "正常播放"
+        logging.info(f"🎯 播放模式切換為: {mode_text}模式")
+        
+        self.notify_observers('detection_mode_changed', {
+            'high_speed_detection_mode': self.high_speed_detection_mode,
+            'mode_description': mode_text
+        })
+    
     def set_loop_playback(self, enable: bool):
         """設置循環播放"""
         self.loop_playback = enable
@@ -335,8 +456,11 @@ class VideoPlayerModel:
     def get_playback_status(self) -> dict:
         """獲取播放狀態 - 時間軸版本"""
         progress = self.current_frame_number / self.total_frames if self.total_frames > 0 else 0
-        video_duration = self.total_frames / self.fps if self.fps > 0 else 0
-        current_time = self.current_frame_number / self.fps if self.fps > 0 else 0
+        
+        # 🚀 修正FPS限制問題 - 使用高速預設值
+        effective_fps = self.fps if (self.fps and self.fps > 0) else 206.0  # 預設206fps (acA640-300gm典型值)
+        video_duration = self.total_frames / effective_fps if self.total_frames > 0 else 0
+        current_time = self.current_frame_number / effective_fps if self.current_frame_number > 0 else 0
         
         return {
             'is_playing': self.is_playing,
@@ -349,17 +473,42 @@ class VideoPlayerModel:
             'playback_speed': self.playback_speed,
             'loop_playback': self.loop_playback,
             'video_info': self.video_info,
-            # 🎯 新增時間軸相關信息
+            # 🚀 高速檢測模式信息
+            'high_speed_detection_mode': self.high_speed_detection_mode,
+            'mode_description': "高速檢測" if self.high_speed_detection_mode else "正常播放",
+            # 🎯 時間軸相關信息
             'video_duration': video_duration,      # 視頻總時長（秒）
             'current_time': current_time,          # 當前播放時間（秒）
             'remaining_time': max(0, video_duration - current_time),  # 剩餘時間（秒）
-            'time_format': f"{int(current_time//60):02d}:{int(current_time%60):02d} / {int(video_duration//60):02d}:{int(video_duration%60):02d}"
+            'time_format': f"{int(current_time)//60:02d}:{int(current_time)%60:02d} / {int(video_duration)//60:02d}:{int(video_duration)%60:02d}"
         }
     
     def release(self):
-        """釋放資源"""
+        """🔧 安全釋放資源，避免 FFmpeg 線程衝突"""
+        logging.info("🔄 開始清理視頻播放器資源...")
+        
+        # 1. 停止播放並等待線程完全結束
         self.stop_playback()
+        
+        # 2. 額外等待確保線程完全停止
+        if hasattr(self, 'playback_thread') and self.playback_thread:
+            if self.playback_thread.is_alive():
+                logging.warning("⚠️ 等待播放線程完全停止...")
+                self.playback_thread.join(timeout=3.0)
+                if self.playback_thread.is_alive():
+                    logging.error("❌ 播放線程停止超時")
+                    
+        # 3. 安全釋放 VideoCapture，避免 FFmpeg 衝突
         if self.video_capture:
-            self.video_capture.release()
-            self.video_capture = None
-        logging.info("視頻播放器資源已釋放")
+            try:
+                # 延遲釋放，給 FFmpeg 時間清理內部線程
+                time.sleep(0.2)
+                self.video_capture.release()
+                time.sleep(0.1)
+                self.video_capture = None
+                logging.info("✅ VideoCapture 已安全釋放")
+            except Exception as e:
+                logging.error(f"⚠️ 釋放 VideoCapture 時出錯: {str(e)}")
+                self.video_capture = None
+                
+        logging.info("✅ 視頻播放器資源清理完成")

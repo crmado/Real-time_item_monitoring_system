@@ -10,31 +10,10 @@ import threading
 import time
 from typing import Optional, List, Dict, Any, Tuple, Callable
 from collections import deque
-from abc import ABC, abstractmethod
+from .detection_base import DetectionMethod
 
-
-class DetectionMethod(ABC):
-    """檢測方法抽象基類"""
-    
-    @abstractmethod
-    def process_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
-        """處理影像幀"""
-        pass
-        
-    @abstractmethod
-    def detect_objects(self, processed_frame: np.ndarray, min_area: int = None, max_area: int = None) -> List[Tuple]:
-        """檢測物件"""
-        pass
-    
-    @abstractmethod
-    def set_parameters(self, params: Dict[str, Any]) -> bool:
-        """設置參數"""
-        pass
-    
-    @property
-    def name(self) -> str:
-        """檢測方法名稱"""
-        return self.__class__.__name__
+# 標記增強檢測是否可用（稍後動態加載）
+ENHANCED_DETECTION_AVAILABLE = False
 
 
 class CircleDetection(DetectionMethod):
@@ -145,7 +124,7 @@ class CircleDetection(DetectionMethod):
 
 
 class ContourDetection(DetectionMethod):
-    """輪廓檢測方法 - 精簡版"""
+    """輪廓檢測方法 - 增強版"""
     
     def __init__(self):
         """初始化輪廓檢測"""
@@ -154,10 +133,15 @@ class ContourDetection(DetectionMethod):
         self.max_area = 10000
         self.morphology_kernel_size = 3
         
-        logging.info("輪廓檢測初始化完成")
+        # 🎯 新增自適應參數
+        self.adaptive_threshold = True
+        self.noise_reduction = True
+        self.edge_enhancement = True
+        
+        logging.info("增強輪廓檢測初始化完成")
     
     def process_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
-        """快速幀處理"""
+        """增強幀處理 - 自適應算法"""
         if frame is None:
             return None
             
@@ -168,12 +152,27 @@ class ContourDetection(DetectionMethod):
             else:
                 gray = frame
                 
-            # 二值化
-            _, binary = cv2.threshold(gray, self.threshold_value, 255, cv2.THRESH_BINARY)
+            # 🎯 噪聲減少
+            if self.noise_reduction:
+                gray = cv2.medianBlur(gray, 5)
+                
+            # 🎯 邊緣增強
+            if self.edge_enhancement:
+                gray = cv2.addWeighted(gray, 1.5, cv2.GaussianBlur(gray, (0, 0), 2), -0.5, 0)
+                
+            # 🎯 自適應二值化或固定閾值
+            if self.adaptive_threshold:
+                binary = cv2.adaptiveThreshold(
+                    gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                    cv2.THRESH_BINARY, 11, 2
+                )
+            else:
+                _, binary = cv2.threshold(gray, self.threshold_value, 255, cv2.THRESH_BINARY)
             
             # 形態學處理
             kernel = np.ones((self.morphology_kernel_size, self.morphology_kernel_size), np.uint8)
             processed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+            processed = cv2.morphologyEx(processed, cv2.MORPH_OPEN, kernel)  # 額外的開運算去除噪點
             
             return processed
             
@@ -220,6 +219,193 @@ class ContourDetection(DetectionMethod):
             return False
 
 
+class HybridDetection(DetectionMethod):
+    """混合檢測方法 - 結合圓形和輪廓檢測的優點"""
+    
+    def __init__(self):
+        """初始化混合檢測"""
+        self.circle_detector = CircleDetection()
+        self.contour_detector = ContourDetection()
+        
+        # 混合策略參數
+        self.use_circle_primary = True  # 優先使用圓形檢測
+        self.confidence_threshold = 0.7  # 置信度閾值
+        self.merge_nearby_detections = True  # 合併鄰近檢測
+        self.merge_distance_threshold = 50  # 合併距離閾值
+        
+        # 自適應參數
+        self.auto_switch_method = True  # 根據檢測效果自動切換方法
+        self.circle_success_rate = 1.0  # 圓形檢測成功率
+        self.contour_success_rate = 1.0  # 輪廓檢測成功率
+        
+        logging.info("🔄 混合檢測初始化完成")
+    
+    def process_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        """混合預處理 - 同時為兩種檢測方法準備"""
+        if frame is None:
+            return None
+        
+        # 返回原始幀，讓各個檢測方法自己處理
+        return frame
+    
+    def detect_objects(self, frame: np.ndarray, min_area: int = None, max_area: int = None) -> List[Tuple]:
+        """混合檢測 - 智能結合多種方法"""
+        if frame is None:
+            return []
+        
+        try:
+            circle_objects = []
+            contour_objects = []
+            
+            # 🎯 並行檢測（如果性能允許）
+            if self.use_circle_primary:
+                # 先嘗試圓形檢測
+                processed_circle = self.circle_detector.process_frame(frame)
+                if processed_circle is not None:
+                    circle_objects = self.circle_detector.detect_objects(
+                        processed_circle, min_area, max_area
+                    )
+                
+                # 如果圓形檢測結果不理想，補充輪廓檢測
+                if len(circle_objects) == 0 or self.auto_switch_method:
+                    processed_contour = self.contour_detector.process_frame(frame)
+                    if processed_contour is not None:
+                        contour_objects = self.contour_detector.detect_objects(
+                            processed_contour, min_area, max_area
+                        )
+            else:
+                # 優先輪廓檢測
+                processed_contour = self.contour_detector.process_frame(frame)
+                if processed_contour is not None:
+                    contour_objects = self.contour_detector.detect_objects(
+                        processed_contour, min_area, max_area
+                    )
+                
+                # 補充圓形檢測
+                if len(contour_objects) == 0 or self.auto_switch_method:
+                    processed_circle = self.circle_detector.process_frame(frame)
+                    if processed_circle is not None:
+                        circle_objects = self.circle_detector.detect_objects(
+                            processed_circle, min_area, max_area
+                        )
+            
+            # 🎯 智能融合結果
+            final_objects = self._merge_detections(circle_objects, contour_objects)
+            
+            # 🎯 更新成功率統計（用於自動切換方法）
+            if self.auto_switch_method:
+                self._update_success_rates(len(circle_objects), len(contour_objects))
+            
+            return final_objects
+            
+        except Exception as e:
+            logging.error(f"混合檢測錯誤: {str(e)}")
+            return []
+    
+    def _merge_detections(self, circle_objects: List[Tuple], contour_objects: List[Tuple]) -> List[Tuple]:
+        """智能融合檢測結果"""
+        if not self.merge_nearby_detections:
+            # 簡單策略：選擇較好的結果
+            if len(circle_objects) >= len(contour_objects):
+                return circle_objects
+            else:
+                return contour_objects
+        
+        # 高級策略：合併鄰近檢測，去除重複
+        all_objects = []
+        all_objects.extend([(obj, 'circle') for obj in circle_objects])
+        all_objects.extend([(obj, 'contour') for obj in contour_objects])
+        
+        if not all_objects:
+            return []
+        
+        merged_objects = []
+        used_indices = set()
+        
+        for i, (obj1, type1) in enumerate(all_objects):
+            if i in used_indices:
+                continue
+                
+            x1, y1, w1, h1, centroid1, area1, radius1 = obj1
+            group = [obj1]
+            used_indices.add(i)
+            
+            # 尋找鄰近的檢測結果
+            for j, (obj2, type2) in enumerate(all_objects[i+1:], i+1):
+                if j in used_indices:
+                    continue
+                    
+                x2, y2, w2, h2, centroid2, area2, radius2 = obj2
+                distance = np.sqrt((centroid1[0] - centroid2[0])**2 + (centroid1[1] - centroid2[1])**2)
+                
+                if distance < self.merge_distance_threshold:
+                    group.append(obj2)
+                    used_indices.add(j)
+            
+            # 從群組中選擇最佳檢測結果
+            if len(group) == 1:
+                merged_objects.append(group[0])
+            else:
+                best_obj = self._select_best_detection(group)
+                merged_objects.append(best_obj)
+        
+        return merged_objects
+    
+    def _select_best_detection(self, group: List[Tuple]) -> Tuple:
+        """從群組中選擇最佳檢測結果"""
+        # 簡單策略：選擇面積最接近中位數的檢測結果
+        areas = [obj[5] for obj in group]  # area is at index 5
+        median_area = np.median(areas)
+        
+        best_obj = group[0]
+        min_diff = abs(best_obj[5] - median_area)
+        
+        for obj in group[1:]:
+            diff = abs(obj[5] - median_area)
+            if diff < min_diff:
+                min_diff = diff
+                best_obj = obj
+        
+        return best_obj
+    
+    def _update_success_rates(self, circle_count: int, contour_count: int):
+        """更新檢測方法成功率統計"""
+        # 簡化的成功率評估
+        decay_factor = 0.95  # 衰減因子
+        
+        self.circle_success_rate = (self.circle_success_rate * decay_factor + 
+                                  (1.0 if circle_count > 0 else 0.0) * (1 - decay_factor))
+        self.contour_success_rate = (self.contour_success_rate * decay_factor + 
+                                   (1.0 if contour_count > 0 else 0.0) * (1 - decay_factor))
+        
+        # 自動調整優先檢測方法
+        if self.circle_success_rate > self.contour_success_rate + 0.1:
+            self.use_circle_primary = True
+        elif self.contour_success_rate > self.circle_success_rate + 0.1:
+            self.use_circle_primary = False
+    
+    def set_parameters(self, params: Dict[str, Any]) -> bool:
+        """設置混合檢測參數"""
+        try:
+            # 更新自身參數
+            for key, value in params.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+            
+            # 將相關參數傳遞給子檢測器
+            self.circle_detector.set_parameters(params)
+            self.contour_detector.set_parameters(params)
+            
+            return True
+        except Exception as e:
+            logging.error(f"設置混合檢測參數錯誤: {str(e)}")
+            return False
+    
+    @property
+    def name(self) -> str:
+        return "HybridDetection"
+
+
 class DetectionModel:
     """影像檢測數據模型 - 高性能版本"""
     
@@ -228,12 +414,29 @@ class DetectionModel:
         # 可用檢測方法
         self.available_methods = {
             'circle': CircleDetection(),
-            'contour': ContourDetection()
+            'contour': ContourDetection(),
+            'hybrid': HybridDetection()  # 🎯 新增混合檢測方法
         }
         
-        # 當前檢測方法
-        self.current_method = self.available_methods['circle']
-        self.method_name = 'circle'
+        # 🚀 嘗試加載背景減除檢測方法
+        try:
+            from .enhanced_detection_method import BackgroundSubtractionDetection
+            self.available_methods['background'] = BackgroundSubtractionDetection()
+            logging.info("✅ 背景減除檢測方法已載入")
+            background_available = True
+        except Exception as e:
+            logging.warning(f"⚠️ 背景減除檢測方法不可用: {str(e)}")
+            background_available = False
+        
+        # 當前檢測方法 - 優先使用背景減除檢測
+        if background_available:
+            self.current_method = self.available_methods['background']
+            self.method_name = 'background'
+            logging.info("🎯 預設使用背景減除檢測方法")
+        else:
+            self.current_method = self.available_methods['hybrid']
+            self.method_name = 'hybrid'
+            logging.info("🎯 預設使用混合檢測方法")
         
         # 數據源類型和對應參數
         self.current_source_type = 'camera'  # camera, video
@@ -264,8 +467,8 @@ class DetectionModel:
         self.object_count = 0
         self.detection_lock = threading.Lock()
         
-        # 性能統計
-        self.detection_times = deque(maxlen=100)
+        # 性能統計 - 優化記憶體使用
+        self.detection_times = deque(maxlen=50)
         self.detection_fps = 0.0
         
         # 觀察者模式
@@ -339,7 +542,7 @@ class DetectionModel:
             # 獲取視頻實際規格
             width = video_info.get('width', 640)
             height = video_info.get('height', 480)
-            fps = video_info.get('fps', 30.0)
+            fps = video_info.get('fps', 206.0)  # 🚀 高速預設值
             codec = video_info.get('codec', 'unknown')
             total_frames = video_info.get('total_frames', 0)
             
@@ -369,8 +572,14 @@ class DetectionModel:
                 max_area = 4000
                 logging.info("📺 低解析度視頻，使用精細參數")
             
-            # 🎯 根據 FPS 調整性能參數
-            if fps >= 60:
+            # 🎯 根據 FPS 調整性能參數 - 更細緻的分級
+            if fps >= 120:
+                # 超高幀率，極優先性能
+                dp = 4.0
+                param1 = 150
+                param2 = 100
+                logging.info(f"⚡ 超高幀率視頻 ({fps:.1f} fps)，極優先性能")
+            elif fps >= 60:
                 # 高幀率，優先性能
                 dp = 3.0
                 param1 = 120
@@ -382,12 +591,18 @@ class DetectionModel:
                 param1 = 100
                 param2 = 65
                 logging.info(f"📺 標準幀率視頻 ({fps:.1f} fps)，平衡模式")
-            else:
+            elif fps >= 15:
                 # 低幀率，優先精度
                 dp = 2.0
                 param1 = 80
                 param2 = 50
                 logging.info(f"🔍 低幀率視頻 ({fps:.1f} fps)，優先精度")
+            else:
+                # 極低幀率，最高精度
+                dp = 1.5
+                param1 = 60
+                param2 = 40
+                logging.info(f"🔬 極低幀率視頻 ({fps:.1f} fps)，最高精度")
             
             # 🎯 根據編碼格式調整
             blur_kernel = 3  # 預設
@@ -483,10 +698,11 @@ class DetectionModel:
                 # 有檢測結果時才複製和繪製
                 result_frame = self._draw_detections(frame.copy(), objects)
             else:
-                # 無檢測結果時直接在原圖上繪製計數
+                # 無檢測結果時直接返回原圖（不顯示計數）
                 result_frame = frame
-                cv2.putText(result_frame, f'Count: 0', 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                # 移除重複計數顯示，只使用右側面板計數
+                # cv2.putText(result_frame, f'Count: 0', 
+                #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
             # 通知觀察者
             self.notify_observers('detection_completed', {
@@ -521,9 +737,9 @@ class DetectionModel:
                 cv2.putText(frame, f'{int(area)}', 
                            (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
-            # 顯示總數
-            cv2.putText(frame, f'Count: {len(objects)}', 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            # 移除重複計數顯示，只使用右側面板計數
+            # cv2.putText(frame, f'Count: {len(objects)}', 
+            #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
             
             return frame
             
@@ -548,10 +764,30 @@ class DetectionModel:
     
     def get_stats(self) -> Dict[str, Any]:
         """獲取檢測統計"""
-        return {
+        stats = {
             'current_method': self.method_name,
             'object_count': self.object_count,
             'detection_fps': self.detection_fps,
             'available_methods': self.get_available_methods(),
             'parameters': self.detection_params.copy()
         }
+        
+        # 🚀 添加高速模式狀態
+        if hasattr(self.current_method, 'get_ultra_high_speed_status'):
+            stats['ultra_high_speed'] = self.current_method.get_ultra_high_speed_status()
+        
+        return stats
+    
+    def enable_ultra_high_speed_mode(self, enabled: bool = True, target_fps: int = 280):
+        """啟用超高速檢測模式"""
+        if hasattr(self.current_method, 'enable_ultra_high_speed_mode'):
+            self.current_method.enable_ultra_high_speed_mode(enabled, target_fps)
+            logging.info(f"🚀 檢測模型高速模式: {'啟用' if enabled else '禁用'} (目標: {target_fps}fps)")
+        else:
+            logging.warning("⚠️ 當前檢測方法不支援超高速模式")
+    
+    def is_ultra_high_speed_enabled(self) -> bool:
+        """檢查是否啟用超高速模式"""
+        if hasattr(self.current_method, 'ultra_high_speed_mode'):
+            return self.current_method.ultra_high_speed_mode
+        return False

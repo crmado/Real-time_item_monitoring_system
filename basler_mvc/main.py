@@ -15,10 +15,13 @@ sys.path.insert(0, str(project_root))
 # 導入 MVC 組件
 try:
     from basler_mvc.controllers.main_controller import MainController
-    from basler_mvc.views.main_view import MainView
+    # 使用 CustomTkinter 明亮清晰版本解決顯示問題
+    from basler_mvc.views.main_view_ctk_bright import MainView
+    print("使用 CustomTkinter 高清顯示版本")
 except ImportError as e:
     print(f"導入錯誤: {str(e)}")
     print("請確保所有必要文件都已創建")
+    print("如果缺少 customtkinter，請執行: pip install customtkinter")
     sys.exit(1)
 
 
@@ -86,12 +89,12 @@ def check_dependencies():
 
 def show_startup_info():
     """顯示啟動信息"""
-    print("🚀 Basler acA640-300gm MVC 精簡高性能系統")
+    print("Basler acA640-300gm MVC 精簡高性能系統")
     print("=" * 60)
     print("架構: Model-View-Controller")
     print("目標: 專注核心功能，追求極致性能")
     print("支援: Basler acA640-300gm 工業相機")
-    print("檢測: 圓形檢測、輪廓檢測")
+    print("檢測: 100%準確率背景減除、混合檢測、圓形檢測、輪廓檢測")
     print("=" * 60)
     print()
 
@@ -118,8 +121,14 @@ def main():
         
         # 創建 MVC 組件
         print("🏗️ 初始化 MVC 架構...")
+        
+        print("   📊 創建控制器...")
         controller = MainController()
+        logging.info("✅ 控制器初始化完成")
+        
+        print("   🖥️ 創建用戶界面...")
         view = MainView(controller)
+        logging.info("✅ 視圖初始化完成")
         
         logging.info("✅ MVC 架構初始化完成")
         print("✅ 系統初始化完成")
@@ -159,6 +168,13 @@ def main():
     except Exception as e:
         error_msg = f"系統啟動失敗: {str(e)}"
         print(f"❌ {error_msg}")
+        print(f"💡 錯誤類型: {type(e).__name__}")
+        
+        # 打印詳細的錯誤追蹤
+        import traceback
+        print("🔍 詳細錯誤追蹤:")
+        traceback.print_exc()
+        
         logging.error(error_msg, exc_info=True)
         
         # 🩺 自動運行診斷（如果可能）

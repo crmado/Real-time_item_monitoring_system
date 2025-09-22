@@ -7,14 +7,17 @@ import logging
 import threading
 import time
 import numpy as np
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List, Tuple
 from collections import deque
 
-from ..models.basler_camera_model import BaslerCameraModel
-from ..models.detection_model import DetectionModel
-from ..models.video_recorder_model import VideoRecorderModel
-from ..models.video_player_model import VideoPlayerModel
-from ..models.detection_processor import DetectionProcessor
+from models.basler_camera_model import BaslerCameraModel
+from models.detection_model import DetectionModel
+from models.video_recorder_model import VideoRecorderModel
+from models.video_player_model import VideoPlayerModel
+from models.detection_processor import DetectionProcessor
+from utils.recording_validator import RecordingValidator
+from utils.memory_monitor import MemoryMonitor
+from utils.performance_monitor import PerformanceMonitor
 
 
 class MainController:
@@ -30,8 +33,39 @@ class MainController:
         self.video_recorder = VideoRecorderModel()
         self.video_player = VideoPlayerModel()
         
+        # 🔧 設置錄製器到相機模型（依賴注入）
+        self.camera_model.set_video_recorder(self.video_recorder)
+        
         # 🚀 高性能檢測處理器（專用於視頻回放）
         self.detection_processor = DetectionProcessor(self.detection_model)
+        
+        # 🎯 錄製驗證器（280 FPS品質檢查）- 提高容忍度
+        self.recording_validator = RecordingValidator(
+            expected_fps=280, 
+            tolerance_percent=10.0   # 提高容忍度避免誤判
+        )
+        
+        # 🔍 記憶體監控器 - 強化版本，支援自動清理
+        self.memory_monitor = MemoryMonitor(
+            check_interval=15.0,     # 更頻繁檢查
+            memory_limit_mb=1024.0,  # 提高記憶體限制
+            auto_cleanup=True        # 啟用自動清理
+        )
+        
+        # 設置記憶體警告回調
+        self.memory_monitor.set_warning_callback(self._on_memory_warning)
+        self.memory_monitor.set_critical_callback(self._on_memory_critical)
+        
+        # 🚀 性能監控器 - 全面性能監控和自動優化
+        self.performance_monitor = PerformanceMonitor(
+            target_fps=280.0,
+            monitoring_interval=1.0
+        )
+        
+        # 設置性能監控回調
+        self.performance_monitor.register_callback('warning', self._on_performance_warning)
+        self.performance_monitor.register_callback('critical', self._on_performance_critical)
+        self.performance_monitor.register_callback('optimization', self._on_performance_optimization)
         
         # 系統模式：live, recording, playback
         self.current_mode = 'live'
@@ -48,7 +82,13 @@ class MainController:
         self.processing_fps = 0.0
         self.total_processed_frames = 0
         self.processing_start_time = None
-        self.frame_times = deque(maxlen=100)
+        self.frame_times = deque(maxlen=50)  # 優化記憶體使用
+        
+        # 🎯 包裝計數系統
+        self.total_detected_count = 0     # 當前計數：該影像啟動檢測後的所有檢測到的總合
+        self.current_segment_count = 0    # 目前計數：每一段的數量
+        self.package_count = 0            # 包裝數：每滿100就+1
+        self.segment_target = 100         # 每段目標數量
         
         # 觀察者（Views）
         self.view_observers = []
@@ -63,7 +103,37 @@ class MainController:
         # 注入錄製器到相機模型
         self.camera_model.set_video_recorder(self.video_recorder)
         
+        # 啟動記憶體監控
+        self.memory_monitor.start_monitoring()
+        
         logging.info("主控制器初始化完成")
+    
+    def _update_package_counting(self, crossing_count: int):
+        """更新包裝計數系統"""
+        try:
+            # 🎯 修正邏輯：當前計數(總累計) = 目前計數(當前段) = 實際檢測數量
+            self.total_detected_count = crossing_count      # 當前計數(總累計)
+            self.current_segment_count = crossing_count     # 目前計數(當前段) - 應該一樣
+            
+            # 計算包裝數（每滿100包裝數+1）
+            new_package_count = crossing_count // self.segment_target
+            
+            # 檢查是否需要增加包裝數
+            if new_package_count > self.package_count:
+                self.package_count = new_package_count
+                # 🚀🚀 206fps模式：最小化日誌輸出
+                if self.package_count % 10 == 1:  # 極少數日誌，只在關鍵里程碑
+                    logging.info(f"📦 包裝數: {self.package_count}")
+                
+        except Exception as e:
+            logging.error(f"包裝計數更新錯誤: {str(e)}")
+    
+    def reset_package_counting(self):
+        """重置包裝計數系統"""
+        self.total_detected_count = 0
+        self.current_segment_count = 0
+        self.package_count = 0
+        logging.info("🔄 包裝計數系統已重置")
     
     def add_view_observer(self, observer: Callable):
         """添加視圖觀察者"""
@@ -79,8 +149,13 @@ class MainController:
     
     def _on_camera_event(self, event_type: str, data: Any = None):
         """處理相機事件"""
-        # 轉發到視圖
-        self.notify_views(f"camera_{event_type}", data)
+        # 🔧 修復：避免重複添加 camera_ 前綴
+        if event_type.startswith('camera_'):
+            # 如果已經有前綴，直接轉發
+            self.notify_views(event_type, data)
+        else:
+            # 如果沒有前綴，添加前綴
+            self.notify_views(f"camera_{event_type}", data)
         
         # 特殊處理
         if event_type == 'capture_started':
@@ -104,6 +179,8 @@ class MainController:
             logging.info(f"錄製開始: {data.get('filename', 'unknown')}")
         elif event_type == 'recording_stopped':
             logging.info(f"錄製完成: {data.get('frames_recorded', 0)} 幀")
+            # 🎯 自動驗證剛完成的錄製檔案
+            self._auto_validate_latest_recording(data)
     
     def _on_video_player_event(self, event_type: str, data: Any = None):
         """處理視頻播放事件"""
@@ -153,11 +230,12 @@ class MainController:
                 'source': 'video'
             }
             
-            # 非阻塞提交（確保不丟幀）
+            # 🎯 非阻塞提交（視頻回放模式優化）
             success = self.detection_processor.submit_frame(frame, frame_info)
             
-            if not success:
-                logging.warning(f"幀 {frame_info['frame_number']} 提交失敗")
+            # 🎯 靜默處理：視頻回放時跳過部分幀是正常的，不記錄警告
+            if not success and frame_info['frame_number'] % 100 == 0:  # 只有每100幀記錄一次調試信息
+                logging.debug(f"幀 {frame_info['frame_number']} 跳過（處理器忙碌）")
             
         except Exception as e:
             logging.error(f"提交檢測幀失敗: {str(e)}")
@@ -172,6 +250,24 @@ class MainController:
     def detect_cameras(self) -> list:
         """檢測相機"""
         return self.camera_model.detect_cameras()
+    
+    # ==================== 🎯 設備監控功能 ====================
+    
+    def start_device_monitor(self) -> bool:
+        """啟動設備監控"""
+        return self.camera_model.start_device_monitor()
+    
+    def stop_device_monitor(self):
+        """停止設備監控"""
+        self.camera_model.stop_device_monitor()
+    
+    def force_refresh_device_list(self) -> list:
+        """手動刷新設備列表"""
+        return self.camera_model.force_refresh_device_list()
+    
+    def set_device_monitor_interval(self, interval: float):
+        """設置設備監控間隔"""
+        self.camera_model.set_device_monitor_interval(interval)
     
     def connect_camera(self, device_index: int = 0) -> bool:
         """連接相機 - 強化線程安全版本"""
@@ -205,9 +301,16 @@ class MainController:
             return False
     
     def force_stop_all(self):
-        """強制停止所有線程和連接 - 強化版本，防止線程競爭"""
+        """強制停止所有線程和連接 - 強化版本，防止線程競爭，保護錄製數據"""
         try:
             logging.info("🛑 開始強制停止所有系統組件...")
+            
+            # 🎯 錄製獨立化：強制停止不再影響錄製
+            if (hasattr(self, 'camera_model') and self.camera_model and 
+                hasattr(self.camera_model, 'recording_enabled') and 
+                self.camera_model.recording_enabled):
+                logging.info("🎬 檢測到正在錄製，錄製功能已獨立化")
+                logging.info("📝 錄製將獨立繼續，不受系統強制停止影響")
             
             # 🔄 第一步：停止處理循環
             if self.is_processing:
@@ -233,13 +336,21 @@ class MainController:
                 self.camera_model.capture_thread.is_alive()):
                 threads_to_wait.append(('相機捕獲線程', self.camera_model.capture_thread))
             
-            # 等待所有線程停止
+                            # 🎯 等待所有線程停止 - 錄製模式需更長時間
             for thread_name, thread in threads_to_wait:
-                logging.info(f"⏳ 等待 {thread_name} 停止...")
-                thread.join(timeout=1.5)  # 每個線程最多等1.5秒
+                # 檢查是否在錄製中，需要更長等待時間
+                is_recording = (hasattr(self, 'camera_model') and 
+                              self.camera_model and 
+                              hasattr(self.camera_model, 'recording_enabled') and
+                              self.camera_model.recording_enabled)
+                              
+                timeout = 5.0 if is_recording else 1.5
+                
+                logging.info(f"⏳ 等待 {thread_name} 停止... (錄製中: {is_recording})")
+                thread.join(timeout=timeout)
                 
                 if thread.is_alive():
-                    logging.warning(f"⚠️ {thread_name} 未能及時停止")
+                    logging.warning(f"⚠️ {thread_name} 未能在{timeout}秒內停止")
                 else:
                     logging.info(f"✅ {thread_name} 已停止")
             
@@ -266,22 +377,121 @@ class MainController:
         self.notify_views('system_status', '相機已斷開')
     
     def start_capture(self) -> bool:
-        """開始捕獲"""
-        if not self.camera_model.is_connected:
-            self.notify_views('system_error', '請先連接相機')
+        """開始捕獲/處理 - 根據當前模式"""
+        try:
+            logging.info(f"🚀 開始處理 - 模式: {self.current_mode}")
+            
+            if self.current_mode == 'live':
+                # 實時模式：只啟動相機
+                if not self.camera_model.is_connected:
+                    self.notify_views('system_error', '請先連接相機')
+                    return False
+                
+                success = self.camera_model.start_capture()
+                if success:
+                    self.is_running = True
+                    self._start_processing()  # 啟動處理循環
+                    self.notify_views('system_status', '實時處理已啟動')
+                    logging.info("✅ 實時模式處理已啟動")
+                else:
+                    logging.error("❌ 實時模式相機啟動失敗")
+                return success
+                
+            elif self.current_mode == 'recording':
+                # 錄製模式：相機+錄製同時啟動
+                if not self.camera_model.is_connected:
+                    self.notify_views('system_error', '請先連接相機')
+                    return False
+                
+                # 第一步：啟動相機
+                camera_success = self.camera_model.start_capture()
+                if not camera_success:
+                    logging.error("❌ 錄製模式相機啟動失敗")
+                    self.notify_views('system_error', '相機啟動失敗')
+                    return False
+                    
+                # 第二步：啟動錄製（使用預設檔名）
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                default_filename = f"recording_{timestamp}"
+                recording_success = self.camera_model.start_recording(default_filename)
+                
+                if recording_success:
+                    self.is_running = True
+                    self._start_processing()  # 啟動處理循環
+                    self.notify_views('system_status', '錄製處理已啟動')
+                    logging.info("✅ 錄製模式已啟動 - 相機+錄製+處理")
+                    return True
+                else:
+                    # 錄製失敗，回滾相機
+                    logging.error("❌ 錄製啟動失敗，停止相機")
+                    self.camera_model.stop_capture()
+                    self.notify_views('system_error', '錄製啟動失敗')
+                    return False
+                    
+            elif self.current_mode == 'playback':
+                # 回放模式：啟動視頻播放
+                success = self.video_player.start_playback()
+                if success:
+                    self.is_running = True
+                    self._start_processing()  # 啟動處理循環
+                    self.notify_views('system_status', '回放處理已啟動')
+                    logging.info("✅ 回放模式處理已啟動")
+                else:
+                    logging.error("❌ 回放模式啟動失敗")
+                    self.notify_views('system_error', '視頻播放啟動失敗')
+                return success
+                
+            else:
+                logging.error(f"未知的模式: {self.current_mode}")
+                self.notify_views('system_error', f'未知模式: {self.current_mode}')
+                return False
+                
+        except Exception as e:
+            logging.error(f"開始捕獲錯誤: {str(e)}")
+            self.notify_views('system_error', f'處理啟動失敗: {str(e)}')
             return False
-        
-        success = self.camera_model.start_capture()
-        if success:
-            self.is_running = True
-            self.notify_views('system_status', '開始捕獲')
-        return success
     
     def stop_capture(self):
-        """停止捕獲"""
-        self.camera_model.stop_capture()
-        self.is_running = False
-        self.notify_views('system_status', '停止捕獲')
+        """停止捕獲/處理 - 根據當前模式"""
+        try:
+            logging.info(f"🛑 停止處理 - 模式: {self.current_mode}")
+            
+            # 首先停止處理循環
+            if self.is_processing:
+                self._stop_processing()
+            
+            if self.current_mode == 'live':
+                # 實時模式：停止相機捕獲
+                self.camera_model.stop_capture()
+                self.notify_views('system_status', '實時處理已停止')
+                logging.info("✅ 實時模式處理已停止")
+                
+            elif self.current_mode == 'recording':
+                # 錄製模式：停止錄製+相機
+                # 先停止錄製
+                if self.camera_model.is_recording():
+                    recording_info = self.camera_model.stop_recording()
+                    if recording_info:
+                        logging.info(f"✅ 錄製已完成: {recording_info.get('filename', 'unknown')}")
+                
+                # 再停止相機
+                self.camera_model.stop_capture()
+                self.notify_views('system_status', '錄製處理已停止')
+                logging.info("✅ 錄製模式處理已停止")
+                
+            elif self.current_mode == 'playback':
+                # 回放模式：停止視頻播放
+                self.video_player.stop_playback()
+                self.notify_views('system_status', '回放處理已停止')
+                logging.info("✅ 回放模式處理已停止")
+            
+            # 重置運行狀態
+            self.is_running = False
+            
+        except Exception as e:
+            logging.error(f"停止捕獲錯誤: {str(e)}")
+            self.notify_views('system_error', f'處理停止失敗: {str(e)}')
     
     # ==================== 檢測控制 ====================
     
@@ -295,9 +505,18 @@ class MainController:
     
     def toggle_detection(self, enabled: bool):
         """開啟/關閉檢測"""
-        self.detection_model.update_parameters({'enable_detection': enabled})
-        status = '檢測已開啟' if enabled else '檢測已關閉'
-        self.notify_views('system_status', status)
+        try:
+            success = self.detection_model.update_parameters({'enable_detection': enabled})
+            if success:
+                status = '檢測已開啟' if enabled else '檢測已關閉'
+                self.notify_views('system_status', status)
+                logging.info(f"✅ 檢測開關已設置為: {enabled}")
+            else:
+                logging.error(f"❌ 檢測參數更新失敗")
+                self.notify_views('system_error', '檢測開關設置失敗')
+        except Exception as e:
+            logging.error(f"❌ 切換檢測開關時出錯: {str(e)}")
+            self.notify_views('system_error', f'檢測開關錯誤: {str(e)}')
     
     def set_exposure_time(self, exposure_us: float) -> bool:
         """設置相機曝光時間"""
@@ -314,41 +533,86 @@ class MainController:
     # ==================== 視頻錄製和回放控制 ====================
     
     def switch_mode(self, mode: str) -> bool:
-        """切換系統模式：live, recording, playback"""
+        """切換系統模式：live, recording, playback - 改進版，避免過度清理"""
         try:
             if mode not in ['live', 'recording', 'playback']:
                 logging.error(f"不支持的模式: {mode}")
                 return False
             
-            # 停止當前操作
-            self.force_stop_all()
-            
-            # 切換數據源類型
-            if mode == 'playback':
-                # 🎯 視頻模式：先設置為基本視頻模式，實際參數將在video_loaded事件中優化
-                self.detection_model.set_source_type('video')
-                logging.info("🎬 已切換至視頻檢測模式，等待視頻加載後優化參數")
+            # 🔧 智能模式切換：只停止必要的組件
+            if self.current_mode != mode:
+                logging.info(f"🔄 從 {self.current_mode} 模式切換到 {mode} 模式")
+                
+                # 根據切換類型決定停止範圍
+                if mode == 'playback':
+                    # 切換到回放模式：只停止相機相關，保留視頻播放能力
+                    if self.current_mode in ['live', 'recording']:
+                        self._stop_camera_operations()
+                    # 不調用 force_stop_all()，避免影響視頻播放器
+                    
+                elif mode in ['live', 'recording']:
+                    # 切換到相機模式：可以安全停止所有操作
+                    if self.current_mode == 'playback':
+                        # 從回放模式切換，只需停止檢測處理器
+                        if self.detection_processor.is_processing:
+                            self.detection_processor.stop_processing()
+                    else:
+                        # 相機模式間切換，停止當前相機操作
+                        self._stop_camera_operations()
+                
+                # 切換數據源類型
+                if mode == 'playback':
+                    # 🎯 視頻模式：先設置為基本視頻模式，實際參數將在video_loaded事件中優化
+                    self.detection_model.set_source_type('video')
+                    logging.info("🎬 已切換至視頻檢測模式，等待視頻加載後優化參數")
+                else:
+                    self.detection_model.set_source_type('camera')
+                    logging.info("📷 已切換至相機檢測模式")
+                
+                self.current_mode = mode
+                
+                self.notify_views('mode_changed', {
+                    'mode': mode,
+                    'description': {
+                        'live': '實時檢測模式',
+                        'recording': '錄製模式',
+                        'playback': '回放測試模式'
+                    }.get(mode, mode)
+                })
+                
+                logging.info(f"✅ 系統模式已切換為: {mode}")
             else:
-                self.detection_model.set_source_type('camera')
-                logging.info("📷 已切換至相機檢測模式")
+                logging.info(f"💭 已在 {mode} 模式，無需切換")
             
-            self.current_mode = mode
-            
-            self.notify_views('mode_changed', {
-                'mode': mode,
-                'description': {
-                    'live': '實時檢測模式',
-                    'recording': '錄製模式',
-                    'playback': '回放測試模式'
-                }.get(mode, mode)
-            })
-            
-            logging.info(f"系統模式已切換為: {mode}")
             return True
             
         except Exception as e:
             logging.error(f"切換模式失敗: {str(e)}")
             return False
+    
+    def _stop_camera_operations(self):
+        """只停止相機相關操作，保留其他功能"""
+        try:
+            logging.info("🎥 停止相機相關操作...")
+            
+            # 停止主處理循環
+            if self.is_processing:
+                self._stop_processing()
+            
+            # 停止相機捕獲
+            if hasattr(self, 'camera_model') and self.camera_model:
+                if self.camera_model.is_grabbing:
+                    self.camera_model.stop_capture()
+            
+            # 停止錄製（如果在進行）
+            if hasattr(self, 'video_recorder') and self.video_recorder:
+                if self.video_recorder.is_recording:
+                    self.video_recorder.stop_recording()
+            
+            logging.info("✅ 相機操作已停止")
+            
+        except Exception as e:
+            logging.error(f"停止相機操作錯誤: {str(e)}")
     
     def start_recording(self, filename: str = None) -> bool:
         """開始錄製"""
@@ -372,15 +636,78 @@ class MainController:
     
     def load_video(self, video_path: str) -> bool:
         """加載視頻用於回放"""
-        return self.video_player.load_video(video_path)
+        success = self.video_player.load_video(video_path)
+        
+        if success:
+            # 🚀 啟用高速檢測模式：盡快處理所有幀，不等待時間同步
+            self.video_player.set_high_speed_detection_mode(True)
+            
+            # 🎯 設定檢測模型的影片信息，用於中間段照片保存
+            video_info = self.video_player.video_info
+            total_frames = video_info.get('total_frames', 0)
+            fps = video_info.get('fps', 206)
+            
+            # 🚀🚀 206fps模式：簡化載入日誌
+            logging.info(f"🎥 {total_frames}幀, {fps}fps - 高速模式")
+            
+            # 如果使用background檢測方法，設定影片信息
+            if (hasattr(self.detection_model, 'method_name') and 
+                self.detection_model.method_name == 'background'):
+                try:
+                    current_method = self.detection_model.current_method
+                    if hasattr(current_method, 'set_video_info'):
+                        current_method.set_video_info(total_frames, fps)
+                        logging.info(f"📸 已設定影片信息用於中間段保存: {total_frames}幀, {fps:.1f}FPS")
+                except Exception as e:
+                    logging.warning(f"設定檢測模型影片信息失敗: {str(e)}")
+        
+        return success
+    
+    def set_playback_file(self, file_path: str) -> bool:
+        """設置回放檔案路徑"""
+        try:
+            # 🎯 修復：確保切換到回放模式並加載視頻
+            if self.current_mode != 'playback':
+                success = self.switch_mode('playback')
+                if not success:
+                    logging.error("無法切換到回放模式")
+                    return False
+            
+            # 加載視頻檔案
+            success = self.load_video(file_path)
+            if success:
+                logging.info(f"✅ 視頻檔案已加載: {file_path}")
+            else:
+                logging.error(f"❌ 視頻檔案加載失敗: {file_path}")
+            
+            return success
+            
+        except Exception as e:
+            logging.error(f"設置回放檔案失敗: {str(e)}")
+            return False
     
     def start_video_playback(self) -> bool:
         """開始視頻回放"""
+        # 🔧 診斷：檢查模式和視頻狀態
         if self.current_mode != 'playback':
-            self.notify_views('system_error', '請先切換到回放模式')
+            logging.error(f"❌ 視頻播放啟動失敗: 當前模式為 {self.current_mode}，需要切換到回放模式")
+            self.notify_views('system_error', f'當前模式: {self.current_mode}，需要切換到回放模式')
+            return False
+        
+        # 檢查視頻是否已加載
+        if not hasattr(self.video_player, 'video_capture') or not self.video_player.video_capture:
+            logging.error("❌ 視頻播放啟動失敗: 沒有視頻檔案已加載")
+            self.notify_views('system_error', '請先選擇視頻檔案')
             return False
             
-        return self.video_player.start_playback()
+        success = self.video_player.start_playback()
+        if not success:
+            logging.error("❌ 視頻播放器啟動失敗")
+            self.notify_views('system_error', '視頻播放器啟動失敗')
+        else:
+            logging.info("✅ 視頻播放已啟動")
+        
+        return success
     
     def pause_video_playback(self):
         """暫停/恢復視頻回放"""
@@ -389,6 +716,10 @@ class MainController:
     def stop_video_playback(self):
         """停止視頻回放"""
         self.video_player.stop_playback()
+    
+    def get_video_playback_status(self) -> dict:
+        """獲取視頻播放狀態"""
+        return self.video_player.get_playback_status()
     
     def seek_video_to_frame(self, frame_number: int) -> bool:
         """跳轉到指定幀"""
@@ -422,6 +753,167 @@ class MainController:
         """獲取已錄製的文件列表"""
         return self.video_recorder.get_recorded_files()
     
+    # ==================== 錄製品質驗證 ====================
+    
+    def _auto_validate_latest_recording(self, recording_data: Dict[str, Any]):
+        """自動驗證最新完成的錄製檔案"""
+        try:
+            filename = recording_data.get('filename', '')
+            file_path = recording_data.get('file_path', '')
+            
+            if not file_path:
+                logging.warning("無法驗證錄製檔案：缺少檔案路徑")
+                return
+            
+            logging.info(f"🔍 開始驗證錄製檔案: {filename}")
+            
+            # 使用錄製驗證器檢查檔案
+            from pathlib import Path
+            validation_result = self.recording_validator.validate_recording(Path(file_path))
+            
+            if validation_result:
+                # 通知視圖驗證結果
+                self.notify_views('recording_validated', {
+                    'filename': filename,
+                    'file_path': file_path,
+                    'validation_result': validation_result,
+                    'is_valid_fps': validation_result.is_valid_fps,
+                    'actual_fps': validation_result.fps,
+                    'expected_fps': self.recording_validator.expected_fps,
+                    'fps_error': validation_result.fps_error_percent
+                })
+                
+                # 記錄驗證結果
+                if validation_result.is_valid_fps:
+                    logging.info(f"✅ 錄製驗證通過: {filename} - {validation_result.fps:.1f} fps (誤差: {validation_result.fps_error_percent:.1f}%)")
+                else:
+                    logging.warning(f"⚠️ 錄製驗證警告: {filename} - {validation_result.fps:.1f} fps (誤差: {validation_result.fps_error_percent:.1f}%)")
+            else:
+                logging.error(f"❌ 錄製驗證失敗: {filename}")
+                self.notify_views('recording_validation_failed', {
+                    'filename': filename,
+                    'file_path': file_path,
+                    'error': '無法讀取檔案資訊'
+                })
+                
+        except Exception as e:
+            logging.error(f"錄製驗證過程中發生錯誤: {str(e)}")
+    
+    def validate_recording_file(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """手動驗證指定的錄製檔案"""
+        try:
+            from pathlib import Path
+            validation_result = self.recording_validator.validate_recording(Path(file_path))
+            
+            if validation_result:
+                return {
+                    'file_name': validation_result.file_name,
+                    'file_path': validation_result.file_path,
+                    'fps': validation_result.fps,
+                    'is_valid_fps': validation_result.is_valid_fps,
+                    'fps_error_percent': validation_result.fps_error_percent,
+                    'frame_count': validation_result.frame_count,
+                    'duration': validation_result.duration,
+                    'resolution': f"{validation_result.width}x{validation_result.height}",
+                    'codec': validation_result.codec,
+                    'file_size_mb': validation_result.file_size_mb
+                }
+            return None
+            
+        except Exception as e:
+            logging.error(f"驗證檔案時發生錯誤: {str(e)}")
+            return None
+    
+    def validate_all_recordings(self) -> List[Dict[str, Any]]:
+        """驗證所有錄製檔案"""
+        try:
+            from pathlib import Path
+            recordings_dir = Path("basler_mvc/recordings")
+            
+            all_recordings = self.recording_validator.validate_all_recordings(recordings_dir)
+            
+            # 轉換為字典格式供UI使用
+            results = []
+            for recording in all_recordings:
+                results.append({
+                    'file_name': recording.file_name,
+                    'file_path': recording.file_path,
+                    'fps': recording.fps,
+                    'is_valid_fps': recording.is_valid_fps,
+                    'fps_error_percent': recording.fps_error_percent,
+                    'frame_count': recording.frame_count,
+                    'duration': recording.duration,
+                    'resolution': f"{recording.width}x{recording.height}",
+                    'codec': recording.codec,
+                    'file_size_mb': recording.file_size_mb,
+                    'status': 'valid' if recording.is_valid_fps else 'invalid'
+                })
+            
+            return results
+            
+        except Exception as e:
+            logging.error(f"批量驗證錄製檔案時發生錯誤: {str(e)}")
+            return []
+    
+    def get_recording_quality_summary(self) -> Dict[str, Any]:
+        """獲取錄製品質總結"""
+        try:
+            from pathlib import Path
+            recordings_dir = Path("basler_mvc/recordings")
+            
+            all_recordings = self.recording_validator.validate_all_recordings(recordings_dir)
+            summary = self.recording_validator.get_quality_summary(all_recordings)
+            
+            # 添加詳細分析
+            summary['recommendations'] = []
+            
+            if summary['invalid_fps_files'] > 0:
+                summary['recommendations'].append({
+                    'type': 'warning',
+                    'message': f"發現 {summary['invalid_fps_files']} 個FPS不符合280目標的檔案",
+                    'action': '檢查攝影機設定和系統效能'
+                })
+            
+            if summary['validity_rate'] < 80:
+                summary['recommendations'].append({
+                    'type': 'critical',
+                    'message': f"錄製品質較低 ({summary['validity_rate']:.1f}%)",
+                    'action': '建議檢查整體系統配置'
+                })
+            elif summary['validity_rate'] == 100:
+                summary['recommendations'].append({
+                    'type': 'success',
+                    'message': '所有錄製檔案品質優良',
+                    'action': '繼續保持當前設定'
+                })
+            
+            return summary
+            
+        except Exception as e:
+            logging.error(f"獲取錄製品質總結時發生錯誤: {str(e)}")
+            return {
+                'total_files': 0,
+                'valid_fps_files': 0,
+                'invalid_fps_files': 0,
+                'validity_rate': 0.0,
+                'avg_fps': 0.0,
+                'fps_range': (0.0, 0.0),
+                'recommendations': [{
+                    'type': 'error',
+                    'message': '無法獲取錄製品質資訊',
+                    'action': '檢查錄製目錄是否存在'
+                }]
+            }
+    
+    def quick_fps_check(self, file_path: str) -> Tuple[bool, float]:
+        """快速檢查檔案FPS是否符合280目標"""
+        try:
+            from pathlib import Path
+            return self.recording_validator.quick_fps_check(Path(file_path))
+        except Exception as e:
+            logging.error(f"快速FPS檢查失敗: {str(e)}")
+            return False, 0.0
+    
     def get_video_player_status(self) -> dict:
         """獲取視頻播放狀態"""
         return self.video_player.get_playback_status()
@@ -435,18 +927,18 @@ class MainController:
     def start_batch_detection(self):
         """開始批次檢測模式 - 支持視頻回放模式"""
         try:
-            # 🎯 關鍵修復：根據模式啟動不同的檢測處理器
+            # 🎯 優化：根據模式啟動不同的檢測處理器
             if self.current_mode == 'playback':
-                # 🎯 視頻回放模式：啟動同步檢測處理器
+                # 🎯 視頻回放模式：使用非同步模式避免提交失敗
                 if not self.detection_processor.is_processing:
-                    # 設置為同步模式（算法調整用途）
-                    self.detection_processor.set_sync_mode(True)
+                    # 🎯 修復：使用非同步模式，提高視頻回放流暢度
+                    self.detection_processor.set_sync_mode(False)
                     self.detection_processor.start_processing()
-                    logging.info("✅ 視頻回放同步檢測已啟動")
+                    logging.info("✅ 視頻回放非同步檢測已啟動（避免幀提交失敗）")
                 else:
-                    # 確保已在運行的處理器也是同步模式
-                    self.detection_processor.set_sync_mode(True)
-                    logging.info("🔄 視頻回放檢測處理器已在運行（切換為同步模式）")
+                    # 確保已在運行的處理器也是非同步模式
+                    self.detection_processor.set_sync_mode(False)
+                    logging.info("🔄 視頻回放檢測處理器已在運行（切換為非同步模式）")
                 return True
                 
             elif self.current_mode == 'live':
@@ -470,22 +962,53 @@ class MainController:
             return False
     
     def stop_batch_detection(self):
-        """停止批次檢測模式 - 支持視頻回放模式"""
+        """停止批次檢測模式 - 正確的線程清理版本"""
         try:
+            logging.info(f"🛑 開始停止批次檢測 (模式: {self.current_mode})")
+            
             # 🎯 關鍵修復：根據模式停止不同的檢測處理器
             if self.current_mode == 'playback':
-                # 視頻回放模式：停止檢測處理器
+                # 視頻回放模式：只停止檢測處理器，保持視頻播放繼續
                 if self.detection_processor.is_processing:
                     self.detection_processor.stop_processing()
-                    logging.info("⏹️ 視頻回放批次檢測已停止")
+                    logging.info("⏹️ 視頻回放批次檢測已停止 - 視頻播放繼續")
                 else:
                     logging.info("💭 視頻回放檢測處理器未運行")
+                # 🔧 重要：不要停止視頻播放器，讓用戶繼續控制視頻
                 return True
                 
             elif self.current_mode == 'live':
-                # 實時相機模式：無需特殊處理（相機持續運行）
-                logging.info("⏹️ 相機批次檢測模式已停止")
-                return True
+                # 🔧 實時相機模式：必須停止相機捕獲線程
+                success = True
+                
+                # 停止相機捕獲
+                if self.camera_model and self.camera_model.is_grabbing:
+                    logging.info("🎥 停止相機捕獲線程...")
+                    self.camera_model.stop_capture()
+                    
+                    # 🔧 確認捕獲是否真正停止
+                    import time
+                    time.sleep(0.5)  # 給線程時間清理
+                    
+                    if self.camera_model.is_grabbing:
+                        logging.warning("⚠️ 相機捕獲未完全停止")
+                        success = False
+                    else:
+                        logging.info("✅ 相機捕獲已完全停止")
+                else:
+                    logging.info("💭 相機捕獲未在運行")
+                
+                # 停止主處理循環
+                if self.is_processing:
+                    logging.info("🔄 停止主處理循環...")
+                    self._stop_processing()
+                
+                if success:
+                    logging.info("✅ 實時模式批次檢測已完全停止")
+                else:
+                    logging.error("❌ 實時模式停止存在問題")
+                
+                return success
                 
             else:
                 logging.warning(f"不支持的模式: {self.current_mode}")
@@ -544,7 +1067,7 @@ class MainController:
                     # 第一次獲取失敗時的診斷日誌
                     if self.total_processed_frames == 0:
                         logging.warning("處理循環：等待第一幀")
-                    time.sleep(0.005)  # 🚀 減少延遲50%
+                    pass  # 🚀🚀 206fps模式：移除所有延遲
                     continue
                 
                 # 執行檢測
@@ -567,19 +1090,43 @@ class MainController:
                         while len(self.frame_times) > 100:
                             self.frame_times.pop(0)
                 
-                # 🚀 極速模式：降低通知頻率提升性能
-                should_notify = (
-                    self.total_processed_frames == 1 or  # 第一幀
-                    self.total_processed_frames % 5 == 0  # 每5幀通知一次（大幅減少UI更新）
-                )
+                # 🚀🚀 真實206fps模式：移除所有人工限制
+                should_notify = True  # 每幀都通知，不限制更新頻率
                 
                 if should_notify:
+                    # 🎯 包裝計數系統：檢測物件數量 + ROI穿越計數 + 包裝邏輯
+                    frame_object_count = len(objects)  # 每幀檢測物件數
+                    total_crossing_count = 0  # 累加穿越計數
+                    
+                    # 如果使用background方法，獲取ROI穿越計數
+                    if (hasattr(self.detection_model, 'method_name') and 
+                        self.detection_model.method_name == 'background'):
+                        try:
+                            current_method = self.detection_model.current_method
+                            if hasattr(current_method, 'get_crossing_count'):
+                                total_crossing_count = current_method.get_crossing_count()
+                                
+                                # 🔍 調試：每20幀記錄一次穿越計數
+                                if self.total_processed_frames % 20 == 0:
+                                    logging.debug(f"🎯 穿越計數: {total_crossing_count}, 檢測物件: {frame_object_count}")
+                                
+                                # 🎯 更新包裝計數系統
+                                self._update_package_counting(total_crossing_count)
+                                
+                        except Exception as count_error:
+                            logging.debug(f"獲取穿越計數錯誤: {str(count_error)}")
+                    
                     self.notify_views('frame_processed', {
                         'frame': result_frame,
                         'objects': objects,
-                        'object_count': len(objects),
+                        'object_count': frame_object_count,  # 右側面板顯示每幀物件數
+                        'crossing_count': total_crossing_count,  # 影像中顯示累加計數
+                        'total_detected_count': self.total_detected_count,  # 當前計數：總累計
+                        'current_segment_count': self.current_segment_count,  # 目前計數：當前段數量
+                        'package_count': self.package_count,  # 包裝數
                         'processing_fps': self.processing_fps,
-                        'detection_fps': getattr(self.detection_model, 'detection_fps', 0)
+                        'detection_fps': getattr(self.detection_model, 'detection_fps', 0),
+                        'method_name': getattr(self.detection_model, 'method_name', 'unknown')
                     })
                     
                     # 第一幀日誌
@@ -591,7 +1138,7 @@ class MainController:
                 
             except Exception as e:
                 logging.error(f"處理循環錯誤: {str(e)}")
-                time.sleep(0.001)  # 🚀 錯誤時最小延遲
+                pass  # 🚀🚀 206fps模式：移除錯誤延遲
     
     # ==================== 系統控制 ====================
     
@@ -923,6 +1470,127 @@ class MainController:
         
         return health_status
     
+    def _on_memory_warning(self, memory_info: Dict[str, Any]):
+        """記憶體警告回調"""
+        memory_mb = memory_info['rss_bytes'] / (1024 * 1024)
+        logging.warning(f"⚠️ 記憶體使用警告: {memory_mb:.1f}MB")
+        
+        # 通知UI
+        self.notify_views('memory_warning', {
+            'memory_mb': memory_mb,
+            'memory_percent': memory_info['percent'],
+            'available_mb': memory_info['available_mb']
+        })
+        
+        # 自動清理建議
+        if hasattr(self, 'detection_processor'):
+            queue_status = self.detection_processor.get_queue_status()
+            if queue_status['frame_queue_size'] > 10:
+                logging.info("🧹 建議：清理檢測處理器隊列")
+        
+        # 強制垃圾回收
+        if hasattr(self, 'memory_monitor'):
+            gc_result = self.memory_monitor.force_gc()
+            if gc_result['memory_freed_mb'] > 1.0:
+                logging.info(f"🧹 垃圾回收釋放了 {gc_result['memory_freed_mb']:.1f}MB")
+    
+    def _on_memory_critical(self, memory_info: Dict[str, Any]):
+        """記憶體緊急警告回調"""
+        memory_mb = memory_info['rss_bytes'] / (1024 * 1024)
+        logging.error(f"🚨 記憶體使用緊急警告: {memory_mb:.1f}MB")
+        
+        # 通知UI緊急狀況
+        self.notify_views('memory_critical', {
+            'memory_mb': memory_mb,
+            'memory_percent': memory_info['percent'],
+            'available_mb': memory_info['available_mb']
+        })
+        
+        # 緊急措施：暫停處理
+        if self.is_processing:
+            logging.warning("🛑 記憶體不足，暫停處理")
+            self.stop_capture()
+            
+        # 強制清理
+        if hasattr(self, 'detection_processor'):
+            self.detection_processor._clear_queues()
+            logging.info("🧹 緊急清理檢測處理器隊列")
+    
+    def _on_performance_warning(self, alert_data: Dict[str, Any]):
+        """性能警告回調"""
+        metric_type = alert_data['metric_type']
+        value = alert_data['value']
+        
+        logging.warning(f"⚠️ 性能警告: {metric_type} = {value}")
+        
+        # 通知UI
+        self.notify_views('performance_warning', alert_data)
+        
+        # 根據警告類型採取措施
+        if metric_type == 'fps' and value < 200:
+            logging.info("💡 建議：考慮降低檢測解析度或啟用跳幀")
+        elif metric_type == 'latency' and value > 50:
+            logging.info("💡 建議：檢查檢測算法參數或啟用GPU加速")
+        elif metric_type == 'cpu' and value > 80:
+            logging.info("💡 建議：減少並行處理線程或降低UI更新頻率")
+    
+    def _on_performance_critical(self, alert_data: Dict[str, Any]):
+        """性能緊急警告回調"""
+        metric_type = alert_data['metric_type']
+        value = alert_data['value']
+        
+        logging.error(f"🚨 性能緊急警告: {metric_type} = {value}")
+        
+        # 通知UI緊急狀況
+        self.notify_views('performance_critical', alert_data)
+        
+        # 緊急措施
+        if metric_type == 'fps' and value < 150:
+            # 自動啟用跳幀模式
+            logging.warning("🛑 自動啟用跳幀模式以提升性能")
+            # 實際的跳幀實現需要在具體的處理邏輯中完成
+    
+    def _on_performance_optimization(self, optimization_data: Dict[str, Any]):
+        """性能優化回調"""
+        optimizations = optimization_data['optimizations']
+        
+        logging.info(f"🔧 性能自動優化: {', '.join(optimizations)}")
+        
+        # 通知UI優化動作
+        self.notify_views('performance_optimization', optimization_data)
+        
+        # 記錄優化統計
+        if hasattr(self, 'optimization_count'):
+            self.optimization_count += 1
+        else:
+            self.optimization_count = 1
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """獲取記憶體統計信息"""
+        if hasattr(self, 'memory_monitor'):
+            return self.memory_monitor.get_memory_stats()
+        else:
+            return {'error': '記憶體監控器未初始化'}
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """獲取性能統計信息"""
+        if hasattr(self, 'performance_monitor'):
+            return self.performance_monitor.get_performance_summary()
+        else:
+            return {'error': '性能監控器未初始化'}
+    
+    def start_performance_monitoring(self):
+        """啟動性能監控"""
+        if hasattr(self, 'performance_monitor'):
+            self.performance_monitor.start_monitoring()
+            logging.info("🚀 性能監控已啟動")
+    
+    def stop_performance_monitoring(self):
+        """停止性能監控"""
+        if hasattr(self, 'performance_monitor'):
+            self.performance_monitor.stop_monitoring()
+            logging.info("🛑 性能監控已停止")
+    
     def cleanup(self):
         """清理資源 - 增強版本"""
         try:
@@ -934,6 +1602,14 @@ class MainController:
             # 斷開相機
             self.disconnect_camera()
             
+            # 🔍 停止記憶體監控
+            if hasattr(self, 'memory_monitor'):
+                self.memory_monitor.cleanup()
+            
+            # 🧹 清理檢測處理器
+            if hasattr(self, 'detection_processor'):
+                self.detection_processor.cleanup()
+            
             # 清理觀察者列表
             if hasattr(self, 'view_observers'):
                 self.view_observers.clear()
@@ -942,6 +1618,315 @@ class MainController:
         except Exception as e:
             logging.error(f"清理資源錯誤: {str(e)}")
     
+    # ==================== 調試分析功能 ====================
+    
+    def enable_debug_image_save(self, enabled: bool = True):
+        """啟用或禁用調試圖片保存功能"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'enable_debug_save'):
+                detection_method.enable_debug_save(enabled)
+                
+                action = "啟用" if enabled else "禁用"
+                self.notify_views('debug_save_status', {
+                    'enabled': enabled,
+                    'message': f"調試圖片保存已{action}"
+                })
+                
+                logging.info(f"📸 調試圖片保存已{action}")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援調試圖片保存")
+                return False
+                
+        except Exception as e:
+            logging.error(f"設置調試圖片保存錯誤: {str(e)}")
+            return False
+    
+    def get_debug_status(self) -> Dict[str, Any]:
+        """獲取調試狀態信息"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'get_debug_info'):
+                return detection_method.get_debug_info()
+            else:
+                return {
+                    'debug_enabled': False,
+                    'frames_saved': 0,
+                    'max_frames': 0,
+                    'save_directory': '',
+                    'error': '當前檢測方法不支援調試功能'
+                }
+        except Exception as e:
+            logging.error(f"獲取調試狀態錯誤: {str(e)}")
+            return {'error': str(e)}
+    
+    def clear_debug_images(self):
+        """清理調試圖片"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, '_cleanup_debug_folder'):
+                detection_method._cleanup_debug_folder()
+                logging.info("🗑️ 調試圖片已清理")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援調試圖片清理")
+                return False
+        except Exception as e:
+            logging.error(f"清理調試圖片錯誤: {str(e)}")
+            return False
+    
+    def trigger_manual_debug_save(self):
+        """手動觸發調試圖片保存 - 用於捕捉特定畫面"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'trigger_manual_save'):
+                detection_method.trigger_manual_save()
+                logging.info("🔧 手動觸發調試保存")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援手動觸發保存")
+                return False
+        except Exception as e:
+            logging.error(f"手動觸發調試保存錯誤: {str(e)}")
+            return False
+    
+    def set_debug_start_frame(self, start_frame: int = 2500):
+        """設定調試圖片保存的起始幀"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'set_custom_start_frame'):
+                detection_method.set_custom_start_frame(start_frame)
+                
+                self.notify_views('debug_start_frame_set', {
+                    'start_frame': start_frame,
+                    'message': f"調試圖片將從第{start_frame}幀開始保存"
+                })
+                
+                logging.info(f"🎯 調試保存起始幀已設定: {start_frame}")
+                return True
+            else:
+                logging.warning("當前檢測方法不支援設定起始幀")
+                return False
+        except Exception as e:
+            logging.error(f"設定調試起始幀錯誤: {str(e)}")
+            return False
+    
+    def cleanup_early_debug_images(self, before_frame: int = None):
+        """清理指定幀數之前的調試圖片"""
+        try:
+            detection_method = self.detection_model.get_detection_method()
+            if hasattr(detection_method, 'cleanup_early_debug_images'):
+                deleted_count = detection_method.cleanup_early_debug_images(before_frame)
+                
+                self.notify_views('early_debug_cleaned', {
+                    'deleted_count': deleted_count,
+                    'before_frame': before_frame or 2500,
+                    'message': f"已清理{deleted_count}個早期調試圖片"
+                })
+                
+                logging.info(f"🗑️ 已清理{deleted_count}個早期調試圖片")
+                return deleted_count
+            else:
+                logging.warning("當前檢測方法不支援清理調試圖片")
+                return 0
+        except Exception as e:
+            logging.error(f"清理早期調試圖片錯誤: {str(e)}")
+            return 0
+    
+    def apply_small_component_optimization(self, start_frame: int = 2500, cleanup_early_images: bool = True):
+        """應用小零件檢測優化設置
+        
+        Args:
+            start_frame: 調試圖片保存起始幀數 (預設2500)
+            cleanup_early_images: 是否清理早期調試圖片 (預設True)
+        """
+        try:
+            logging.info(f"🎯 開始應用小零件檢測優化...")
+            
+            # 1. 設定調試圖片起始幀
+            success = self.set_debug_start_frame(start_frame)
+            if success:
+                logging.info(f"✅ 已設定調試圖片從第{start_frame}幀開始保存")
+            
+            # 2. 清理早期調試圖片 (如果需要)
+            if cleanup_early_images:
+                deleted_count = self.cleanup_early_debug_images(start_frame)
+                if deleted_count > 0:
+                    logging.info(f"✅ 已清理{deleted_count}個第{start_frame}幀之前的調試圖片")
+            
+            # 3. 通知UI優化已完成
+            self.notify_views('small_component_optimization_applied', {
+                'start_frame': start_frame,
+                'cleanup_performed': cleanup_early_images,
+                'deleted_count': deleted_count if cleanup_early_images else 0,
+                'message': f"小零件檢測優化已應用 - 從第{start_frame}幀開始保存調試圖片"
+            })
+            
+            logging.info("✅ 小零件檢測優化設置完成")
+            logging.info("📋 優化內容:")
+            logging.info("   - 增大追蹤容差適應小零件移動")
+            logging.info("   - 降低最小追蹤幀數要求 (3→2)")
+            logging.info("   - 降低移動像素要求 (10→3)")
+            logging.info("   - 降低穿越和置信度閾值")
+            logging.info(f"   - 調試圖片從第{start_frame}幀開始保存")
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"應用小零件檢測優化錯誤: {str(e)}")
+            self.notify_views('system_error', f'小零件檢測優化失敗: {str(e)}')
+            return False
+    
+    # ==================== 🚀 超高速檢測模式 ====================
+    
+    def enable_ultra_high_speed_detection(self, enabled: bool = True, target_fps: int = None):
+        """啟用超高速檢測模式 - 專為206-376fps設計"""
+        # 🚀 根據相機規格自動設定目標FPS
+        if target_fps is None:
+            # 根據相機模型推斷最適FPS
+            if hasattr(self.camera_model, 'current_fps') and self.camera_model.current_fps > 0:
+                # 使用當前相機FPS作為目標，檢測速度比相機快15%
+                target_fps = int(self.camera_model.current_fps * 1.15)
+            else:
+                # 預設使用280fps (中等規格)
+                target_fps = 280
+        
+        # 🔧 確保檢測FPS高於影像FPS
+        if target_fps < 200:
+            target_fps = 280  # 最低280fps以確保性能
+        
+        self.detection_model.enable_ultra_high_speed_mode(enabled, target_fps)
+        
+        if enabled:
+            logging.info(f"🚀 主控制器啟用超高速檢測 - 目標: {target_fps}fps")
+            # 🔧 自動關閉不必要的功能以提升性能
+            self._optimize_for_high_speed()
+        else:
+            logging.info("🔧 主控制器禁用超高速檢測，恢復標準模式")
+            self._restore_standard_mode()
+    
+    def _optimize_for_high_speed(self):
+        """為高速模式優化系統設置"""
+        try:
+            # 🚀 減少記憶體監控頻率以節省性能
+            if hasattr(self.memory_monitor, 'check_interval'):
+                self.memory_monitor.check_interval = 60.0  # 從30秒改為60秒
+            
+            # 🚀 暫停不必要的設備監控
+            if hasattr(self.camera_model, 'device_monitor_enabled'):
+                self.camera_model.device_monitor_enabled = False
+                
+            logging.info("🚀 系統已優化以支援超高速檢測")
+        except Exception as e:
+            logging.warning(f"高速優化設置部分失敗: {str(e)}")
+    
+    def _restore_standard_mode(self):
+        """恢復標準模式設置"""
+        try:
+            # 🔧 恢復記憶體監控頻率
+            if hasattr(self.memory_monitor, 'check_interval'):
+                self.memory_monitor.check_interval = 30.0
+            
+            # 🔧 恢復設備監控
+            if hasattr(self.camera_model, 'device_monitor_enabled'):
+                self.camera_model.device_monitor_enabled = True
+                
+            logging.info("🔧 系統已恢復標準模式設置")
+        except Exception as e:
+            logging.warning(f"標準模式恢復部分失敗: {str(e)}")
+    
+    def is_ultra_high_speed_enabled(self) -> bool:
+        """檢查是否啟用超高速模式"""
+        return self.detection_model.is_ultra_high_speed_enabled()
+    
+    def auto_configure_detection_speed(self):
+        """根據相機規格自動配置檢測速度"""
+        try:
+            if hasattr(self.camera_model, 'current_fps') and self.camera_model.current_fps > 0:
+                camera_fps = self.camera_model.current_fps
+                
+                # 🚀 自動判斷是否需要高速模式
+                if camera_fps >= 200:  # 高速相機
+                    # 檢測FPS應該比相機FPS高15%以確保每幀都被處理
+                    target_detection_fps = int(camera_fps * 1.15)
+                    self.enable_ultra_high_speed_detection(True, target_detection_fps)
+                    logging.info(f"🚀 檢測到高速相機({camera_fps:.1f}fps)，自動啟用超高速檢測模式")
+                else:
+                    # 低速相機使用標準模式
+                    self.enable_ultra_high_speed_detection(False)
+                    logging.info(f"🎯 檢測到標準相機({camera_fps:.1f}fps)，使用標準檢測模式")
+            else:
+                logging.warning("⚠️ 無法獲取相機FPS，使用預設檢測模式")
+        except Exception as e:
+            logging.error(f"自動配置檢測速度失敗: {str(e)}")
+    
+    def get_detection_speed_info(self) -> Dict[str, Any]:
+        """獲取檢測速度相關信息"""
+        try:
+            detection_stats = self.detection_model.get_stats()
+            is_high_speed = self.is_ultra_high_speed_enabled()
+            
+            camera_fps = getattr(self.camera_model, 'current_fps', 0)
+            detection_fps = detection_stats.get('detection_fps', 0)
+            
+            # 計算性能比率
+            speed_ratio = detection_fps / camera_fps if camera_fps > 0 else 0
+            
+            return {
+                'ultra_high_speed_enabled': is_high_speed,
+                'camera_fps': camera_fps,
+                'detection_fps': detection_fps,
+                'speed_ratio': speed_ratio,
+                'performance_grade': self._get_speed_grade(speed_ratio, camera_fps),
+                'ultra_high_speed_status': detection_stats.get('ultra_high_speed', {}),
+                'recommendations': self._get_speed_recommendations(camera_fps, detection_fps, is_high_speed)
+            }
+        except Exception as e:
+            logging.error(f"獲取檢測速度信息錯誤: {str(e)}")
+            return {'error': str(e)}
+    
+    def _get_speed_grade(self, ratio: float, camera_fps: float) -> str:
+        """獲取速度等級評分"""
+        if camera_fps >= 300:  # 超高速相機
+            if ratio >= 1.1:
+                return "🏆 卓越 (適用376fps)"
+            elif ratio >= 1.05:
+                return "🎉 優秀"
+            else:
+                return "⚠️ 需要啟用超高速模式"
+        elif camera_fps >= 200:  # 高速相機
+            if ratio >= 1.1:
+                return "🏆 卓越 (適用280fps)"
+            elif ratio >= 1.0:
+                return "✅ 良好"
+            else:
+                return "⚠️ 建議啟用高速模式"
+        else:  # 標準相機
+            if ratio >= 1.0:
+                return "✅ 良好 (適用206fps)"
+            else:
+                return "🔧 標準模式即可"
+    
+    def _get_speed_recommendations(self, camera_fps: float, detection_fps: float, is_high_speed: bool) -> List[str]:
+        """獲取速度優化建議"""
+        recommendations = []
+        
+        if camera_fps >= 300 and not is_high_speed:
+            recommendations.append("🚀 建議啟用376fps超高速模式")
+        elif camera_fps >= 250 and not is_high_speed:
+            recommendations.append("🚀 建議啟用280fps高速模式")
+        elif camera_fps >= 200 and not is_high_speed:
+            recommendations.append("🚀 建議啟用206fps模式")
+        
+        if detection_fps < camera_fps:
+            recommendations.append("⚠️ 檢測速度低於相機速度，可能丟幀")
+        
+        if is_high_speed and camera_fps < 150:
+            recommendations.append("🔧 相機速度較低，可考慮使用標準模式")
+            
+        return recommendations
+
     def __del__(self):
         """析構函數 - 安全版本"""
         try:
