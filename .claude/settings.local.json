@@ -9,7 +9,10 @@
       "Bash(rm:*)",
       "Bash(find:*)",
       "Bash(source:*)",
-      "Bash(conda activate:*)"
+      "Bash(conda activate:*)",
+      "Bash(tree:*)",
+      "Bash(cat:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   },

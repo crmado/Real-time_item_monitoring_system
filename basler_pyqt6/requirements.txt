@@ -1,0 +1,22 @@
+# PyQt6 桌面應用依賴
+
+# PyQt6 核心
+PyQt6==6.6.1
+PyQt6-Qt6==6.6.1
+
+# 圖像處理
+opencv-python-headless==4.10.0.84
+numpy==1.24.4
+Pillow==10.4.0
+
+# Basler 相機驅動
+pypylon==3.0.1
+
+# 系統監控
+psutil==6.0.0
+
+# 打包工具
+pyinstaller==6.3.0
+
+# 配置管理
+PyYAML==6.0.1
