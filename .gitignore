@@ -46,6 +46,7 @@ basler_pyqt6/recordings/*.avi
 # 系統文件
 .DS_Store
 Thumbs.db
+recordings/
 
 # 打包文件
 *.spec
