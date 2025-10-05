@@ -23,31 +23,45 @@ class DetectionController:
 
     def __init__(self):
         self.enabled = False
-        self.method = DetectionMethod.CIRCLE
+        self.method = DetectionMethod.BACKGROUND  # 改用背景減除法（與master分支一致）
         self.detected_objects: List[Dict] = []
 
-        # 檢測參數
+        # 檢測參數（基於master分支優化）
         self.params = {
-            'min_area': 100,
-            'max_area': 5000,
+            # 背景減除參數（針對小零件優化）
+            'background': {
+                'min_area': 2,           # 極小的最小面積（檢測微小零件）
+                'max_area': 3000,        # 最大面積
+                'var_threshold': 3,      # 極低的變化閾值（高靈敏度）
+                'history': 1000,         # 背景歷史幀數
+                'learning_rate': 0.001,  # 學習率
+                'binary_threshold': 1,   # 二值化閾值
+                'morph_kernel_size': 3,  # 形態學核大小
+            },
+            # 圓形檢測參數（備用）
             'circle': {
                 'dp': 1.2,
-                'min_dist': 20,
-                'param1': 50,
-                'param2': 30,
+                'min_dist': 25,
+                'param1': 100,
+                'param2': 40,
                 'min_radius': 5,
-                'max_radius': 100
+                'max_radius': 80,
+                'min_area': 100,    # 最小面積過濾
+                'max_area': 10000   # 最大面積過濾
             },
+            # 輪廓檢測參數（備用）
             'contour': {
                 'threshold': 127,
-                'kernel_size': 3
+                'kernel_size': 3,
+                'min_area': 100,
+                'max_area': 10000
             }
         }
 
         # 背景減除器（用於小零件檢測）
         self.bg_subtractor = None
 
-        logger.info("✅ 檢測控制器初始化完成")
+        logger.info("✅ 檢測控制器初始化完成（使用背景減除法）")
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
         """
@@ -102,13 +116,16 @@ class DetectionController:
         objects = []
         result_frame = frame.copy() if len(frame.shape) == 3 else cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
+        # 使用圓形檢測參數
+        circle_params = self.params['circle']
+
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
 
             for i, (x, y, r) in enumerate(circles):
                 area = np.pi * r * r
 
-                if self.params['min_area'] <= area <= self.params['max_area']:
+                if circle_params['min_area'] <= area <= circle_params['max_area']:
                     # 繪製圓形
                     cv2.circle(result_frame, (x, y), r, (0, 255, 0), 2)
                     cv2.circle(result_frame, (x, y), 2, (0, 0, 255), 3)
@@ -158,10 +175,13 @@ class DetectionController:
         objects = []
         result_frame = frame.copy() if len(frame.shape) == 3 else cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
+        # 使用輪廓檢測參數
+        contour_params = self.params['contour']
+
         for i, contour in enumerate(contours):
             area = cv2.contourArea(contour)
 
-            if self.params['min_area'] <= area <= self.params['max_area']:
+            if contour_params['min_area'] <= area <= contour_params['max_area']:
                 # 計算邊界框
                 x, y, w, h = cv2.boundingRect(contour)
 
@@ -189,22 +209,34 @@ class DetectionController:
         return result_frame, objects
 
     def _detect_background(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
-        """背景減除檢測（用於小零件）"""
-        # 初始化背景減除器
+        """背景減除檢測（用於小零件）- 使用master分支優化參數"""
+        bg_params = self.params['background']
+
+        # 初始化背景減除器（使用master分支的高靈敏度參數）
         if self.bg_subtractor is None:
             self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-                history=500,
-                varThreshold=16,
-                detectShadows=False
+                history=bg_params['history'],           # 1000幀歷史
+                varThreshold=bg_params['var_threshold'], # 極低閾值(3)提高靈敏度
+                detectShadows=False                      # 不檢測陰影
             )
+            logger.info(f"✅ 背景減除器初始化: history={bg_params['history']}, varThreshold={bg_params['var_threshold']}")
 
-        # 應用背景減除
-        fg_mask = self.bg_subtractor.apply(frame)
+        # 應用背景減除（使用較低的學習率保持背景穩定）
+        fg_mask = self.bg_subtractor.apply(frame, learningRate=bg_params['learning_rate'])
 
-        # 形態學處理
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
+        # 二值化處理（使用極低閾值檢測微小變化）
+        _, fg_mask = cv2.threshold(
+            fg_mask,
+            bg_params['binary_threshold'],  # 極低閾值(1)
+            255,
+            cv2.THRESH_BINARY
+        )
+
+        # 形態學處理（去除噪點，保留小零件）
+        kernel_size = bg_params['morph_kernel_size']
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)   # 去除小噪點
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)  # 填充小孔洞
 
         # 查找輪廓
         contours, _ = cv2.findContours(
@@ -219,17 +251,25 @@ class DetectionController:
         for i, contour in enumerate(contours):
             area = cv2.contourArea(contour)
 
-            if area > 50:  # 最小面積
+            # 使用master分支的面積範圍（2-3000）
+            if bg_params['min_area'] <= area <= bg_params['max_area']:
                 x, y, w, h = cv2.boundingRect(contour)
 
-                # 繪製邊界框
+                # 繪製綠色邊界框
                 cv2.rectangle(result_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                # 計算中心點
+                cx = x + w // 2
+                cy = y + h // 2
+
+                # 繪製中心點
+                cv2.circle(result_frame, (cx, cy), 2, (0, 0, 255), -1)
 
                 objects.append({
                     'id': i,
                     'type': 'background',
-                    'x': int(x + w // 2),
-                    'y': int(y + h // 2),
+                    'x': int(cx),
+                    'y': int(cy),
                     'area': float(area),
                     'bbox': [int(x), int(y), int(w), int(h)]
                 })

@@ -24,15 +24,18 @@ class VideoDisplayWidget(QWidget):
         # 創建圖像顯示標籤
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setScaledContents(False)  # 關鍵：不自動縮放內容
         self.image_label.setStyleSheet("""
             QLabel {
-                background-color: #1a1a1a;
-                border: 2px solid #3d3d3d;
-                border-radius: 5px;
+                background-color: #0a0e27;
+                border: 2px solid #1f3a5f;
+                border-radius: 8px;
+                color: #00d4ff;
+                font-size: 12pt;
             }
         """)
         self.image_label.setText("等待相機連接...")
-        self.image_label.setMinimumSize(640, 480)
+        self.image_label.setMinimumSize(320, 240)
 
         layout.addWidget(self.image_label)
 
@@ -74,8 +77,16 @@ class VideoDisplayWidget(QWidget):
 
             # 縮放以適應窗口大小（保持寬高比）
             pixmap = QPixmap.fromImage(q_image)
+
+            # 使用 Widget 的實際大小而非 label 的大小
+            target_size = self.size()
+            # 減去邊框和邊距
+            target_width = max(target_size.width() - 10, 100)
+            target_height = max(target_size.height() - 10, 100)
+
             scaled_pixmap = pixmap.scaled(
-                self.image_label.size(),
+                target_width,
+                target_height,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )

@@ -21,6 +21,14 @@ UPDATE_CHECK_INTERVAL = 86400  # 24 小時檢查一次（秒）
 BUILD_DATE = "2024-10-04"
 BUILD_TYPE = "release"  # release / beta / alpha
 
+# 開發模式配置（通過環境變數控制）
+# 使用方式: export DEBUG_MODE=true && python basler_pyqt6/main_v2.py
+# DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() in ('true', '1', 'yes')
+DEBUG_MODE = True
+
+# 測試資料目錄
+TEST_DATA_DIR = "basler_pyqt6/testData/新工業相機收集資料"
+
 
 def get_version_string() -> str:
     """獲取版本字符串"""

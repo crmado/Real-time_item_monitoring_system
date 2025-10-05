@@ -66,6 +66,7 @@ releases/
 .pytest_cache/
 .coverage
 htmlcov/
+testData/
 
 # 文檔和範例（非必要）
 DEVELOPMENT_GUIDE.md
@@ -76,3 +77,7 @@ update_server_example/
 # 臨時打包文件
 *.tar.gz
 *.zip
+
+# 調試配置
+basler_pyqt6/configs/
+basler_pyqt6/screenshots/

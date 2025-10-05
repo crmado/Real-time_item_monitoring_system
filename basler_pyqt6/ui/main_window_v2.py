@@ -8,7 +8,7 @@ import cv2
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QStatusBar, QLabel, QFileDialog, QMessageBox, QScrollArea
+    QSplitter, QStatusBar, QLabel, QFileDialog, QMessageBox, QScrollArea, QTabWidget, QPushButton
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
@@ -18,6 +18,7 @@ from basler_pyqt6.ui.widgets.video_display import VideoDisplayWidget
 from basler_pyqt6.ui.widgets.detection_control import DetectionControlWidget
 from basler_pyqt6.ui.widgets.recording_control import RecordingControlWidget
 from basler_pyqt6.ui.widgets.system_monitor import SystemMonitorWidget
+from basler_pyqt6.ui.widgets.debug_panel import DebugPanelWidget
 from basler_pyqt6.ui.dialogs.update_dialog import UpdateDialog
 
 # 導入核心模塊
@@ -25,6 +26,7 @@ from basler_pyqt6.core.source_manager import SourceManager, SourceType
 from basler_pyqt6.core.detection import DetectionController
 from basler_pyqt6.core.video_recorder import VideoRecorder
 from basler_pyqt6.core.updater import AutoUpdater
+from basler_pyqt6.version import DEBUG_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,12 @@ class MainWindowV2(QMainWindow):
         self.source_manager = SourceManager()
         self.detection_controller = DetectionController()
         self.video_recorder = VideoRecorder()
+
+        # 調試模式變量
+        if DEBUG_MODE:
+            self.debug_detection_count_history = []  # 檢測數量歷史
+            self.debug_frame_times = []  # 幀處理時間歷史
+
         self.init_ui()
 
     def init_ui(self):
@@ -60,55 +68,132 @@ class MainWindowV2(QMainWindow):
         self.video_display = VideoDisplayWidget()
         self.video_display.setMinimumSize(800, 600)
 
-        # ===== 右側控制面板（使用滾動區域） =====
-        # 創建滾動區域
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setMinimumWidth(380)  # 設置最小寬度，避免壓縮
+        # ===== 右側控制面板（分頁式設計） =====
+        # 創建分頁容器
+        tab_widget = QTabWidget()
+        tab_widget.setMinimumWidth(400)
 
-        # 右側面板內容
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setSpacing(15)  # 增加間距
-        right_layout.setContentsMargins(10, 10, 10, 10)
+        # ========== Tab 1: 相機設定 ==========
+        camera_settings_tab = QWidget()
+        camera_settings_layout = QVBoxLayout(camera_settings_tab)
+        camera_settings_layout.setSpacing(15)
+        camera_settings_layout.setContentsMargins(10, 10, 10, 10)
 
-        # 右上：原始相機即時畫面（小預覽）
+        # 相機控制組件
+        self.camera_control = CameraControlWidget()
+        camera_settings_layout.addWidget(self.camera_control)
+        camera_settings_layout.addStretch()
+
+        # ========== Tab 2: 檢測監控 ==========
+        monitoring_tab = QWidget()
+        monitoring_layout = QVBoxLayout(monitoring_tab)
+        monitoring_layout.setSpacing(15)
+        monitoring_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 原始畫面預覽（小）
         self.camera_preview = VideoDisplayWidget()
-        self.camera_preview.setFixedHeight(240)  # 調整為固定比例
-        self.camera_preview.setMinimumWidth(320)  # 設置最小寬度
+        self.camera_preview.setFixedHeight(200)
+        self.camera_preview.setMinimumWidth(320)
         self.camera_preview.setStyleSheet("""
             QWidget {
-                border: 2px solid #3498db;
-                border-radius: 5px;
-                background-color: #1a1a1a;
+                border: 2px solid #00d4ff;
+                border-radius: 8px;
+                background-color: #0a0e27;
             }
         """)
-        preview_label = QLabel("📹 原始相機畫面")
-        preview_label.setStyleSheet("font-weight: bold; color: #3498db; font-size: 12pt;")
-        right_layout.addWidget(preview_label)
-        right_layout.addWidget(self.camera_preview)
+        preview_label = QLabel("📹 原始畫面預覽")
+        preview_label.setStyleSheet("""
+            font-weight: bold;
+            color: #00d4ff;
+            font-size: 13pt;
+            padding: 5px 0px;
+            border-bottom: 2px solid #00d4ff;
+        """)
+        monitoring_layout.addWidget(preview_label)
+        monitoring_layout.addWidget(self.camera_preview)
 
-        # 右中：檢測控制按鈕
+        # 主要控制按鈕（一鍵啟動）
+        self.main_start_btn = QPushButton("🚀 開始檢測")
+        self.main_start_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #00d4ff, stop:1 #0099cc);
+                border: 2px solid #00ffff;
+                border-radius: 8px;
+                padding: 16px 24px;
+                color: #0a0e27;
+                font-weight: bold;
+                font-size: 14pt;
+                min-height: 50px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #00ffff, stop:1 #00d4ff);
+            }
+            QPushButton:pressed {
+                background: #0099cc;
+            }
+        """)
+        self.main_start_btn.clicked.connect(self.on_main_start_clicked)
+        monitoring_layout.addWidget(self.main_start_btn)
+
+        self.main_stop_btn = QPushButton("⏹️ 停止檢測")
+        self.main_stop_btn.setEnabled(False)
+        self.main_stop_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ef4444, stop:1 #dc2626);
+                border: 2px solid #fca5a5;
+                border-radius: 8px;
+                padding: 16px 24px;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 14pt;
+                min-height: 50px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ff5555, stop:1 #ef4444);
+            }
+        """)
+        self.main_stop_btn.clicked.connect(self.on_main_stop_clicked)
+        monitoring_layout.addWidget(self.main_stop_btn)
+
+        # 檢測控制
         self.detection_control = DetectionControlWidget()
-        right_layout.addWidget(self.detection_control)
+        monitoring_layout.addWidget(self.detection_control)
 
         # 錄影控制
         self.recording_control = RecordingControlWidget()
-        right_layout.addWidget(self.recording_control)
+        monitoring_layout.addWidget(self.recording_control)
 
-        # 相機控制
-        self.camera_control = CameraControlWidget()
-        right_layout.addWidget(self.camera_control)
-
-        # 右下：檢測資訊與系統監控
+        # 系統監控
         self.system_monitor = SystemMonitorWidget()
-        right_layout.addWidget(self.system_monitor)
+        monitoring_layout.addWidget(self.system_monitor)
 
-        right_layout.addStretch()
+        monitoring_layout.addStretch()
 
-        # 將右側面板設置到滾動區域
-        scroll_area.setWidget(right_panel)
+        # ========== Tab 3: 調試工具（僅開發模式） ==========
+        if DEBUG_MODE:
+            self.debug_panel = DebugPanelWidget()
+            # 稍後連接調試面板信號
+            logger.info("🛠️ 開發模式已啟用 - 調試工具可用")
+
+        # 添加分頁到 TabWidget
+        tab_widget.addTab(camera_settings_tab, "⚙️ 相機設定")
+        tab_widget.addTab(monitoring_tab, "📊 檢測監控")
+
+        if DEBUG_MODE:
+            tab_widget.addTab(self.debug_panel, "🛠️ 調試工具")
+
+        # 預設顯示「檢測監控」頁面
+        tab_widget.setCurrentIndex(1)
+
+        # 包裝在滾動區域中
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(tab_widget)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # 添加到分割器
         splitter.addWidget(self.video_display)
@@ -220,6 +305,21 @@ class MainWindowV2(QMainWindow):
         # 錄影控制
         self.recording_control.start_recording.connect(self.on_start_recording)
         self.recording_control.stop_recording.connect(self.on_stop_recording)
+
+        # 調試工具（僅開發模式）
+        if DEBUG_MODE:
+            self.debug_panel.load_test_video.connect(self.on_debug_load_video)
+            self.debug_panel.param_changed.connect(self.on_debug_param_changed)
+            self.debug_panel.reset_params.connect(self.on_debug_reset_params)
+            self.debug_panel.save_config.connect(self.on_debug_save_config)
+            self.debug_panel.load_config.connect(self.on_debug_load_config)
+            # 播放控制
+            self.debug_panel.play_video.connect(self.on_debug_play)
+            self.debug_panel.pause_video.connect(self.on_debug_pause)
+            self.debug_panel.prev_frame.connect(self.on_debug_prev_frame)
+            self.debug_panel.next_frame.connect(self.on_debug_next_frame)
+            self.debug_panel.jump_to_frame.connect(self.on_debug_jump_frame)
+            self.debug_panel.screenshot.connect(self.on_debug_screenshot)
 
     def load_video_file(self):
         """加載視頻文件"""
@@ -367,8 +467,290 @@ class MainWindowV2(QMainWindow):
         else:
             self.status_label.setText("錄製停止")
 
+    def on_main_start_clicked(self):
+        """主要啟動按鈕 - 一鍵啟動檢測（合併開始抓取 + 啟用檢測）"""
+        # 1. 開始視頻源（相機抓取或視頻播放）
+        if self.source_manager.source_type == SourceType.CAMERA:
+            # 檢查相機是否已連接
+            if not self.source_manager.camera_controller.camera:
+                QMessageBox.warning(self, "錯誤", "請先在「相機設定」頁面連接相機！")
+                return
+
+            self.source_manager.camera_controller.start_grabbing()
+            self.status_label.setText("🚀 開始檢測（相機模式）")
+            logger.info("啟動相機抓取")
+
+        elif self.source_manager.source_type == SourceType.VIDEO:
+            self.source_manager.video_player.start_playing(loop=True)
+            self.status_label.setText("🚀 開始檢測（視頻模式）")
+            logger.info("啟動視頻播放")
+        else:
+            QMessageBox.warning(self, "錯誤", "未選擇視頻源")
+            return
+
+        # 2. 自動啟用檢測
+        self.detection_controller.enable()
+        self.detection_control.enable_checkbox.setChecked(True)
+
+        # 3. 更新按鈕狀態
+        self.main_start_btn.setEnabled(False)
+        self.main_stop_btn.setEnabled(True)
+
+        # 4. 啟用錄製功能
+        self.recording_control.set_enabled(True)
+
+        logger.info("✅ 一鍵啟動完成：視頻源已啟動 + 檢測已啟用")
+
+    def on_main_stop_clicked(self):
+        """主要停止按鈕 - 停止所有檢測活動"""
+        # 1. 如果正在錄製，先停止錄製
+        if self.video_recorder.is_recording:
+            self.on_stop_recording()
+
+        # 2. 停止檢測
+        self.detection_controller.disable()
+        self.detection_control.enable_checkbox.setChecked(False)
+
+        # 3. 停止視頻源
+        if self.source_manager.source_type == SourceType.CAMERA:
+            self.source_manager.camera_controller.stop_grabbing()
+            logger.info("停止相機抓取")
+        elif self.source_manager.source_type == SourceType.VIDEO:
+            self.source_manager.video_player.stop_playing()
+            logger.info("停止視頻播放")
+
+        # 4. 更新按鈕狀態
+        self.main_start_btn.setEnabled(True)
+        self.main_stop_btn.setEnabled(False)
+
+        # 5. 禁用錄製功能
+        self.recording_control.set_enabled(False)
+
+        self.status_label.setText("⏹️ 已停止檢測")
+        logger.info("✅ 已停止所有檢測活動")
+
+    # ========== 調試工具方法（僅開發模式） ==========
+
+    def on_debug_load_video(self, file_path: str):
+        """調試：載入測試影片"""
+        if self.source_manager.use_video(file_path):
+            self.source_label.setText(f"源: 測試影片 - {Path(file_path).name}")
+            self.status_label.setText(f"✅ 測試影片已載入")
+            self.camera_control.set_video_mode(True)
+
+            # 自動啟動播放並啟用檢測
+            self.source_manager.video_player.start_playing(loop=True)
+            self.detection_controller.enable()
+
+            logger.info(f"調試模式：載入測試影片並啟動播放 {file_path}")
+        else:
+            QMessageBox.warning(self, "錯誤", "無法載入測試影片")
+
+    def on_debug_play(self):
+        """調試：播放視頻"""
+        if self.source_manager.source_type == SourceType.VIDEO:
+            self.source_manager.video_player.start_playing(loop=True)
+            self.status_label.setText("▶️ 播放中...")
+            logger.debug("調試：播放視頻")
+
+    def on_debug_pause(self):
+        """調試：暫停視頻"""
+        if self.source_manager.source_type == SourceType.VIDEO:
+            self.source_manager.video_player.stop_playing()
+            self.status_label.setText("⏸️ 已暫停")
+            logger.debug("調試：暫停視頻")
+
+    def on_debug_prev_frame(self):
+        """調試：前一幀"""
+        if self.source_manager.source_type == SourceType.VIDEO:
+            player = self.source_manager.video_player
+            if player.video_capture:
+                # 暫停播放
+                player.stop_playing()
+                # 回退一幀（當前-2，因為get_frame會+1）
+                current_pos = int(player.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
+                new_pos = max(0, current_pos - 2)
+                player.video_capture.set(cv2.CAP_PROP_POS_FRAMES, new_pos)
+                logger.debug(f"調試：跳轉到幀 {new_pos}")
+
+    def on_debug_next_frame(self):
+        """調試：下一幀"""
+        if self.source_manager.source_type == SourceType.VIDEO:
+            player = self.source_manager.video_player
+            if player.video_capture:
+                # 暫停播放
+                player.stop_playing()
+                # 自動前進一幀（get_frame會自動讀取下一幀）
+                logger.debug("調試：前進一幀")
+
+    def on_debug_jump_frame(self, frame_num: int):
+        """調試：跳轉到指定幀"""
+        if self.source_manager.source_type == SourceType.VIDEO:
+            player = self.source_manager.video_player
+            if player.video_capture:
+                player.video_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+                self.status_label.setText(f"⏭️ 跳轉到幀 {frame_num}")
+                logger.debug(f"調試：跳轉到幀 {frame_num}")
+
+    def on_debug_screenshot(self):
+        """調試：截圖當前幀"""
+        import datetime
+
+        # 獲取當前幀
+        frame = self.source_manager.get_frame()
+        if frame is None:
+            QMessageBox.warning(self, "錯誤", "無法獲取當前幀")
+            return
+
+        # 執行檢測
+        if self.detection_controller.enabled:
+            detected_frame, objects = self.detection_controller.process_frame(frame.copy())
+        else:
+            detected_frame = frame
+
+        # 創建截圖目錄
+        screenshot_dir = Path("basler_pyqt6/screenshots")
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+        # 生成文件名
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        original_path = screenshot_dir / f"original_{timestamp}.png"
+        detected_path = screenshot_dir / f"detected_{timestamp}.png"
+
+        # 保存截圖
+        cv2.imwrite(str(original_path), frame)
+        cv2.imwrite(str(detected_path), detected_frame)
+
+        self.status_label.setText(f"📸 截圖已儲存")
+        logger.info(f"調試：截圖已儲存 {original_path} 和 {detected_path}")
+        QMessageBox.information(
+            self, "截圖成功",
+            f"截圖已儲存至:\n• {original_path.name}\n• {detected_path.name}"
+        )
+
+    def on_debug_param_changed(self, param_name: str, value):
+        """調試：參數即時調整"""
+        # 更新檢測控制器參數
+        if param_name == 'min_area':
+            self.detection_controller.params['min_area'] = value
+        elif param_name == 'max_area':
+            self.detection_controller.params['max_area'] = value
+        elif param_name == 'circle_param2':
+            self.detection_controller.params['circle']['param2'] = value
+        elif param_name == 'circle_param1':
+            self.detection_controller.params['circle']['param1'] = value
+        elif param_name == 'min_radius':
+            self.detection_controller.params['circle']['min_radius'] = value
+        elif param_name == 'max_radius':
+            self.detection_controller.params['circle']['max_radius'] = value
+        elif param_name == 'min_dist':
+            self.detection_controller.params['circle']['min_dist'] = value
+        elif param_name == 'threshold':
+            self.detection_controller.params['contour']['threshold'] = value
+        elif param_name == 'kernel_size':
+            self.detection_controller.params['contour']['kernel_size'] = value
+
+        logger.debug(f"參數調整: {param_name} = {value}")
+
+    def on_debug_reset_params(self):
+        """調試：重置參數為預設值（平衡版本）"""
+        # 重置為平衡的預設參數
+        self.detection_controller.params = {
+            'min_area': 100,
+            'max_area': 10000,
+            'circle': {
+                'dp': 1.2,
+                'min_dist': 25,
+                'param1': 100,
+                'param2': 40,
+                'min_radius': 5,
+                'max_radius': 80
+            },
+            'contour': {
+                'threshold': 127,
+                'kernel_size': 3
+            }
+        }
+
+        # 更新調試面板UI（重置滑桿）
+        if DEBUG_MODE:
+            self.debug_panel.min_area_slider['slider'].setValue(100)
+            self.debug_panel.max_area_slider['slider'].setValue(10000)
+            self.debug_panel.circle_param2_slider['slider'].setValue(40)
+            self.debug_panel.circle_param1_slider['slider'].setValue(100)
+            self.debug_panel.min_radius_slider['slider'].setValue(5)
+            self.debug_panel.max_radius_slider['slider'].setValue(80)
+            self.debug_panel.min_dist_slider['slider'].setValue(25)
+            self.debug_panel.threshold_slider['slider'].setValue(127)
+            self.debug_panel.kernel_size_slider['slider'].setValue(3)
+
+        self.status_label.setText("✅ 參數已重置為預設值")
+        logger.info("調試模式：參數已重置為平衡值")
+
+    def on_debug_save_config(self):
+        """調試：儲存參數配置"""
+        import json
+        from pathlib import Path
+
+        # 創建配置目錄
+        config_dir = Path("basler_pyqt6/configs")
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        config_file = config_dir / "detection_config.json"
+
+        # 儲存參數
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(self.detection_controller.params, f, indent=4, ensure_ascii=False)
+
+        self.status_label.setText(f"✅ 參數已儲存至 {config_file}")
+        logger.info(f"調試模式：參數已儲存 {config_file}")
+        QMessageBox.information(self, "儲存成功", f"參數配置已儲存至:\n{config_file}")
+
+    def on_debug_load_config(self):
+        """調試：載入參數配置"""
+        import json
+        from pathlib import Path
+
+        config_file = Path("basler_pyqt6/configs/detection_config.json")
+
+        if not config_file.exists():
+            QMessageBox.warning(self, "錯誤", "找不到配置文件")
+            return
+
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                params = json.load(f)
+
+            self.detection_controller.params = params
+
+            # 更新調試面板UI
+            if DEBUG_MODE:
+                self.debug_panel.min_area_slider['slider'].setValue(params.get('min_area', 100))
+                self.debug_panel.max_area_slider['slider'].setValue(params.get('max_area', 5000))
+                self.debug_panel.circle_param2_slider['slider'].setValue(params['circle']['param2'])
+                self.debug_panel.circle_param1_slider['slider'].setValue(params['circle']['param1'])
+                self.debug_panel.min_radius_slider['slider'].setValue(params['circle']['min_radius'])
+                self.debug_panel.max_radius_slider['slider'].setValue(params['circle']['max_radius'])
+                self.debug_panel.min_dist_slider['slider'].setValue(params['circle']['min_dist'])
+                self.debug_panel.threshold_slider['slider'].setValue(params['contour']['threshold'])
+                self.debug_panel.kernel_size_slider['slider'].setValue(params['contour']['kernel_size'])
+
+            self.status_label.setText("✅ 參數配置已載入")
+            logger.info("調試模式：參數配置已載入")
+            QMessageBox.information(self, "載入成功", "參數配置已載入")
+
+        except Exception as e:
+            QMessageBox.warning(self, "錯誤", f"載入配置失敗:\n{str(e)}")
+            logger.error(f"載入配置失敗: {e}")
+
     def update_display(self):
         """更新顯示"""
+        import time
+
+        # 調試模式：開始計時
+        if DEBUG_MODE:
+            total_start = time.perf_counter()
+
         # 獲取當前幀
         frame = self.source_manager.get_frame()
 
@@ -379,7 +761,14 @@ class MainWindowV2(QMainWindow):
             # 1. 右上小預覽窗口 - 顯示原始相機畫面
             self.camera_preview.update_frame(original_frame)
 
+            # 調試模式：灰度轉換計時
+            if DEBUG_MODE:
+                gray_start = time.perf_counter()
+
             # 2. 執行檢測（如果啟用）
+            if DEBUG_MODE:
+                detect_start = time.perf_counter()
+
             if self.detection_controller.enabled:
                 detected_frame, objects = self.detection_controller.process_frame(frame)
                 count = len(objects)
@@ -387,10 +776,24 @@ class MainWindowV2(QMainWindow):
                 self.detection_control.update_status(True, count)
             else:
                 detected_frame = frame
+                count = 0
                 self.detection_control.update_status(False, 0)
+
+            if DEBUG_MODE:
+                detect_time = (time.perf_counter() - detect_start) * 1000
 
             # 3. 主畫面 - 顯示檢測結果（包含檢測框標註）
             self.video_display.update_frame(detected_frame)
+
+            # 調試模式：繪製計時
+            if DEBUG_MODE:
+                draw_start = time.perf_counter()
+
+            # 調試模式：更新調試面板的原始畫面
+            if DEBUG_MODE:
+                self.debug_panel.original_display.update_frame(original_frame)
+
+                draw_time = (time.perf_counter() - draw_start) * 1000
 
             # 錄製視頻（使用檢測後的幀）
             if self.video_recorder.is_recording:
@@ -406,6 +809,36 @@ class MainWindowV2(QMainWindow):
                 status = self.video_recorder.get_recording_status()
                 self.recording_control.update_frame_count(status['frames_recorded'])
 
+            # 調試模式：更新性能指標和統計
+            if DEBUG_MODE:
+                total_time = (time.perf_counter() - total_start) * 1000
+                gray_time = 2.0  # 簡化估計
+
+                # 更新性能指標
+                fps = self.source_manager.get_fps()
+                self.debug_panel.update_performance(
+                    total_time, gray_time, detect_time, draw_time, fps
+                )
+
+                # 更新檢測統計
+                self.debug_detection_count_history.append(count)
+                if len(self.debug_detection_count_history) > 100:  # 保留最近100幀
+                    self.debug_detection_count_history.pop(0)
+
+                avg_count = sum(self.debug_detection_count_history) / len(self.debug_detection_count_history)
+                max_count = max(self.debug_detection_count_history) if self.debug_detection_count_history else 0
+                min_count = min(self.debug_detection_count_history) if self.debug_detection_count_history else 0
+
+                self.debug_panel.update_statistics(count, avg_count, max_count, min_count)
+
+                # 更新幀數資訊
+                if self.source_manager.source_type == SourceType.VIDEO:
+                    player = self.source_manager.video_player
+                    if player.video_capture:
+                        current_frame = int(player.video_capture.get(cv2.CAP_PROP_POS_FRAMES))
+                        total_frames = int(player.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+                        self.debug_panel.update_frame_info(current_frame, total_frames)
+
         # 更新 FPS
         fps = self.source_manager.get_fps()
         self.fps_label.setText(f"FPS: {fps:.1f}")
@@ -419,69 +852,208 @@ class MainWindowV2(QMainWindow):
             self.system_monitor.update_camera_stats(fps, total_frames)
 
     def apply_styles(self):
-        """應用樣式"""
+        """應用專業監控系統樣式"""
         self.setStyleSheet("""
+            /* ===== 主窗口 ===== */
             QMainWindow {
-                background-color: #1e1e1e;
+                background-color: #0a0e27;
             }
+
+            /* ===== 通用組件 ===== */
             QWidget {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                font-family: "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
-                font-size: 10pt;
+                background-color: #141b2d;
+                color: #e0e6f1;
+                font-family: "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+                font-size: 11pt;
             }
+
+            /* ===== 群組框 ===== */
             QGroupBox {
-                border: 2px solid #3d3d3d;
-                border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 12px;
-                font-weight: bold;
-                color: #4CAF50;
+                border: 2px solid #1f3a5f;
+                border-radius: 8px;
+                margin-top: 16px;
+                padding-top: 16px;
+                font-weight: 600;
+                font-size: 12pt;
+                color: #00d4ff;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
+                left: 15px;
+                padding: 0 8px;
+                background-color: #141b2d;
             }
+
+            /* ===== 按鈕 ===== */
             QPushButton {
-                background-color: #0d7377;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 18px;
-                color: white;
-                font-weight: bold;
-                min-height: 30px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1e5a8e, stop:1 #0d4a7a);
+                border: 1px solid #00d4ff;
+                border-radius: 6px;
+                padding: 12px 20px;
+                color: #ffffff;
+                font-weight: 600;
+                font-size: 11pt;
+                min-height: 36px;
             }
             QPushButton:hover {
-                background-color: #14ffec;
-                color: #000000;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #00d4ff, stop:1 #0099cc);
+                color: #0a0e27;
+                border: 1px solid #00ffff;
             }
             QPushButton:pressed {
-                background-color: #0a5f63;
+                background: #0d4a7a;
+                border: 1px solid #0099cc;
             }
             QPushButton:disabled {
-                background-color: #3d3d3d;
-                color: #777777;
+                background-color: #1f2a3d;
+                color: #4a5568;
+                border: 1px solid #2d3748;
             }
+
+            /* ===== 狀態欄 ===== */
             QStatusBar {
-                background-color: #1a1a1a;
-                color: #ffffff;
-                border-top: 1px solid #3d3d3d;
+                background-color: #0a0e27;
+                color: #00d4ff;
+                border-top: 2px solid #1f3a5f;
+                font-size: 10pt;
             }
+            QStatusBar QLabel {
+                background-color: transparent;
+                color: #00d4ff;
+                padding: 3px 10px;
+            }
+
+            /* ===== 菜單欄 ===== */
             QMenuBar {
-                background-color: #2b2b2b;
-                color: #ffffff;
+                background-color: #0a0e27;
+                color: #e0e6f1;
+                border-bottom: 2px solid #1f3a5f;
+                padding: 2px;
+            }
+            QMenuBar::item {
+                padding: 8px 12px;
+                background-color: transparent;
             }
             QMenuBar::item:selected {
-                background-color: #0d7377;
+                background-color: #1e5a8e;
+                border-radius: 4px;
             }
+
+            /* ===== 下拉菜單 ===== */
             QMenu {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                border: 1px solid #3d3d3d;
+                background-color: #141b2d;
+                color: #e0e6f1;
+                border: 2px solid #1f3a5f;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 25px 8px 20px;
+                border-radius: 4px;
             }
             QMenu::item:selected {
-                background-color: #0d7377;
+                background-color: #1e5a8e;
+                color: #ffffff;
+            }
+
+            /* ===== 下拉框 ===== */
+            QComboBox {
+                background-color: #1f2a3d;
+                border: 2px solid #1f3a5f;
+                border-radius: 6px;
+                padding: 8px 12px;
+                color: #e0e6f1;
+                font-size: 11pt;
+                min-height: 32px;
+            }
+            QComboBox:hover {
+                border: 2px solid #00d4ff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 7px solid #00d4ff;
+                margin-right: 8px;
+            }
+
+            /* ===== 滾動條 ===== */
+            QScrollBar:vertical {
+                background-color: #141b2d;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #1e5a8e;
+                border-radius: 6px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #00d4ff;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+
+            /* ===== 分割器 ===== */
+            QSplitter::handle {
+                background-color: #1f3a5f;
+                width: 2px;
+            }
+            QSplitter::handle:hover {
+                background-color: #00d4ff;
+            }
+
+            /* ===== 標籤 ===== */
+            QLabel {
+                background-color: transparent;
+                color: #e0e6f1;
+            }
+
+            /* ===== 滾動區域 ===== */
+            QScrollArea {
+                border: none;
+                background-color: #141b2d;
+            }
+
+            /* ===== 分頁控制 ===== */
+            QTabWidget::pane {
+                border: 2px solid #1f3a5f;
+                border-radius: 8px;
+                background-color: #141b2d;
+                top: -2px;
+            }
+            QTabBar::tab {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1f2a3d, stop:1 #141b2d);
+                border: 2px solid #1f3a5f;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 10px 20px;
+                margin-right: 2px;
+                color: #e0e6f1;
+                font-size: 11pt;
+                font-weight: 600;
+            }
+            QTabBar::tab:selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1e5a8e, stop:1 #0d4a7a);
+                border-color: #00d4ff;
+                color: #00d4ff;
+            }
+            QTabBar::tab:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2a4a6a, stop:1 #1f3a5f);
             }
         """)
 
