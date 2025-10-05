@@ -8,7 +8,7 @@ import cv2
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QStatusBar, QLabel, QFileDialog, QMessageBox
+    QSplitter, QStatusBar, QLabel, QFileDialog, QMessageBox, QScrollArea
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
@@ -42,7 +42,8 @@ class MainWindowV2(QMainWindow):
     def init_ui(self):
         """初始化 UI"""
         self.setWindowTitle("🏭 Basler 工業視覺系統 - 專業版")
-        self.setMinimumSize(1500, 900)
+        self.setMinimumSize(1400, 800)  # 調整最小尺寸
+        self.resize(1600, 900)  # 設置默認尺寸
 
         # 創建中央部件
         central_widget = QWidget()
@@ -59,22 +60,32 @@ class MainWindowV2(QMainWindow):
         self.video_display = VideoDisplayWidget()
         self.video_display.setMinimumSize(800, 600)
 
-        # ===== 右側控制面板 =====
+        # ===== 右側控制面板（使用滾動區域） =====
+        # 創建滾動區域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setMinimumWidth(380)  # 設置最小寬度，避免壓縮
+
+        # 右側面板內容
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        right_layout.setSpacing(10)
+        right_layout.setSpacing(15)  # 增加間距
+        right_layout.setContentsMargins(10, 10, 10, 10)
 
         # 右上：原始相機即時畫面（小預覽）
         self.camera_preview = VideoDisplayWidget()
-        self.camera_preview.setFixedHeight(280)
+        self.camera_preview.setFixedHeight(240)  # 調整為固定比例
+        self.camera_preview.setMinimumWidth(320)  # 設置最小寬度
         self.camera_preview.setStyleSheet("""
             QWidget {
                 border: 2px solid #3498db;
                 border-radius: 5px;
+                background-color: #1a1a1a;
             }
         """)
         preview_label = QLabel("📹 原始相機畫面")
-        preview_label.setStyleSheet("font-weight: bold; color: #3498db;")
+        preview_label.setStyleSheet("font-weight: bold; color: #3498db; font-size: 12pt;")
         right_layout.addWidget(preview_label)
         right_layout.addWidget(self.camera_preview)
 
@@ -86,7 +97,7 @@ class MainWindowV2(QMainWindow):
         self.recording_control = RecordingControlWidget()
         right_layout.addWidget(self.recording_control)
 
-        # 相機控制（精簡版，僅保留關鍵功能）
+        # 相機控制
         self.camera_control = CameraControlWidget()
         right_layout.addWidget(self.camera_control)
 
@@ -96,13 +107,20 @@ class MainWindowV2(QMainWindow):
 
         right_layout.addStretch()
 
+        # 將右側面板設置到滾動區域
+        scroll_area.setWidget(right_panel)
+
         # 添加到分割器
         splitter.addWidget(self.video_display)
-        splitter.addWidget(right_panel)
+        splitter.addWidget(scroll_area)  # 使用滾動區域而非直接使用面板
 
         # 設置分割器比例：主畫面(大) : 右側控制面板
         splitter.setStretchFactor(0, 7)  # 主畫面占 70%
         splitter.setStretchFactor(1, 3)  # 右側面板占 30%
+
+        # 設置分割器最小尺寸
+        splitter.setCollapsible(0, False)  # 主畫面不可摺疊
+        splitter.setCollapsible(1, False)  # 右側面板不可摺疊
 
         main_layout.addWidget(splitter)
 
