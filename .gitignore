@@ -73,9 +73,6 @@ PACKAGING_GUIDE.md
 UPDATE_WORKFLOW.md
 update_server_example/
 
-# 部署相關（伺服器用，非必要）
-basler_update_server.tar.gz
-deploy_update_server.sh
-manual_deploy_steps.md
-quick_deploy.sh
+# 臨時打包文件
 *.tar.gz
+*.zip
