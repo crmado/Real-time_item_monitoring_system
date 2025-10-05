@@ -49,9 +49,14 @@ Thumbs.db
 recordings/
 
 # 打包文件
-*.spec
 dist/
 build/
+releases/
+
+# PyInstaller spec 文件（保留專案配置，忽略臨時生成的）
+# basler_pyqt6.spec 需要追蹤
+*.spec.backup
+*-temp.spec
 
 # 環境變量
 .env
@@ -61,3 +66,9 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# 文檔和範例（非必要）
+DEVELOPMENT_GUIDE.md
+PACKAGING_GUIDE.md
+UPDATE_WORKFLOW.md
+update_server_example/

@@ -18,11 +18,13 @@ from basler_pyqt6.ui.widgets.video_display import VideoDisplayWidget
 from basler_pyqt6.ui.widgets.detection_control import DetectionControlWidget
 from basler_pyqt6.ui.widgets.recording_control import RecordingControlWidget
 from basler_pyqt6.ui.widgets.system_monitor import SystemMonitorWidget
+from basler_pyqt6.ui.dialogs.update_dialog import UpdateDialog
 
 # 導入核心模塊
 from basler_pyqt6.core.source_manager import SourceManager, SourceType
 from basler_pyqt6.core.detection import DetectionController
 from basler_pyqt6.core.video_recorder import VideoRecorder
+from basler_pyqt6.core.updater import AutoUpdater
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +143,12 @@ class MainWindowV2(QMainWindow):
 
         # 幫助菜單
         help_menu = menubar.addMenu("幫助(&H)")
+
+        check_update_action = QAction("🔄 檢查更新", self)
+        check_update_action.triggered.connect(self.check_for_updates)
+        help_menu.addAction(check_update_action)
+
+        help_menu.addSeparator()
 
         about_action = QAction("關於(&A)", self)
         about_action.triggered.connect(self.show_about)
@@ -441,13 +449,45 @@ class MainWindowV2(QMainWindow):
             }
         """)
 
+    def check_for_updates(self):
+        """檢查軟件更新"""
+        self.status_label.setText("🔍 正在檢查更新...")
+
+        try:
+            updater = AutoUpdater()
+            update_info = updater.check_for_updates(timeout=10)
+
+            if update_info:
+                # 有更新，顯示更新對話框
+                dialog = UpdateDialog(update_info, self)
+                dialog.exec()
+            else:
+                # 無更新
+                QMessageBox.information(
+                    self,
+                    "軟件更新",
+                    "✅ 當前已是最新版本！"
+                )
+
+            self.status_label.setText("就緒")
+
+        except Exception as e:
+            logger.error(f"檢查更新失敗: {str(e)}")
+            QMessageBox.warning(
+                self,
+                "更新檢查失敗",
+                f"無法檢查更新，請稍後再試。\n\n錯誤: {str(e)}"
+            )
+            self.status_label.setText("就緒")
+
     def show_about(self):
         """顯示關於"""
+        from basler_pyqt6.version import __version__
         QMessageBox.about(
             self,
             "關於",
-            "<h2>Basler 工業視覺系統 - 專業版</h2>"
-            "<p>版本: 2.0 (PyQt6)</p>"
+            f"<h2>Basler 工業視覺系統 - 專業版</h2>"
+            f"<p>版本: {__version__} (PyQt6)</p>"
             "<p>高性能工業相機視覺檢測系統</p>"
             "<p>支持 Basler acA640-300gm (280+ FPS)</p>"
             "<hr>"
@@ -457,6 +497,7 @@ class MainWindowV2(QMainWindow):
             "<li>✅ 多種檢測算法</li>"
             "<li>✅ 實時性能監控</li>"
             "<li>✅ 專業化界面設計</li>"
+            "<li>✅ 自動更新功能</li>"
             "</ul>"
             "<hr>"
             "<p>© 2024 Industrial Vision</p>"
