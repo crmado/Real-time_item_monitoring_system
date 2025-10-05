@@ -55,40 +55,54 @@ class MainWindowV2(QMainWindow):
         # 創建分割器
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # ===== 左側控制面板 =====
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-
-        self.camera_control = CameraControlWidget()
-        left_layout.addWidget(self.camera_control)
-
-        self.detection_control = DetectionControlWidget()
-        left_layout.addWidget(self.detection_control)
-
-        self.recording_control = RecordingControlWidget()
-        left_layout.addWidget(self.recording_control)
-
-        left_layout.addStretch()
-
-        # ===== 中間視頻顯示區 =====
+        # ===== 左側/中間：檢測結果主畫面（大） =====
         self.video_display = VideoDisplayWidget()
+        self.video_display.setMinimumSize(800, 600)
 
-        # ===== 右側監控面板 =====
+        # ===== 右側控制面板 =====
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setSpacing(10)
 
+        # 右上：原始相機即時畫面（小預覽）
+        self.camera_preview = VideoDisplayWidget()
+        self.camera_preview.setFixedHeight(280)
+        self.camera_preview.setStyleSheet("""
+            QWidget {
+                border: 2px solid #3498db;
+                border-radius: 5px;
+            }
+        """)
+        preview_label = QLabel("📹 原始相機畫面")
+        preview_label.setStyleSheet("font-weight: bold; color: #3498db;")
+        right_layout.addWidget(preview_label)
+        right_layout.addWidget(self.camera_preview)
+
+        # 右中：檢測控制按鈕
+        self.detection_control = DetectionControlWidget()
+        right_layout.addWidget(self.detection_control)
+
+        # 錄影控制
+        self.recording_control = RecordingControlWidget()
+        right_layout.addWidget(self.recording_control)
+
+        # 相機控制（精簡版，僅保留關鍵功能）
+        self.camera_control = CameraControlWidget()
+        right_layout.addWidget(self.camera_control)
+
+        # 右下：檢測資訊與系統監控
         self.system_monitor = SystemMonitorWidget()
         right_layout.addWidget(self.system_monitor)
+
         right_layout.addStretch()
 
         # 添加到分割器
-        splitter.addWidget(left_panel)
         splitter.addWidget(self.video_display)
         splitter.addWidget(right_panel)
 
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 5)
-        splitter.setStretchFactor(2, 2)
+        # 設置分割器比例：主畫面(大) : 右側控制面板
+        splitter.setStretchFactor(0, 7)  # 主畫面占 70%
+        splitter.setStretchFactor(1, 3)  # 右側面板占 30%
 
         main_layout.addWidget(splitter)
 
@@ -341,34 +355,38 @@ class MainWindowV2(QMainWindow):
         frame = self.source_manager.get_frame()
 
         if frame is not None:
-            # 保存原始幀用於錄製
+            # 保存原始幀
             original_frame = frame.copy()
 
-            # 執行檢測
+            # 1. 右上小預覽窗口 - 顯示原始相機畫面
+            self.camera_preview.update_frame(original_frame)
+
+            # 2. 執行檢測（如果啟用）
             if self.detection_controller.enabled:
-                frame, objects = self.detection_controller.process_frame(frame)
+                detected_frame, objects = self.detection_controller.process_frame(frame)
                 count = len(objects)
                 self.detection_label.setText(f"檢測: {count}")
                 self.detection_control.update_status(True, count)
             else:
+                detected_frame = frame
                 self.detection_control.update_status(False, 0)
 
-            # 錄製視頻（使用檢測後的幀，如果啟用檢測的話）
+            # 3. 主畫面 - 顯示檢測結果（包含檢測框標註）
+            self.video_display.update_frame(detected_frame)
+
+            # 錄製視頻（使用檢測後的幀）
             if self.video_recorder.is_recording:
                 # 確保幀是BGR格式（OpenCV標準）
-                if len(frame.shape) == 2:  # 灰度圖
-                    recording_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                if len(detected_frame.shape) == 2:  # 灰度圖
+                    recording_frame = cv2.cvtColor(detected_frame, cv2.COLOR_GRAY2BGR)
                 else:
-                    recording_frame = frame
+                    recording_frame = detected_frame
 
                 self.video_recorder.write_frame(recording_frame)
 
                 # 更新錄製狀態
                 status = self.video_recorder.get_recording_status()
                 self.recording_control.update_frame_count(status['frames_recorded'])
-
-            # 更新顯示
-            self.video_display.update_frame(frame)
 
         # 更新 FPS
         fps = self.source_manager.get_fps()
