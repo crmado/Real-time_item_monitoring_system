@@ -14,7 +14,7 @@ APP_COPYRIGHT = "© 2024 Industrial Vision"
 APP_DESCRIPTION = "高性能工業相機視覺檢測系統"
 
 # 更新服務器配置（稍後配置）
-UPDATE_SERVER_URL = "https://your-update-server.com/api"  # 需要替換為實際 URL
+UPDATE_SERVER_URL = "http://172.105.217.66:5000/api"  # 更新服務器地址
 UPDATE_CHECK_INTERVAL = 86400  # 24 小時檢查一次（秒）
 
 # 構建信息
