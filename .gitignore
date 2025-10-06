@@ -67,6 +67,7 @@ releases/
 .coverage
 htmlcov/
 testData/
+basler_mvc/
 
 # 文檔和範例（非必要）
 DEVELOPMENT_GUIDE.md
@@ -81,3 +82,19 @@ update_server_example/
 # 調試配置
 basler_pyqt6/configs/
 basler_pyqt6/screenshots/
+
+# 測試對比結果
+comparison_results/
+
+# 臨時文件
+*.tmp
+*.bak
+*.backup
+
+# basler_mvc (舊版本的緩存和日誌)
+basler_mvc/__pycache__/
+basler_mvc/**/__pycache__/
+basler_mvc/logs/
+basler_mvc/recordings/*.avi
+basler_mvc/recordings/1000顆/output_*.mp4
+basler_mvc/recordings/1000顆/colorConversion_*.mp4
