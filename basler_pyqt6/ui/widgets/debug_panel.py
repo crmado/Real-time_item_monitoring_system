@@ -46,10 +46,17 @@ class DebugPanelWidget(QWidget):
     load_config = pyqtSignal()
     reset_params = pyqtSignal()
     screenshot = pyqtSignal()
+    reset_total_count = pyqtSignal()  # 重置累計計數
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.all_param_widgets = []  # 保存所有參數控件（用於鎖定）
         self.init_ui()
+
+        # 發送初始性能優化參數（確保主窗口收到初始值）
+        self.param_changed.emit('fps_limit', 30)
+        self.param_changed.emit('image_scale', 0.5)
+        self.param_changed.emit('skip_frames', 0)
 
     def init_ui(self):
         """初始化 UI"""
@@ -240,6 +247,98 @@ class DebugPanelWidget(QWidget):
         params_group.setLayout(params_layout)
         layout.addWidget(params_group)
 
+        # === 性能優化 ===
+        perf_opt_group = QGroupBox("⚡ 性能優化（降低資源佔用）")
+        perf_opt_layout = QVBoxLayout()
+
+        # FPS 限制
+        fps_limit_layout = QHBoxLayout()
+        fps_limit_label = QLabel("FPS 限制:")
+        fps_limit_label.setMinimumWidth(100)
+        fps_limit_layout.addWidget(fps_limit_label)
+
+        self.fps_limit_slider = QSlider(Qt.Orientation.Horizontal)
+        self.fps_limit_slider.setMinimum(1)
+        self.fps_limit_slider.setMaximum(60)
+        self.fps_limit_slider.setValue(30)  # 預設30fps
+        self.fps_limit_slider.valueChanged.connect(
+            lambda v: self.param_changed.emit('fps_limit', v)
+        )
+        fps_limit_layout.addWidget(self.fps_limit_slider)
+
+        self.fps_limit_spinbox = QSpinBox()
+        self.fps_limit_spinbox.setMinimum(1)
+        self.fps_limit_spinbox.setMaximum(60)
+        self.fps_limit_spinbox.setValue(30)
+        self.fps_limit_spinbox.setMinimumWidth(70)
+        self.fps_limit_spinbox.setStyleSheet("""
+            QSpinBox {
+                color: #00d4ff;
+                font-weight: bold;
+                background-color: #1a1a2e;
+                border: 1px solid #00d4ff;
+                border-radius: 3px;
+                padding: 2px;
+            }
+        """)
+        self.fps_limit_slider.valueChanged.connect(self.fps_limit_spinbox.setValue)
+        self.fps_limit_spinbox.valueChanged.connect(self.fps_limit_slider.setValue)
+        fps_limit_layout.addWidget(self.fps_limit_spinbox)
+        perf_opt_layout.addLayout(fps_limit_layout)
+
+        # 圖像縮放比例
+        scale_layout = QHBoxLayout()
+        scale_label = QLabel("圖像縮放:")
+        scale_label.setMinimumWidth(100)
+        scale_layout.addWidget(scale_label)
+
+        self.scale_combo = QComboBox()
+        self.scale_combo.addItems(["100% (原始)", "75%", "50%", "30%"])
+        self.scale_combo.setCurrentText("50%")  # 預設50%降低計算量
+        self.scale_combo.currentTextChanged.connect(
+            lambda t: self.param_changed.emit('image_scale', float(t.replace('%', '').replace(' (原始)', '')) / 100)
+        )
+        self.scale_combo.setStyleSheet("color: #00d4ff;")
+        scale_layout.addWidget(self.scale_combo)
+        scale_layout.addStretch()
+        perf_opt_layout.addLayout(scale_layout)
+
+        # 跳幀處理
+        skip_layout = QHBoxLayout()
+        skip_label = QLabel("跳幀處理:")
+        skip_label.setMinimumWidth(100)
+        skip_layout.addWidget(skip_label)
+
+        self.skip_frame_spinbox = QSpinBox()
+        self.skip_frame_spinbox.setMinimum(0)
+        self.skip_frame_spinbox.setMaximum(10)
+        self.skip_frame_spinbox.setValue(0)
+        self.skip_frame_spinbox.setMinimumWidth(70)
+        self.skip_frame_spinbox.setSuffix(" 幀")
+        self.skip_frame_spinbox.setStyleSheet("""
+            QSpinBox {
+                color: #00d4ff;
+                font-weight: bold;
+                background-color: #1a1a2e;
+                border: 1px solid #00d4ff;
+                border-radius: 3px;
+                padding: 2px;
+            }
+        """)
+        self.skip_frame_spinbox.valueChanged.connect(
+            lambda v: self.param_changed.emit('skip_frames', v)
+        )
+        skip_layout.addWidget(self.skip_frame_spinbox)
+
+        skip_hint = QLabel("(0=不跳幀, 1=每2幀處理1幀)")
+        skip_hint.setStyleSheet("color: #888; font-size: 9pt;")
+        skip_layout.addWidget(skip_hint)
+        skip_layout.addStretch()
+        perf_opt_layout.addLayout(skip_layout)
+
+        perf_opt_group.setLayout(perf_opt_layout)
+        layout.addWidget(perf_opt_group)
+
         # === 調試選項 ===
         debug_group = QGroupBox("🔬 調試選項")
         debug_layout = QVBoxLayout()
@@ -300,6 +399,17 @@ class DebugPanelWidget(QWidget):
         stats_group = QGroupBox("📊 檢測統計")
         stats_layout = QVBoxLayout()
 
+        self.total_count_label = QLabel("✨ 累計檢測總數: 0")
+        self.total_count_label.setStyleSheet("""
+            color: #00ff00;
+            font-weight: bold;
+            font-size: 13pt;
+            padding: 5px;
+            background-color: rgba(0, 255, 0, 0.1);
+            border-radius: 3px;
+        """)
+        stats_layout.addWidget(self.total_count_label)
+
         self.current_count_label = QLabel("當前幀檢測數: 0")
         self.avg_count_label = QLabel("平均檢測數: 0.0")
         self.minmax_count_label = QLabel("最大/最小: 0 / 0")
@@ -307,6 +417,23 @@ class DebugPanelWidget(QWidget):
         for label in [self.current_count_label, self.avg_count_label, self.minmax_count_label]:
             label.setStyleSheet("color: #00d4ff;")
             stats_layout.addWidget(label)
+
+        # 重置計數按鈕
+        reset_count_btn = QPushButton("🔄 重置累計計數")
+        reset_count_btn.clicked.connect(self.reset_count)
+        reset_count_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ef4444;
+                color: white;
+                border-radius: 4px;
+                padding: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #dc2626;
+            }
+        """)
+        stats_layout.addWidget(reset_count_btn)
 
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group)
@@ -328,7 +455,7 @@ class DebugPanelWidget(QWidget):
 
     def create_param_slider(self, label: str, min_val: int, max_val: int,
                            default_val: int, callback) -> dict:
-        """創建參數滑桿"""
+        """創建參數滑桿（含數值輸入框）"""
         layout = QHBoxLayout()
 
         label_widget = QLabel(f"{label}:")
@@ -342,16 +469,36 @@ class DebugPanelWidget(QWidget):
         slider.valueChanged.connect(callback)
         layout.addWidget(slider)
 
-        value_label = QLabel(str(default_val))
-        value_label.setMinimumWidth(50)
-        value_label.setStyleSheet("color: #00d4ff; font-weight: bold;")
-        slider.valueChanged.connect(lambda v: value_label.setText(str(v)))
-        layout.addWidget(value_label)
+        # 數值輸入框（取代純顯示的 Label）
+        spinbox = QSpinBox()
+        spinbox.setMinimum(min_val)
+        spinbox.setMaximum(max_val)
+        spinbox.setValue(default_val)
+        spinbox.setMinimumWidth(70)
+        spinbox.setStyleSheet("""
+            QSpinBox {
+                color: #00d4ff;
+                font-weight: bold;
+                background-color: #1a1a2e;
+                border: 1px solid #00d4ff;
+                border-radius: 3px;
+                padding: 2px;
+            }
+        """)
+
+        # 雙向綁定：滑桿 ↔ 輸入框
+        slider.valueChanged.connect(spinbox.setValue)
+        spinbox.valueChanged.connect(slider.setValue)
+
+        layout.addWidget(spinbox)
+
+        # 保存控件到列表（用於鎖定功能）
+        self.all_param_widgets.extend([slider, spinbox])
 
         return {
             'layout': layout,
             'slider': slider,
-            'value_label': value_label
+            'spinbox': spinbox
         }
 
     def on_select_video(self):
@@ -408,8 +555,27 @@ class DebugPanelWidget(QWidget):
         self.fps_label.setText(f"當前 FPS: {fps:.1f}")
 
     def update_statistics(self, current: int, average: float,
-                         max_count: int, min_count: int):
+                         max_count: int, min_count: int, total_count: int = 0):
         """更新檢測統計"""
+        self.total_count_label.setText(f"✨ 累計檢測總數: {total_count}")
         self.current_count_label.setText(f"當前幀檢測數: {current}")
         self.avg_count_label.setText(f"平均檢測數: {average:.1f}")
         self.minmax_count_label.setText(f"最大/最小: {max_count} / {min_count}")
+
+    def reset_count(self):
+        """重置累計計數"""
+        self.reset_total_count.emit()
+        self.total_count_label.setText("✨ 累計檢測總數: 0")
+        logger.info("累計檢測計數已重置")
+
+    def lock_params(self):
+        """鎖定參數控件（播放時防止誤觸）"""
+        for widget in self.all_param_widgets:
+            widget.setEnabled(False)
+        logger.debug("參數面板已鎖定（播放中）")
+
+    def unlock_params(self):
+        """解鎖參數控件（暫停時可調整）"""
+        for widget in self.all_param_widgets:
+            widget.setEnabled(True)
+        logger.debug("參數面板已解鎖（已暫停）")

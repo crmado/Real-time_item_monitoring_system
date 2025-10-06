@@ -44,6 +44,14 @@ class MainWindowV2(QMainWindow):
         if DEBUG_MODE:
             self.debug_detection_count_history = []  # 檢測數量歷史
             self.debug_frame_times = []  # 幀處理時間歷史
+            self.debug_total_detection_count = 0  # 累計檢測總數
+
+            # 性能優化變量
+            self.perf_fps_limit = 30  # FPS限制（預設30）
+            self.perf_image_scale = 0.5  # 圖像縮放比例（預設50%）
+            self.perf_skip_frames = 0  # 跳幀數（預設不跳幀）
+            self.perf_frame_counter = 0  # 幀計數器（用於跳幀）
+            self.perf_last_process_time = 0  # 上次處理時間（用於FPS限制）
 
         self.init_ui()
 
@@ -313,6 +321,7 @@ class MainWindowV2(QMainWindow):
             self.debug_panel.reset_params.connect(self.on_debug_reset_params)
             self.debug_panel.save_config.connect(self.on_debug_save_config)
             self.debug_panel.load_config.connect(self.on_debug_load_config)
+            self.debug_panel.reset_total_count.connect(self.on_debug_reset_total_count)
             # 播放控制
             self.debug_panel.play_video.connect(self.on_debug_play)
             self.debug_panel.pause_video.connect(self.on_debug_pause)
@@ -532,17 +541,16 @@ class MainWindowV2(QMainWindow):
     # ========== 調試工具方法（僅開發模式） ==========
 
     def on_debug_load_video(self, file_path: str):
-        """調試：載入測試影片"""
+        """調試：載入測試影片（不自動播放）"""
         if self.source_manager.use_video(file_path):
             self.source_label.setText(f"源: 測試影片 - {Path(file_path).name}")
-            self.status_label.setText(f"✅ 測試影片已載入")
+            self.status_label.setText(f"✅ 測試影片已載入，請點擊播放按鈕開始")
             self.camera_control.set_video_mode(True)
 
-            # 自動啟動播放並啟用檢測
-            self.source_manager.video_player.start_playing(loop=True)
+            # 啟用檢測但不自動播放，等待用戶手動點擊播放
             self.detection_controller.enable()
 
-            logger.info(f"調試模式：載入測試影片並啟動播放 {file_path}")
+            logger.info(f"調試模式：已載入測試影片 {file_path}（等待手動播放）")
         else:
             QMessageBox.warning(self, "錯誤", "無法載入測試影片")
 
@@ -551,6 +559,11 @@ class MainWindowV2(QMainWindow):
         if self.source_manager.source_type == SourceType.VIDEO:
             self.source_manager.video_player.start_playing(loop=True)
             self.status_label.setText("▶️ 播放中...")
+
+            # 鎖定參數面板防止誤觸
+            if DEBUG_MODE:
+                self.debug_panel.lock_params()
+
             logger.debug("調試：播放視頻")
 
     def on_debug_pause(self):
@@ -558,6 +571,11 @@ class MainWindowV2(QMainWindow):
         if self.source_manager.source_type == SourceType.VIDEO:
             self.source_manager.video_player.stop_playing()
             self.status_label.setText("⏸️ 已暫停")
+
+            # 解鎖參數面板允許調整
+            if DEBUG_MODE:
+                self.debug_panel.unlock_params()
+
             logger.debug("調試：暫停視頻")
 
     def on_debug_prev_frame(self):
@@ -630,8 +648,21 @@ class MainWindowV2(QMainWindow):
 
     def on_debug_param_changed(self, param_name: str, value):
         """調試：參數即時調整"""
+        # 性能優化參數
+        if param_name == 'fps_limit':
+            if DEBUG_MODE:
+                self.perf_fps_limit = value
+                logger.info(f"⚡ FPS 限制已設為: {value}")
+        elif param_name == 'image_scale':
+            if DEBUG_MODE:
+                self.perf_image_scale = value
+                logger.info(f"⚡ 圖像縮放已設為: {value*100:.0f}%")
+        elif param_name == 'skip_frames':
+            if DEBUG_MODE:
+                self.perf_skip_frames = value
+                logger.info(f"⚡ 跳幀處理已設為: {value}")
         # 更新檢測控制器參數
-        if param_name == 'min_area':
+        elif param_name == 'min_area':
             self.detection_controller.params['min_area'] = value
         elif param_name == 'max_area':
             self.detection_controller.params['max_area'] = value
@@ -743,6 +774,13 @@ class MainWindowV2(QMainWindow):
             QMessageBox.warning(self, "錯誤", f"載入配置失敗:\n{str(e)}")
             logger.error(f"載入配置失敗: {e}")
 
+    def on_debug_reset_total_count(self):
+        """調試：重置累計檢測計數"""
+        if DEBUG_MODE:
+            self.debug_total_detection_count = 0
+            self.status_label.setText("🔄 累計檢測計數已重置")
+            logger.info("調試模式：累計檢測計數已重置")
+
     def update_display(self):
         """更新顯示"""
         import time
@@ -750,6 +788,25 @@ class MainWindowV2(QMainWindow):
         # 調試模式：開始計時
         if DEBUG_MODE:
             total_start = time.perf_counter()
+
+            # === 性能優化 1: FPS 限制 ===
+            current_time = time.perf_counter()
+            min_frame_interval = 1.0 / self.perf_fps_limit  # 計算最小幀間隔
+            elapsed = current_time - self.perf_last_process_time
+
+            if elapsed < min_frame_interval:
+                # 時間未到，跳過本幀處理，節省CPU
+                time.sleep(min_frame_interval - elapsed)  # 休眠剩餘時間
+                return
+
+            self.perf_last_process_time = current_time
+
+            # === 性能優化 2: 跳幀處理 ===
+            self.perf_frame_counter += 1
+            if self.perf_skip_frames > 0:
+                if self.perf_frame_counter % (self.perf_skip_frames + 1) != 0:
+                    # 跳過此幀，不進行檢測
+                    return
 
         # 獲取當前幀
         frame = self.source_manager.get_frame()
@@ -760,6 +817,14 @@ class MainWindowV2(QMainWindow):
 
             # 1. 右上小預覽窗口 - 顯示原始相機畫面
             self.camera_preview.update_frame(original_frame)
+
+            # === 性能優化 3: 圖像縮放 ===
+            if DEBUG_MODE and self.perf_image_scale < 1.0:
+                # 縮放圖像以減少計算量
+                h, w = frame.shape[:2]
+                new_h = int(h * self.perf_image_scale)
+                new_w = int(w * self.perf_image_scale)
+                frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
             # 調試模式：灰度轉換計時
             if DEBUG_MODE:
@@ -774,8 +839,13 @@ class MainWindowV2(QMainWindow):
                 count = len(objects)
                 self.detection_label.setText(f"檢測: {count}")
                 self.detection_control.update_status(True, count)
+
+                # 如果圖像有縮放，檢測結果需要縮放回原始尺寸顯示
+                if DEBUG_MODE and self.perf_image_scale < 1.0:
+                    h_orig, w_orig = original_frame.shape[:2]
+                    detected_frame = cv2.resize(detected_frame, (w_orig, h_orig), interpolation=cv2.INTER_LINEAR)
             else:
-                detected_frame = frame
+                detected_frame = original_frame  # 使用原始幀
                 count = 0
                 self.detection_control.update_status(False, 0)
 
@@ -825,11 +895,17 @@ class MainWindowV2(QMainWindow):
                 if len(self.debug_detection_count_history) > 100:  # 保留最近100幀
                     self.debug_detection_count_history.pop(0)
 
+                # 累加檢測總數（只在有檢測到物體時累加）
+                if count > 0:
+                    self.debug_total_detection_count += count
+
                 avg_count = sum(self.debug_detection_count_history) / len(self.debug_detection_count_history)
                 max_count = max(self.debug_detection_count_history) if self.debug_detection_count_history else 0
                 min_count = min(self.debug_detection_count_history) if self.debug_detection_count_history else 0
 
-                self.debug_panel.update_statistics(count, avg_count, max_count, min_count)
+                self.debug_panel.update_statistics(
+                    count, avg_count, max_count, min_count, self.debug_total_detection_count
+                )
 
                 # 更新幀數資訊
                 if self.source_manager.source_type == SourceType.VIDEO:

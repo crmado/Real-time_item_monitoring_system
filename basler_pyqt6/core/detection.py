@@ -28,15 +28,15 @@ class DetectionController:
 
         # 檢測參數（基於master分支優化）
         self.params = {
-            # 背景減除參數（針對小零件優化）
+            # 背景減除參數（針對小零件優化 - 可檢測150+個微小零件）
             'background': {
-                'min_area': 2,           # 極小的最小面積（檢測微小零件）
-                'max_area': 3000,        # 最大面積
-                'var_threshold': 3,      # 極低的變化閾值（高靈敏度）
+                'min_area': 1,           # 最小面積（檢測極微小零件）
+                'max_area': 5000,        # 最大面積
+                'var_threshold': 2,      # 超低變化閾值（極高靈敏度）
                 'history': 1000,         # 背景歷史幀數
-                'learning_rate': 0.001,  # 學習率
+                'learning_rate': 0.0005, # 更低的學習率（背景更穩定）
                 'binary_threshold': 1,   # 二值化閾值
-                'morph_kernel_size': 3,  # 形態學核大小
+                'morph_kernel_size': 2,  # 較小的核（保留更多細節）
             },
             # 圓形檢測參數（備用）
             'circle': {
