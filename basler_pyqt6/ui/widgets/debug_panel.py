@@ -161,72 +161,65 @@ class DebugPanelWidget(QWidget):
         playback_group.setLayout(playback_layout)
         layout.addWidget(playback_group)
 
-        # === 檢測參數調整 ===
+        # === 檢測參數調整 (小零件專用) ===
         params_group = QGroupBox("🎚️ 檢測參數調整 (即時生效)")
         params_layout = QVBoxLayout()
 
-        # 通用參數
-        params_layout.addWidget(QLabel("通用參數:", parent=self))
+        # 檢測參數 (基於 basler_mvc)
+        params_layout.addWidget(QLabel("📏 面積範圍 (極小零件):", parent=self))
 
         self.min_area_slider = self.create_param_slider(
-            "最小面積", 10, 1000, 100,
+            "最小面積", 1, 100, 2,  # 1-100，預設 2 (極小零件)
             lambda v: self.param_changed.emit('min_area', v)
         )
         params_layout.addLayout(self.min_area_slider['layout'])
 
         self.max_area_slider = self.create_param_slider(
-            "最大面積", 100, 20000, 10000,  # 增加上限和預設值
+            "最大面積", 500, 10000, 3000,  # 500-10000，預設 3000
             lambda v: self.param_changed.emit('max_area', v)
         )
         params_layout.addLayout(self.max_area_slider['layout'])
 
-        # 圓形檢測參數（平衡版本）
-        params_layout.addWidget(QLabel("圓形檢測:", parent=self))
+        # 背景減除參數 (極高靈敏度)
+        params_layout.addWidget(QLabel("🎯 背景減除 (極高靈敏度):", parent=self))
 
-        self.circle_param2_slider = self.create_param_slider(
-            "靈敏度(param2)", 1, 150, 40,  # 降低到40增加靈敏度
-            lambda v: self.param_changed.emit('circle_param2', v)
+        self.bg_var_slider = self.create_param_slider(
+            "背景閾值", 1, 20, 3,  # 1-20，預設 3 (極低閾值)
+            lambda v: self.param_changed.emit('bg_var_threshold', v)
         )
-        params_layout.addLayout(self.circle_param2_slider['layout'])
+        params_layout.addLayout(self.bg_var_slider['layout'])
 
-        self.circle_param1_slider = self.create_param_slider(
-            "邊緣閾值(param1)", 1, 200, 100,  # 降低到100
-            lambda v: self.param_changed.emit('circle_param1', v)
+        # 追蹤參數
+        params_layout.addWidget(QLabel("📌 追蹤與計數:", parent=self))
+
+        self.min_track_slider = self.create_param_slider(
+            "最小追蹤幀數", 1, 10, 2,  # 1-10，預設 2
+            lambda v: self.param_changed.emit('min_track_frames', v)
         )
-        params_layout.addLayout(self.circle_param1_slider['layout'])
+        params_layout.addLayout(self.min_track_slider['layout'])
 
-        self.min_radius_slider = self.create_param_slider(
-            "最小半徑", 1, 50, 5,  # 恢復到5
-            lambda v: self.param_changed.emit('min_radius', v)
+        self.duplicate_dist_slider = self.create_param_slider(
+            "防重複距離", 5, 50, 15,  # 5-50，預設 15
+            lambda v: self.param_changed.emit('duplicate_distance', v)
         )
-        params_layout.addLayout(self.min_radius_slider['layout'])
+        params_layout.addLayout(self.duplicate_dist_slider['layout'])
 
-        self.max_radius_slider = self.create_param_slider(
-            "最大半徑", 10, 200, 80,  # 增加到80
-            lambda v: self.param_changed.emit('max_radius', v)
+        # 提示說明
+        hint_label = QLabel(
+            "💡 參數說明 (基於 basler_mvc 算法):\n"
+            "• 最小面積: 2 = 極小零件檢測 (可檢測150+個)\n"
+            "• 背景閾值: 3 = 極高靈敏度 (數值越小越靈敏)\n"
+            "• 防重複距離: 防止同一物體重複計數"
         )
-        params_layout.addLayout(self.max_radius_slider['layout'])
-
-        self.min_dist_slider = self.create_param_slider(
-            "最小距離", 1, 100, 25,  # 調整到25
-            lambda v: self.param_changed.emit('min_dist', v)
-        )
-        params_layout.addLayout(self.min_dist_slider['layout'])
-
-        # 輪廓檢測參數
-        params_layout.addWidget(QLabel("輪廓檢測:", parent=self))
-
-        self.threshold_slider = self.create_param_slider(
-            "二值化閾值", 0, 255, 127,
-            lambda v: self.param_changed.emit('threshold', v)
-        )
-        params_layout.addLayout(self.threshold_slider['layout'])
-
-        self.kernel_size_slider = self.create_param_slider(
-            "核大小", 1, 11, 3,
-            lambda v: self.param_changed.emit('kernel_size', v if v % 2 == 1 else v + 1)
-        )
-        params_layout.addLayout(self.kernel_size_slider['layout'])
+        hint_label.setStyleSheet("""
+            color: #9ca3af;
+            font-size: 9pt;
+            padding: 10px;
+            background-color: rgba(74, 85, 104, 0.3);
+            border-radius: 4px;
+        """)
+        hint_label.setWordWrap(True)
+        params_layout.addWidget(hint_label)
 
         # 配置管理按鈕
         config_btn_layout = QHBoxLayout()
@@ -524,16 +517,25 @@ class DebugPanelWidget(QWidget):
             logger.warning(f"測試目錄不存在: {test_dir}")
             return
 
-        # 尋找第一個視頻文件
-        video_files = list(test_dir.glob("*.mp4")) + list(test_dir.glob("*.avi"))
+        # 載入指定的測試影片
+        target_video = test_dir / "recording_20250817_134126_150_v1.mp4"
 
-        if video_files:
-            file_path = str(video_files[0])
-            self.video_path_label.setText(f"當前: {Path(file_path).name}")
+        if target_video.exists():
+            file_path = str(target_video)
+            self.video_path_label.setText(f"當前: {target_video.name}")
             self.load_test_video.emit(file_path)
-            logger.info(f"快速載入: {file_path}")
+            logger.info(f"載入測試影片: {file_path}")
         else:
-            logger.warning(f"測試目錄中沒有視頻文件: {test_dir}")
+            # 如果指定影片不存在，尋找第一個視頻文件
+            video_files = list(test_dir.glob("*.mp4")) + list(test_dir.glob("*.avi"))
+
+            if video_files:
+                file_path = str(video_files[0])
+                self.video_path_label.setText(f"當前: {Path(file_path).name}")
+                self.load_test_video.emit(file_path)
+                logger.info(f"快速載入: {file_path}")
+            else:
+                logger.warning(f"測試目錄中沒有視頻文件: {test_dir}")
 
     def on_speed_changed(self, text: str):
         """播放速度改變"""

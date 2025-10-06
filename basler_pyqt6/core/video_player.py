@@ -63,7 +63,7 @@ class VideoPlayer:
             logger.error(f"❌ 加載視頻失敗: {str(e)}")
             return False
 
-    def start_playing(self, loop: bool = True) -> bool:
+    def start_playing(self, loop: bool = False) -> bool:
         """開始播放"""
         if not self.video_capture:
             logger.error("❌ 未加載視頻文件")

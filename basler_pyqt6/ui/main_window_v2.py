@@ -48,7 +48,7 @@ class MainWindowV2(QMainWindow):
 
             # 性能優化變量
             self.perf_fps_limit = 30  # FPS限制（預設30）
-            self.perf_image_scale = 0.5  # 圖像縮放比例（預設50%）
+            self.perf_image_scale = 1  # 圖像縮放比例（預設50%）
             self.perf_skip_frames = 0  # 跳幀數（預設不跳幀）
             self.perf_frame_counter = 0  # 幀計數器（用於跳幀）
             self.perf_last_process_time = 0  # 上次處理時間（用於FPS限制）
@@ -307,8 +307,10 @@ class MainWindowV2(QMainWindow):
         self.camera_control.exposure_changed.connect(self.on_exposure_changed)
 
         # 檢測控制
-        self.detection_control.method_changed.connect(self.on_detection_method_changed)
         self.detection_control.enable_changed.connect(self.on_detection_enable_changed)
+        self.detection_control.roi_enabled_changed.connect(self.on_roi_enabled_changed)
+        self.detection_control.high_speed_changed.connect(self.on_high_speed_changed)
+        self.detection_control.reset_requested.connect(self.on_detection_reset)
 
         # 錄影控制
         self.recording_control.start_recording.connect(self.on_start_recording)
@@ -383,7 +385,7 @@ class MainWindowV2(QMainWindow):
             self.status_label.setText("開始抓取圖像")
             self.recording_control.set_enabled(True)  # 啟用錄製按鈕
         elif self.source_manager.source_type == SourceType.VIDEO:
-            self.source_manager.video_player.start_playing(loop=True)
+            self.source_manager.video_player.start_playing(loop=False)
             self.status_label.setText("開始播放視頻")
             self.recording_control.set_enabled(True)  # 啟用錄製按鈕
 
@@ -407,26 +409,31 @@ class MainWindowV2(QMainWindow):
         if self.source_manager.source_type == SourceType.CAMERA:
             self.source_manager.camera_controller.set_exposure(value)
 
-    def on_detection_method_changed(self, method):
-        """檢測方法改變"""
-        from basler_pyqt6.core.detection import DetectionMethod
-        method_map = {
-            "circle": DetectionMethod.CIRCLE,
-            "contour": DetectionMethod.CONTOUR,
-            "background": DetectionMethod.BACKGROUND
-        }
-        if method in method_map:
-            self.detection_controller.set_method(method_map[method])
-            self.status_label.setText(f"檢測方法: {method}")
-
     def on_detection_enable_changed(self, enabled):
         """檢測啟用改變"""
         if enabled:
             self.detection_controller.enable()
-            self.status_label.setText("檢測已啟用")
+            self.status_label.setText("小零件檢測已啟用")
         else:
             self.detection_controller.disable()
             self.status_label.setText("檢測已禁用")
+
+    def on_roi_enabled_changed(self, enabled):
+        """ROI 區域檢測啟用改變"""
+        self.detection_controller.set_roi_enabled(enabled)
+        self.status_label.setText(f"ROI 檢測: {'啟用' if enabled else '禁用'}")
+
+    def on_high_speed_changed(self, enabled):
+        """超高速模式改變"""
+        self.detection_controller.set_ultra_high_speed_mode(enabled)
+        self.detection_control.set_high_speed_mode(enabled)
+        self.status_label.setText(f"超高速模式: {'啟用' if enabled else '禁用'}")
+
+    def on_detection_reset(self):
+        """重置檢測計數器"""
+        self.detection_controller.reset()
+        self.status_label.setText("檢測計數器已重置")
+        logger.info("✅ 檢測計數器已重置")
 
     def on_start_recording(self):
         """開始錄影"""
@@ -490,7 +497,7 @@ class MainWindowV2(QMainWindow):
             logger.info("啟動相機抓取")
 
         elif self.source_manager.source_type == SourceType.VIDEO:
-            self.source_manager.video_player.start_playing(loop=True)
+            self.source_manager.video_player.start_playing(loop=False)
             self.status_label.setText("🚀 開始檢測（視頻模式）")
             logger.info("啟動視頻播放")
         else:
@@ -557,7 +564,7 @@ class MainWindowV2(QMainWindow):
     def on_debug_play(self):
         """調試：播放視頻"""
         if self.source_manager.source_type == SourceType.VIDEO:
-            self.source_manager.video_player.start_playing(loop=True)
+            self.source_manager.video_player.start_playing(loop=False)
             self.status_label.setText("▶️ 播放中...")
 
             # 鎖定參數面板防止誤觸
@@ -661,62 +668,63 @@ class MainWindowV2(QMainWindow):
             if DEBUG_MODE:
                 self.perf_skip_frames = value
                 logger.info(f"⚡ 跳幀處理已設為: {value}")
-        # 更新檢測控制器參數
+        # 更新檢測控制器參數 (新版小零件檢測專用)
         elif param_name == 'min_area':
-            self.detection_controller.params['min_area'] = value
+            self.detection_controller.min_area = value
+            logger.info(f"📏 最小面積已設為: {value} 像素")
         elif param_name == 'max_area':
-            self.detection_controller.params['max_area'] = value
-        elif param_name == 'circle_param2':
-            self.detection_controller.params['circle']['param2'] = value
-        elif param_name == 'circle_param1':
-            self.detection_controller.params['circle']['param1'] = value
-        elif param_name == 'min_radius':
-            self.detection_controller.params['circle']['min_radius'] = value
-        elif param_name == 'max_radius':
-            self.detection_controller.params['circle']['max_radius'] = value
-        elif param_name == 'min_dist':
-            self.detection_controller.params['circle']['min_dist'] = value
-        elif param_name == 'threshold':
-            self.detection_controller.params['contour']['threshold'] = value
-        elif param_name == 'kernel_size':
-            self.detection_controller.params['contour']['kernel_size'] = value
+            self.detection_controller.max_area = value
+            logger.info(f"📏 最大面積已設為: {value} 像素")
+        elif param_name == 'bg_var_threshold':
+            self.detection_controller.bg_var_threshold = value
+            # 重置背景減除器以應用新參數
+            self.detection_controller._reset_background_subtractor()
+            logger.info(f"🎯 背景敏感度已設為: {value}")
+        elif param_name == 'bg_learning_rate':
+            self.detection_controller.bg_learning_rate = value
+            self.detection_controller.current_learning_rate = value
+            logger.info(f"📚 背景學習率已設為: {value}")
+        elif param_name == 'duplicate_distance':
+            self.detection_controller.duplicate_distance_threshold = value
+            logger.info(f"🔄 重複距離閾值已設為: {value} 像素")
+        elif param_name == 'min_track_frames':
+            self.detection_controller.min_track_frames = value
+            logger.info(f"📌 最小追蹤幀數已設為: {value}")
+        # 忽略舊版參數 (圓形、輪廓檢測等)
+        elif param_name in ['circle_param2', 'circle_param1', 'min_radius',
+                           'max_radius', 'min_dist', 'threshold', 'kernel_size']:
+            logger.debug(f"⚠️ 忽略舊版參數: {param_name} (新版本不使用)")
 
         logger.debug(f"參數調整: {param_name} = {value}")
 
     def on_debug_reset_params(self):
-        """調試：重置參數為預設值（平衡版本）"""
-        # 重置為平衡的預設參數
-        self.detection_controller.params = {
-            'min_area': 100,
-            'max_area': 10000,
-            'circle': {
-                'dp': 1.2,
-                'min_dist': 25,
-                'param1': 100,
-                'param2': 40,
-                'min_radius': 5,
-                'max_radius': 80
-            },
-            'contour': {
-                'threshold': 127,
-                'kernel_size': 3
-            }
-        }
+        """調試：重置參數為預設值 (基於 basler_mvc)"""
+        # 重置為 basler_mvc 預設參數
+        self.detection_controller.min_area = 2
+        self.detection_controller.max_area = 3000
+        self.detection_controller.bg_var_threshold = 3
+        self.detection_controller.bg_learning_rate = 0.001
+        self.detection_controller.duplicate_distance_threshold = 30
+        self.detection_controller.min_track_frames = 3
+
+        # 重置背景減除器
+        self.detection_controller._reset_background_subtractor()
 
         # 更新調試面板UI（重置滑桿）
-        if DEBUG_MODE:
-            self.debug_panel.min_area_slider['slider'].setValue(100)
-            self.debug_panel.max_area_slider['slider'].setValue(10000)
-            self.debug_panel.circle_param2_slider['slider'].setValue(40)
-            self.debug_panel.circle_param1_slider['slider'].setValue(100)
-            self.debug_panel.min_radius_slider['slider'].setValue(5)
-            self.debug_panel.max_radius_slider['slider'].setValue(80)
-            self.debug_panel.min_dist_slider['slider'].setValue(25)
-            self.debug_panel.threshold_slider['slider'].setValue(127)
-            self.debug_panel.kernel_size_slider['slider'].setValue(3)
+        if DEBUG_MODE and hasattr(self, 'debug_panel'):
+            if hasattr(self.debug_panel, 'min_area_slider'):
+                self.debug_panel.min_area_slider['slider'].setValue(2)
+            if hasattr(self.debug_panel, 'max_area_slider'):
+                self.debug_panel.max_area_slider['slider'].setValue(3000)
+            if hasattr(self.debug_panel, 'bg_var_slider'):
+                self.debug_panel.bg_var_slider['slider'].setValue(3)
+            if hasattr(self.debug_panel, 'min_track_slider'):
+                self.debug_panel.min_track_slider['slider'].setValue(3)
+            if hasattr(self.debug_panel, 'duplicate_dist_slider'):
+                self.debug_panel.duplicate_dist_slider['slider'].setValue(30)
 
-        self.status_label.setText("✅ 參數已重置為預設值")
-        logger.info("調試模式：參數已重置為平衡值")
+        self.status_label.setText("✅ 參數已重置為 basler_mvc 預設值")
+        logger.info("✅ 參數已重置為 basler_mvc 預設值")
 
     def on_debug_save_config(self):
         """調試：儲存參數配置"""
@@ -730,8 +738,17 @@ class MainWindowV2(QMainWindow):
         config_file = config_dir / "detection_config.json"
 
         # 儲存參數
+        params = {
+            'min_area': self.detection_controller.min_area,
+            'max_area': self.detection_controller.max_area,
+            'bg_var_threshold': self.detection_controller.bg_var_threshold,
+            'bg_learning_rate': self.detection_controller.bg_learning_rate,
+            'duplicate_distance_threshold': self.detection_controller.duplicate_distance_threshold,
+            'min_track_frames': self.detection_controller.min_track_frames
+        }
+
         with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(self.detection_controller.params, f, indent=4, ensure_ascii=False)
+            json.dump(params, f, indent=4, ensure_ascii=False)
 
         self.status_label.setText(f"✅ 參數已儲存至 {config_file}")
         logger.info(f"調試模式：參數已儲存 {config_file}")
@@ -752,19 +769,29 @@ class MainWindowV2(QMainWindow):
             with open(config_file, 'r', encoding='utf-8') as f:
                 params = json.load(f)
 
-            self.detection_controller.params = params
+            # 載入參數到檢測控制器
+            self.detection_controller.min_area = params.get('min_area', 2)
+            self.detection_controller.max_area = params.get('max_area', 3000)
+            self.detection_controller.bg_var_threshold = params.get('bg_var_threshold', 3)
+            self.detection_controller.bg_learning_rate = params.get('bg_learning_rate', 0.001)
+            self.detection_controller.duplicate_distance_threshold = params.get('duplicate_distance_threshold', 30)
+            self.detection_controller.min_track_frames = params.get('min_track_frames', 3)
+
+            # 重置背景減除器
+            self.detection_controller._reset_background_subtractor()
 
             # 更新調試面板UI
-            if DEBUG_MODE:
-                self.debug_panel.min_area_slider['slider'].setValue(params.get('min_area', 100))
-                self.debug_panel.max_area_slider['slider'].setValue(params.get('max_area', 5000))
-                self.debug_panel.circle_param2_slider['slider'].setValue(params['circle']['param2'])
-                self.debug_panel.circle_param1_slider['slider'].setValue(params['circle']['param1'])
-                self.debug_panel.min_radius_slider['slider'].setValue(params['circle']['min_radius'])
-                self.debug_panel.max_radius_slider['slider'].setValue(params['circle']['max_radius'])
-                self.debug_panel.min_dist_slider['slider'].setValue(params['circle']['min_dist'])
-                self.debug_panel.threshold_slider['slider'].setValue(params['contour']['threshold'])
-                self.debug_panel.kernel_size_slider['slider'].setValue(params['contour']['kernel_size'])
+            if DEBUG_MODE and hasattr(self, 'debug_panel'):
+                if hasattr(self.debug_panel, 'min_area_slider'):
+                    self.debug_panel.min_area_slider['slider'].setValue(params.get('min_area', 2))
+                if hasattr(self.debug_panel, 'max_area_slider'):
+                    self.debug_panel.max_area_slider['slider'].setValue(params.get('max_area', 3000))
+                if hasattr(self.debug_panel, 'bg_var_slider'):
+                    self.debug_panel.bg_var_slider['slider'].setValue(params.get('bg_var_threshold', 3))
+                if hasattr(self.debug_panel, 'min_track_slider'):
+                    self.debug_panel.min_track_slider['slider'].setValue(params.get('min_track_frames', 3))
+                if hasattr(self.debug_panel, 'duplicate_dist_slider'):
+                    self.debug_panel.duplicate_dist_slider['slider'].setValue(params.get('duplicate_distance_threshold', 30))
 
             self.status_label.setText("✅ 參數配置已載入")
             logger.info("調試模式：參數配置已載入")
@@ -837,8 +864,11 @@ class MainWindowV2(QMainWindow):
             if self.detection_controller.enabled:
                 detected_frame, objects = self.detection_controller.process_frame(frame)
                 count = len(objects)
-                self.detection_label.setText(f"檢測: {count}")
-                self.detection_control.update_status(True, count)
+                crossing_count = self.detection_controller.get_count()
+                track_count = len(self.detection_controller.object_tracks)
+
+                self.detection_label.setText(f"檢測: {count} | 穿越: {crossing_count}")
+                self.detection_control.update_status(True, count, crossing_count, track_count)
 
                 # 如果圖像有縮放，檢測結果需要縮放回原始尺寸顯示
                 if DEBUG_MODE and self.perf_image_scale < 1.0:
@@ -847,7 +877,7 @@ class MainWindowV2(QMainWindow):
             else:
                 detected_frame = original_frame  # 使用原始幀
                 count = 0
-                self.detection_control.update_status(False, 0)
+                self.detection_control.update_status(False, 0, 0, 0)
 
             if DEBUG_MODE:
                 detect_time = (time.perf_counter() - detect_start) * 1000
