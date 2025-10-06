@@ -39,7 +39,7 @@ class SystemMonitorWidget(QWidget):
 
         # 相機 FPS
         self.camera_fps_label = QLabel("相機 FPS: 0")
-        self.camera_fps_label.setStyleSheet("color: #4caf50; font-weight: bold;")
+        self.camera_fps_label.setStyleSheet("color: #00d4ff; font-weight: bold; font-size: 12pt;")
         group_layout.addWidget(self.camera_fps_label)
 
         # 檢測 FPS

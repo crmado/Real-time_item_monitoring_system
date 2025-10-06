@@ -49,12 +49,12 @@ class DetectionControlWidget(QWidget):
 
         # 檢測狀態顯示
         self.status_label = QLabel("狀態: 未啟用")
-        self.status_label.setStyleSheet("color: #ff9800;")
+        self.status_label.setStyleSheet("color: #fbbf24; font-size: 11pt;")
         group_layout.addWidget(self.status_label)
 
         # 檢測計數顯示
         self.count_label = QLabel("檢測數量: 0")
-        self.count_label.setStyleSheet("color: #4caf50; font-weight: bold;")
+        self.count_label.setStyleSheet("color: #00d4ff; font-weight: bold; font-size: 12pt;")
         group_layout.addWidget(self.count_label)
 
         group_box.setLayout(group_layout)
@@ -76,9 +76,9 @@ class DetectionControlWidget(QWidget):
         """更新狀態顯示"""
         if enabled:
             self.status_label.setText("狀態: ✅ 已啟用")
-            self.status_label.setStyleSheet("color: #4caf50;")
+            self.status_label.setStyleSheet("color: #00d4ff; font-size: 11pt;")
         else:
             self.status_label.setText("狀態: ❌ 未啟用")
-            self.status_label.setStyleSheet("color: #ff9800;")
+            self.status_label.setStyleSheet("color: #fbbf24; font-size: 11pt;")
 
         self.count_label.setText(f"檢測數量: {count}")

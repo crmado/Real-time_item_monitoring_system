@@ -58,7 +58,12 @@ class RecordingControlWidget(QWidget):
             self.start_recording.emit()
             self.is_recording = True
             self.record_btn.setText("⏹️ 停止錄製")
-            self.record_btn.setStyleSheet("background-color: #f44336;")
+            self.record_btn.setStyleSheet("""
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ef4444, stop:1 #dc2626);
+                border: 1px solid #fca5a5;
+                color: #ffffff;
+            """)
             self.status_label.setText("狀態: 🔴 錄製中...")
 
     def set_enabled(self, enabled):
