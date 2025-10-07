@@ -45,8 +45,8 @@ class DetectionController:
         self.iou_threshold = 0.3  # IOU 匹配閾值
 
         # 🎯 極小零件檢測參數 - 基於 basler_mvc
-        self.min_area = 2           # 極小零件最小面積
-        self.max_area = 3000        # 最大面積
+        self.min_area = 1           # 🔧 降低最小面積捕捉更小零件 (2→1)
+        self.max_area = 5000        # 🔧 提高最大面積避免過濾 (3000→5000)
 
         # 物件形狀過濾參數 - 為小零件放寬條件
         self.min_aspect_ratio = 0.001  # 極度寬鬆的長寬比
@@ -55,10 +55,10 @@ class DetectionController:
         self.max_solidity = 5.0        # 極度放寬結實性限制
 
         # 🎯 超穩定背景減除 - 專為小零件長期檢測優化
-        self.bg_history = 1000          # 大幅增加歷史幀數
-        self.bg_var_threshold = 3       # 極低閾值確保最高靈敏度
+        self.bg_history = 500           # 🔧 降低歷史幀數加快背景建立 (1000→500)
+        self.bg_var_threshold = 2       # 🔧 進一步降低閾值提高敏感度 (3→2)
         self.detect_shadows = False
-        self.bg_learning_rate = 0.001   # 極低學習率避免小零件被納入背景
+        self.bg_learning_rate = 0.0005  # 🔧 降低學習率避免小零件被納入背景 (0.001→0.0005)
 
         # 🚀 高速模式參數
         self.high_speed_bg_history = 100
@@ -69,8 +69,8 @@ class DetectionController:
 
         # 🎯 極高敏感度邊緣檢測
         self.gaussian_blur_kernel = (1, 1)  # 最小模糊保留最多細節
-        self.canny_low_threshold = 3        # 極低閾值提高敏感度
-        self.canny_high_threshold = 10      # 極低閾值提高敏感度
+        self.canny_low_threshold = 2        # 🔧 進一步降低閾值 (3→2)
+        self.canny_high_threshold = 8       # 🔧 進一步降低閾值 (10→8)
         self.binary_threshold = 1           # 極低閾值提高敏感度
 
         # 🔍 分離優化的形態學處理
@@ -88,10 +88,10 @@ class DetectionController:
 
         # 🎯 ROI 檢測區域參數
         self.roi_enabled = True
-        self.roi_height = 120  # ROI區域高度
-        self.roi_position_ratio = 0.12  # 位置比例
+        self.roi_height = 150  # 🔧 擴大 ROI 區域高度 (120→150)
+        self.roi_position_ratio = 0.10  # 🔧 稍微上移 ROI 位置 (0.12→0.10)
         self.current_roi_y = 0
-        self.current_roi_height = 120
+        self.current_roi_height = 150
 
         # 🎯 物件追蹤和計數參數
         self.enable_crossing_count = True
@@ -189,12 +189,16 @@ class DetectionController:
             # 檢測物件
             detected_objects = self._detect_objects(processed)
 
-            # 🐛 調試：每 1000 幀輸出一次檢測統計
-            if self.total_processed_frames % 1000 == 0:
-                logger.info(f"📊 檢測統計 (第 {self.total_processed_frames} 幀): "
+            # 🐛 調試：每 500 幀輸出完整診斷報告
+            if self.total_processed_frames % 500 == 0:
+                logger.info(f"{'='*60}")
+                logger.info(f"🔍 診斷報告 - 第 {self.total_processed_frames} 幀")
+                logger.info(f"{'='*60}")
+                logger.info(f"📊 [最終結果] 幀{self.total_processed_frames}: "
                           f"檢測到 {len(detected_objects)} 個物件, "
                           f"追蹤算法: {'SORT' if self.use_sort else '傳統'}, "
                           f"當前計數: {self.crossing_counter}")
+                logger.info(f"{'='*60}")
 
             # 執行物件追蹤和穿越計數
             if self.enable_crossing_count and len(detected_objects) > 0:
@@ -229,11 +233,12 @@ class DetectionController:
         # 1. 背景減除獲得前景遮罩
         fg_mask = self.bg_subtractor.apply(process_region, learningRate=self.current_learning_rate)
 
-        # 🐛 調試：檢查前景遮罩（降低頻率）
-        if self.total_processed_frames % 1000 == 0:
+        # 🐛 調試：檢查前景遮罩
+        if self.total_processed_frames % 500 == 0:
             fg_pixels = cv2.countNonZero(fg_mask)
-            logger.debug(f"🔍 背景減除 (第 {self.total_processed_frames} 幀): "
-                       f"前景像素={fg_pixels}, 學習率={self.current_learning_rate}")
+            roi_total = process_region.shape[0] * process_region.shape[1]
+            fg_ratio = (fg_pixels / roi_total * 100) if roi_total > 0 else 0
+            logger.info(f"  ➊ [背景減除] 前景像素={fg_pixels} ({fg_ratio:.2f}%), 學習率={self.current_learning_rate}")
 
         # 2. 高斯模糊減少噪聲
         blurred = cv2.GaussianBlur(process_region, self.gaussian_blur_kernel, 0)
@@ -242,14 +247,11 @@ class DetectionController:
         edges = cv2.Canny(blurred, self.canny_low_threshold, self.canny_high_threshold)
 
         # 4. 多角度檢測策略
-        # 方法1: 增強前景遮罩濾波
-        fg_median = cv2.medianBlur(fg_mask, 5)
-        enhanced_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        fg_step1 = cv2.morphologyEx(fg_median, cv2.MORPH_OPEN, enhanced_kernel, iterations=1)
-        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        fg_step2 = cv2.morphologyEx(fg_step1, cv2.MORPH_CLOSE, close_kernel, iterations=1)
-        final_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        fg_cleaned = cv2.morphologyEx(fg_step2, cv2.MORPH_OPEN, final_kernel, iterations=1)
+        # 方法1: 極度溫和的前景遮罩處理 - 針對小零件優化
+        # 🔧 關鍵修正：使用最小核心避免消除小零件
+        tiny_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))  # 5→2: 極小核心
+        fg_cleaned = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, tiny_kernel, iterations=1)  # 只做一次閉合填充小孔
+        # ❌ 移除所有開運算和中值濾波 - 它們會消除小零件
 
         # 方法2: 多敏感度邊緣檢測
         strong_edges = cv2.Canny(blurred, self.canny_low_threshold, self.canny_high_threshold)
@@ -292,11 +294,14 @@ class DetectionController:
         else:
             processed = dilated.copy()
 
-        # 🐛 調試：檢查最終處理結果（降低頻率）
-        if self.total_processed_frames % 1000 == 0:
+        # 🐛 調試：檢查最終處理結果
+        if self.total_processed_frames % 500 == 0:
+            # 檢查各階段像素數
+            fg_cleaned_pixels = cv2.countNonZero(fg_cleaned)
+            combined_pixels = cv2.countNonZero(combined)
             processed_pixels = cv2.countNonZero(processed)
-            logger.debug(f"🔍 最終處理 (第 {self.total_processed_frames} 幀): "
-                       f"處理後像素={processed_pixels}")
+
+            logger.info(f"  ➋ [形態處理] 清理後={fg_cleaned_pixels}px, 聯合檢測={combined_pixels}px, 最終={processed_pixels}px")
 
         return processed
 
@@ -319,26 +324,52 @@ class DetectionController:
                 processed, connectivity=self.connectivity
             )
 
-            # 🔍 調試：記錄連通組件信息（降低頻率）
-            if self.total_processed_frames % 1000 == 0:
+            # 🔍 調試：記錄連通組件信息
+            if self.total_processed_frames % 500 == 0:
                 min_area = self.high_speed_min_area if self.ultra_high_speed_mode else self.min_area
                 max_area = self.high_speed_max_area if self.ultra_high_speed_mode else self.max_area
-                logger.debug(f"🔍 連通組件分析 (第 {self.total_processed_frames} 幀): "
-                           f"總組件數={num_labels-1}, 面積範圍=[{min_area}, {max_area}]")
 
+                # 統計組件面積分佈
                 if num_labels > 1:
-                    all_areas = [stats[i, cv2.CC_STAT_AREA] for i in range(1, min(num_labels, 11))]
-                    logger.debug(f"🔍 前 {len(all_areas)} 個組件面積: {sorted(all_areas)}")
+                    all_areas = [stats[i, cv2.CC_STAT_AREA] for i in range(1, num_labels)]
+                    areas_in_range = [a for a in all_areas if min_area <= a <= max_area]
+
+                    logger.info(f"📊 [連通組件] 幀{self.total_processed_frames}: "
+                              f"總組件={num_labels-1}, "
+                              f"面積範圍內={len(areas_in_range)}, "
+                              f"範圍=[{min_area}, {max_area}]")
+
+                    if all_areas:
+                        area_stats = {
+                            '最小': min(all_areas),
+                            '最大': max(all_areas),
+                            '平均': int(sum(all_areas) / len(all_areas))
+                        }
+                        logger.info(f"   面積統計: {area_stats}")
+                        # 顯示前10個組件的面積
+                        sample_areas = sorted(all_areas)[:10]
+                        logger.info(f"   前10個組件面積: {sample_areas}")
+                else:
+                    logger.warning(f"⚠️ [連通組件] 幀{self.total_processed_frames}: 沒有檢測到任何組件！")
 
             detected_objects = []
             min_area = self.high_speed_min_area if self.ultra_high_speed_mode else self.min_area
             max_area = self.high_speed_max_area if self.ultra_high_speed_mode else self.max_area
+
+            # 🔍 統計過濾信息
+            filter_stats = {
+                'total': num_labels - 1,
+                'area_filtered': 0,
+                'shape_filtered': 0,
+                'passed': 0
+            }
 
             for i in range(1, num_labels):  # 跳過背景 (label 0)
                 area = stats[i, cv2.CC_STAT_AREA]
 
                 # 面積過濾
                 if area < min_area or area > max_area:
+                    filter_stats['area_filtered'] += 1
                     continue
 
                 x = stats[i, cv2.CC_STAT_LEFT]
@@ -351,8 +382,10 @@ class DetectionController:
 
                 # 形狀驗證
                 if not self._validate_shape(w, h, area):
+                    filter_stats['shape_filtered'] += 1
                     continue
 
+                filter_stats['passed'] += 1
                 detected_objects.append({
                     'x': x,
                     'y': y,
@@ -362,6 +395,14 @@ class DetectionController:
                     'cy': cy,
                     'area': area
                 })
+
+            # 🔍 輸出過濾統計
+            if self.total_processed_frames % 500 == 0:
+                logger.info(f"📊 [物件過濾] 幀{self.total_processed_frames}: "
+                          f"總組件={filter_stats['total']}, "
+                          f"面積過濾={filter_stats['area_filtered']}, "
+                          f"形狀過濾={filter_stats['shape_filtered']}, "
+                          f"✅通過={filter_stats['passed']}")
 
             return detected_objects
 
