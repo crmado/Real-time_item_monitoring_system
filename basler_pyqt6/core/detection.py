@@ -111,7 +111,7 @@ class DetectionController:
         self.temporal_tolerance = 12  # 🔧 與 MVC 一致
 
         # 空間網格追蹤
-        self.position_based_tracking = True  # 🎯 與 MVC 一致：啟用位置追蹤
+        self.position_based_tracking = False  # 🔧 禁用網格追蹤 - 對小零件會造成大量衝突
         self.spatial_grid = {}
         self.grid_cell_size = 30  # 🎯 與 MVC 一致
 
