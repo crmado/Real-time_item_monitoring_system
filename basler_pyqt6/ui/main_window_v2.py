@@ -44,14 +44,11 @@ class MainWindowV2(QMainWindow):
         if DEBUG_MODE:
             self.debug_detection_count_history = []  # 檢測數量歷史
             self.debug_frame_times = []  # 幀處理時間歷史
-            self.debug_total_detection_count = 0  # 累計檢測總數
 
             # 性能優化變量
-            self.perf_fps_limit = 30  # FPS限制（預設30）
-            self.perf_image_scale = 1  # 圖像縮放比例（預設50%）
+            self.perf_image_scale = 1  # 圖像縮放比例（預設100%）
             self.perf_skip_frames = 0  # 跳幀數（預設不跳幀）
             self.perf_frame_counter = 0  # 幀計數器（用於跳幀）
-            self.perf_last_process_time = 0  # 上次處理時間（用於FPS限制）
 
         self.init_ui()
 
@@ -656,11 +653,7 @@ class MainWindowV2(QMainWindow):
     def on_debug_param_changed(self, param_name: str, value):
         """調試：參數即時調整"""
         # 性能優化參數
-        if param_name == 'fps_limit':
-            if DEBUG_MODE:
-                self.perf_fps_limit = value
-                logger.info(f"⚡ FPS 限制已設為: {value}")
-        elif param_name == 'image_scale':
+        if param_name == 'image_scale':
             if DEBUG_MODE:
                 self.perf_image_scale = value
                 logger.info(f"⚡ 圖像縮放已設為: {value*100:.0f}%")
@@ -804,7 +797,7 @@ class MainWindowV2(QMainWindow):
     def on_debug_reset_total_count(self):
         """調試：重置累計檢測計數"""
         if DEBUG_MODE:
-            self.debug_total_detection_count = 0
+            self.detection_controller.reset()
             self.status_label.setText("🔄 累計檢測計數已重置")
             logger.info("調試模式：累計檢測計數已重置")
 
@@ -816,19 +809,7 @@ class MainWindowV2(QMainWindow):
         if DEBUG_MODE:
             total_start = time.perf_counter()
 
-            # === 性能優化 1: FPS 限制 ===
-            current_time = time.perf_counter()
-            min_frame_interval = 1.0 / self.perf_fps_limit  # 計算最小幀間隔
-            elapsed = current_time - self.perf_last_process_time
-
-            if elapsed < min_frame_interval:
-                # 時間未到，跳過本幀處理，節省CPU
-                time.sleep(min_frame_interval - elapsed)  # 休眠剩餘時間
-                return
-
-            self.perf_last_process_time = current_time
-
-            # === 性能優化 2: 跳幀處理 ===
+            # === 性能優化: 跳幀處理 ===
             self.perf_frame_counter += 1
             if self.perf_skip_frames > 0:
                 if self.perf_frame_counter % (self.perf_skip_frames + 1) != 0:
@@ -925,16 +906,15 @@ class MainWindowV2(QMainWindow):
                 if len(self.debug_detection_count_history) > 100:  # 保留最近100幀
                     self.debug_detection_count_history.pop(0)
 
-                # 累加檢測總數（只在有檢測到物體時累加）
-                if count > 0:
-                    self.debug_total_detection_count += count
+                # 使用穿越計數作為累計總數（與舊 MVC 系統一致）
+                total_count = self.detection_controller.get_count()
 
                 avg_count = sum(self.debug_detection_count_history) / len(self.debug_detection_count_history)
                 max_count = max(self.debug_detection_count_history) if self.debug_detection_count_history else 0
                 min_count = min(self.debug_detection_count_history) if self.debug_detection_count_history else 0
 
                 self.debug_panel.update_statistics(
-                    count, avg_count, max_count, min_count, self.debug_total_detection_count
+                    count, avg_count, max_count, min_count, total_count
                 )
 
                 # 更新幀數資訊

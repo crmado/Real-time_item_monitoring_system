@@ -54,8 +54,7 @@ class DebugPanelWidget(QWidget):
         self.init_ui()
 
         # 發送初始性能優化參數（確保主窗口收到初始值）
-        self.param_changed.emit('fps_limit', 30)
-        self.param_changed.emit('image_scale', 0.5)
+        self.param_changed.emit('image_scale', 1.0)
         self.param_changed.emit('skip_frames', 0)
 
     def init_ui(self):
@@ -243,41 +242,6 @@ class DebugPanelWidget(QWidget):
         # === 性能優化 ===
         perf_opt_group = QGroupBox("⚡ 性能優化（降低資源佔用）")
         perf_opt_layout = QVBoxLayout()
-
-        # FPS 限制
-        fps_limit_layout = QHBoxLayout()
-        fps_limit_label = QLabel("FPS 限制:")
-        fps_limit_label.setMinimumWidth(100)
-        fps_limit_layout.addWidget(fps_limit_label)
-
-        self.fps_limit_slider = QSlider(Qt.Orientation.Horizontal)
-        self.fps_limit_slider.setMinimum(1)
-        self.fps_limit_slider.setMaximum(60)
-        self.fps_limit_slider.setValue(30)  # 預設30fps
-        self.fps_limit_slider.valueChanged.connect(
-            lambda v: self.param_changed.emit('fps_limit', v)
-        )
-        fps_limit_layout.addWidget(self.fps_limit_slider)
-
-        self.fps_limit_spinbox = QSpinBox()
-        self.fps_limit_spinbox.setMinimum(1)
-        self.fps_limit_spinbox.setMaximum(60)
-        self.fps_limit_spinbox.setValue(30)
-        self.fps_limit_spinbox.setMinimumWidth(70)
-        self.fps_limit_spinbox.setStyleSheet("""
-            QSpinBox {
-                color: #00d4ff;
-                font-weight: bold;
-                background-color: #1a1a2e;
-                border: 1px solid #00d4ff;
-                border-radius: 3px;
-                padding: 2px;
-            }
-        """)
-        self.fps_limit_slider.valueChanged.connect(self.fps_limit_spinbox.setValue)
-        self.fps_limit_spinbox.valueChanged.connect(self.fps_limit_slider.setValue)
-        fps_limit_layout.addWidget(self.fps_limit_spinbox)
-        perf_opt_layout.addLayout(fps_limit_layout)
 
         # 圖像縮放比例
         scale_layout = QHBoxLayout()
