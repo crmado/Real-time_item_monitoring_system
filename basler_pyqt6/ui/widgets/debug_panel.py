@@ -188,27 +188,28 @@ class DebugPanelWidget(QWidget):
         )
         params_layout.addLayout(self.bg_var_slider['layout'])
 
-        # 追蹤參數
-        params_layout.addWidget(QLabel("📌 追蹤與計數:", parent=self))
+        # 虛擬光柵參數
+        params_layout.addWidget(QLabel("🎯 虛擬光柵計數:", parent=self))
 
         self.min_track_slider = self.create_param_slider(
-            "最小追蹤幀數", 1, 10, 2,  # 1-10，預設 2
+            "光柵歷史幀數", 3, 15, 8,  # 3-15，預設 8
             lambda v: self.param_changed.emit('min_track_frames', v)
         )
         params_layout.addLayout(self.min_track_slider['layout'])
 
         self.duplicate_dist_slider = self.create_param_slider(
-            "防重複距離", 5, 50, 15,  # 5-50，預設 15
+            "光柵去重半徑", 10, 40, 20,  # 10-40，預設 20
             lambda v: self.param_changed.emit('duplicate_distance', v)
         )
         params_layout.addLayout(self.duplicate_dist_slider['layout'])
 
         # 提示說明
         hint_label = QLabel(
-            "💡 參數說明 (基於 basler_mvc 算法):\n"
-            "• 最小面積: 2 = 極小零件檢測 (可檢測150+個)\n"
-            "• 背景閾值: 3 = 極高靈敏度 (數值越小越靈敏)\n"
-            "• 防重複距離: 防止同一物體重複計數"
+            "💡 參數說明 (basler_mvc 驗證參數 + 虛擬光柵):\n"
+            "• 最小面積: 2 = basler_mvc 驗證的小零件檢測參數\n"
+            "• 背景閾值: 3 = basler_mvc 驗證的最佳敏感度\n"
+            "• 光柵去重半徑: 防止同一物體重複觸發 (像素)\n"
+            "• 光柵歷史幀數: 觸發記錄保持時間 (幀)"
         )
         hint_label.setStyleSheet("""
             color: #9ca3af;

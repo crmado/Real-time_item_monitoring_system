@@ -678,11 +678,13 @@ class MainWindowV2(QMainWindow):
             self.detection_controller.current_learning_rate = value
             logger.info(f"📚 背景學習率已設為: {value}")
         elif param_name == 'duplicate_distance':
-            self.detection_controller.duplicate_distance_threshold = value
-            logger.info(f"🔄 重複距離閾值已設為: {value} 像素")
+            # 虛擬光柵：映射到去重半徑
+            self.detection_controller.gate_trigger_radius = value
+            logger.info(f"🔄 光柵去重半徑已設為: {value} 像素")
         elif param_name == 'min_track_frames':
-            self.detection_controller.min_track_frames = value
-            logger.info(f"📌 最小追蹤幀數已設為: {value}")
+            # 虛擬光柵：映射到歷史幀數
+            self.detection_controller.gate_history_frames = value
+            logger.info(f"📌 光柵歷史幀數已設為: {value}")
         # 忽略舊版參數 (圓形、輪廓檢測等)
         elif param_name in ['circle_param2', 'circle_param1', 'min_radius',
                            'max_radius', 'min_dist', 'threshold', 'kernel_size']:
@@ -691,14 +693,16 @@ class MainWindowV2(QMainWindow):
         logger.debug(f"參數調整: {param_name} = {value}")
 
     def on_debug_reset_params(self):
-        """調試：重置參數為預設值 (基於 basler_mvc)"""
-        # 重置為 basler_mvc 預設參數
+        """調試：重置參數為預設值（basler_mvc 驗證參數）"""
+        # 重置檢測參數（使用 basler_mvc 驗證過的參數）
         self.detection_controller.min_area = 2
         self.detection_controller.max_area = 3000
         self.detection_controller.bg_var_threshold = 3
         self.detection_controller.bg_learning_rate = 0.001
-        self.detection_controller.duplicate_distance_threshold = 30
-        self.detection_controller.min_track_frames = 3
+
+        # 重置虛擬光柵參數
+        self.detection_controller.gate_trigger_radius = 20
+        self.detection_controller.gate_history_frames = 8
 
         # 重置背景減除器
         self.detection_controller._reset_background_subtractor()
@@ -730,14 +734,14 @@ class MainWindowV2(QMainWindow):
 
         config_file = config_dir / "detection_config.json"
 
-        # 儲存參數
+        # 儲存參數（虛擬光柵系統）
         params = {
             'min_area': self.detection_controller.min_area,
             'max_area': self.detection_controller.max_area,
             'bg_var_threshold': self.detection_controller.bg_var_threshold,
             'bg_learning_rate': self.detection_controller.bg_learning_rate,
-            'duplicate_distance_threshold': self.detection_controller.duplicate_distance_threshold,
-            'min_track_frames': self.detection_controller.min_track_frames
+            'gate_trigger_radius': self.detection_controller.gate_trigger_radius,
+            'gate_history_frames': self.detection_controller.gate_history_frames
         }
 
         with open(config_file, 'w', encoding='utf-8') as f:
@@ -762,13 +766,24 @@ class MainWindowV2(QMainWindow):
             with open(config_file, 'r', encoding='utf-8') as f:
                 params = json.load(f)
 
-            # 載入參數到檢測控制器
+            # 載入參數到檢測控制器（使用 basler_mvc 驗證參數作為預設值）
             self.detection_controller.min_area = params.get('min_area', 2)
             self.detection_controller.max_area = params.get('max_area', 3000)
             self.detection_controller.bg_var_threshold = params.get('bg_var_threshold', 3)
             self.detection_controller.bg_learning_rate = params.get('bg_learning_rate', 0.001)
-            self.detection_controller.duplicate_distance_threshold = params.get('duplicate_distance_threshold', 30)
-            self.detection_controller.min_track_frames = params.get('min_track_frames', 3)
+
+            # 虛擬光柵參數（向後兼容舊配置）
+            if 'gate_trigger_radius' in params:
+                self.detection_controller.gate_trigger_radius = params['gate_trigger_radius']
+            elif 'duplicate_distance_threshold' in params:
+                # 舊配置：映射到新參數
+                self.detection_controller.gate_trigger_radius = params['duplicate_distance_threshold']
+
+            if 'gate_history_frames' in params:
+                self.detection_controller.gate_history_frames = params['gate_history_frames']
+            elif 'min_track_frames' in params:
+                # 舊配置：映射到新參數
+                self.detection_controller.gate_history_frames = params['min_track_frames']
 
             # 重置背景減除器
             self.detection_controller._reset_background_subtractor()
@@ -782,9 +797,13 @@ class MainWindowV2(QMainWindow):
                 if hasattr(self.debug_panel, 'bg_var_slider'):
                     self.debug_panel.bg_var_slider['slider'].setValue(params.get('bg_var_threshold', 3))
                 if hasattr(self.debug_panel, 'min_track_slider'):
-                    self.debug_panel.min_track_slider['slider'].setValue(params.get('min_track_frames', 3))
+                    # 虛擬光柵：映射到歷史幀數
+                    gate_history = params.get('gate_history_frames', params.get('min_track_frames', 8))
+                    self.debug_panel.min_track_slider['slider'].setValue(gate_history)
                 if hasattr(self.debug_panel, 'duplicate_dist_slider'):
-                    self.debug_panel.duplicate_dist_slider['slider'].setValue(params.get('duplicate_distance_threshold', 30))
+                    # 虛擬光柵：映射到去重半徑
+                    gate_radius = params.get('gate_trigger_radius', params.get('duplicate_distance_threshold', 20))
+                    self.debug_panel.duplicate_dist_slider['slider'].setValue(gate_radius)
 
             self.status_label.setText("✅ 參數配置已載入")
             logger.info("調試模式：參數配置已載入")
@@ -846,10 +865,11 @@ class MainWindowV2(QMainWindow):
                 detected_frame, objects = self.detection_controller.process_frame(frame)
                 count = len(objects)
                 crossing_count = self.detection_controller.get_count()
-                track_count = len(self.detection_controller.object_tracks)
+                # 虛擬光柵：顯示當前觸發歷史中的記錄數
+                gate_triggers = len(self.detection_controller.triggered_positions)
 
                 self.detection_label.setText(f"檢測: {count} | 穿越: {crossing_count}")
-                self.detection_control.update_status(True, count, crossing_count, track_count)
+                self.detection_control.update_status(True, count, crossing_count, gate_triggers)
 
                 # 如果圖像有縮放，檢測結果需要縮放回原始尺寸顯示
                 if DEBUG_MODE and self.perf_image_scale < 1.0:
