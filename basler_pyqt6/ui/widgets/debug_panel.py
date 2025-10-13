@@ -20,6 +20,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from video_display import VideoDisplayWidget
 
+# 導入統一配置管理
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from config.settings import get_config, save_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,12 +54,16 @@ class DebugPanelWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        # 載入配置
+        self.config = get_config()
+
         self.all_param_widgets = []  # 保存所有參數控件（用於鎖定）
         self.init_ui()
 
-        # 發送初始性能優化參數（確保主窗口收到初始值）
-        self.param_changed.emit('image_scale', 1.0)
-        self.param_changed.emit('skip_frames', 0)
+        # 發送初始性能優化參數（從配置讀取）
+        self.param_changed.emit('image_scale', self.config.performance.image_scale)
+        self.param_changed.emit('skip_frames', self.config.performance.skip_frames)
 
     def init_ui(self):
         """初始化 UI"""
@@ -164,17 +172,22 @@ class DebugPanelWidget(QWidget):
         params_group = QGroupBox("🎚️ 檢測參數調整 (即時生效)")
         params_layout = QVBoxLayout()
 
-        # 檢測參數 (基於 basler_mvc)
+        # 從配置獲取參數範圍和預設值
+        ui_cfg = self.config.ui
+
+        # 檢測參數 (基於 basler_mvc 配置)
         params_layout.addWidget(QLabel("📏 面積範圍 (極小零件):", parent=self))
 
+        min_area_min, min_area_max = ui_cfg.min_area_range
         self.min_area_slider = self.create_param_slider(
-            "最小面積", 1, 100, 2,  # 1-100，預設 2 (極小零件)
+            "最小面積", min_area_min, min_area_max, ui_cfg.min_area_default,
             lambda v: self.param_changed.emit('min_area', v)
         )
         params_layout.addLayout(self.min_area_slider['layout'])
 
+        max_area_min, max_area_max = ui_cfg.max_area_range
         self.max_area_slider = self.create_param_slider(
-            "最大面積", 500, 10000, 3000,  # 500-10000，預設 3000
+            "最大面積", max_area_min, max_area_max, ui_cfg.max_area_default,
             lambda v: self.param_changed.emit('max_area', v)
         )
         params_layout.addLayout(self.max_area_slider['layout'])
@@ -182,8 +195,9 @@ class DebugPanelWidget(QWidget):
         # 背景減除參數 (極高靈敏度)
         params_layout.addWidget(QLabel("🎯 背景減除 (極高靈敏度):", parent=self))
 
+        bg_var_min, bg_var_max = ui_cfg.bg_var_threshold_range
         self.bg_var_slider = self.create_param_slider(
-            "背景閾值", 1, 20, 3,  # 1-20，預設 3 (極低閾值)
+            "背景閾值", bg_var_min, bg_var_max, ui_cfg.bg_var_threshold_default,
             lambda v: self.param_changed.emit('bg_var_threshold', v)
         )
         params_layout.addLayout(self.bg_var_slider['layout'])
@@ -191,14 +205,16 @@ class DebugPanelWidget(QWidget):
         # 虛擬光柵參數
         params_layout.addWidget(QLabel("🎯 虛擬光柵計數:", parent=self))
 
+        track_min, track_max = ui_cfg.min_track_frames_range
         self.min_track_slider = self.create_param_slider(
-            "光柵歷史幀數", 3, 15, 8,  # 3-15，預設 8
+            "光柵歷史幀數", track_min, track_max, ui_cfg.min_track_frames_default,
             lambda v: self.param_changed.emit('min_track_frames', v)
         )
         params_layout.addLayout(self.min_track_slider['layout'])
 
+        dist_min, dist_max = ui_cfg.duplicate_distance_range
         self.duplicate_dist_slider = self.create_param_slider(
-            "光柵去重半徑", 10, 40, 20,  # 10-40，預設 20
+            "光柵去重半徑", dist_min, dist_max, ui_cfg.duplicate_distance_default,
             lambda v: self.param_changed.emit('duplicate_distance', v)
         )
         params_layout.addLayout(self.duplicate_dist_slider['layout'])
@@ -251,8 +267,8 @@ class DebugPanelWidget(QWidget):
         scale_layout.addWidget(scale_label)
 
         self.scale_combo = QComboBox()
-        self.scale_combo.addItems(["100% (原始)", "75%", "50%", "30%"])
-        self.scale_combo.setCurrentText("50%")  # 預設50%降低計算量
+        self.scale_combo.addItems(ui_cfg.image_scale_options)
+        self.scale_combo.setCurrentText(ui_cfg.image_scale_default)
         self.scale_combo.currentTextChanged.connect(
             lambda t: self.param_changed.emit('image_scale', float(t.replace('%', '').replace(' (原始)', '')) / 100)
         )
@@ -267,10 +283,11 @@ class DebugPanelWidget(QWidget):
         skip_label.setMinimumWidth(100)
         skip_layout.addWidget(skip_label)
 
+        skip_min, skip_max = ui_cfg.skip_frames_range
         self.skip_frame_spinbox = QSpinBox()
-        self.skip_frame_spinbox.setMinimum(0)
-        self.skip_frame_spinbox.setMaximum(10)
-        self.skip_frame_spinbox.setValue(0)
+        self.skip_frame_spinbox.setMinimum(skip_min)
+        self.skip_frame_spinbox.setMaximum(skip_max)
+        self.skip_frame_spinbox.setValue(ui_cfg.skip_frames_default)
         self.skip_frame_spinbox.setMinimumWidth(70)
         self.skip_frame_spinbox.setSuffix(" 幀")
         self.skip_frame_spinbox.setStyleSheet("""

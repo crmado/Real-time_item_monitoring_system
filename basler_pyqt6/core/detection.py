@@ -10,6 +10,12 @@ import os
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 
+# 導入統一配置管理
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config.settings import get_config, AppConfig
+
 logger = logging.getLogger(__name__)
 
 # 虛擬光柵計數法 - 無需額外導入
@@ -18,68 +24,76 @@ logger = logging.getLogger(__name__)
 class DetectionController:
     """小零件檢測控制器 - 背景減除 + 虛擬光柵計數"""
 
-    def __init__(self):
+    def __init__(self, config: Optional[AppConfig] = None):
+        """
+        初始化檢測控制器
+
+        Args:
+            config: 應用配置（可選，如果未提供則自動載入）
+        """
+        # 載入配置
+        self.config = config if config else get_config()
+        det_cfg = self.config.detection
+        gate_cfg = self.config.gate
+        debug_cfg = self.config.debug
+
         self.enabled = False
         self.detected_objects: List[Dict] = []
 
-        # 🚀 高速檢測模式控制
-        self.ultra_high_speed_mode = False
-        self.target_fps = 280
+        # 🎯 從配置載入檢測參數 - 基於 basler_mvc
+        self.min_area = det_cfg.min_area
+        self.max_area = det_cfg.max_area
 
-        # 🎯 極小零件檢測參數 - 基於 basler_mvc
-        self.min_area = 2           # basler_mvc 驗證參數
-        self.max_area = 3000        # basler_mvc 驗證參數
+        # 物件形狀過濾參數
+        self.min_aspect_ratio = det_cfg.min_aspect_ratio
+        self.max_aspect_ratio = det_cfg.max_aspect_ratio
+        self.min_extent = det_cfg.min_extent
+        self.max_solidity = det_cfg.max_solidity
 
-        # 物件形狀過濾參數 - 為小零件放寬條件
-        self.min_aspect_ratio = 0.001  # 極度寬鬆的長寬比
-        self.max_aspect_ratio = 100.0
-        self.min_extent = 0.001        # 極度降低填充比例要求
-        self.max_solidity = 5.0        # 極度放寬結實性限制
-
-        # 🎯 超穩定背景減除 - 專為小零件長期檢測優化（basler_mvc 驗證參數）
-        self.bg_history = 1000          # basler_mvc 驗證參數：大幅增加歷史幀數避免快速背景更新
-        self.bg_var_threshold = 3       # basler_mvc 驗證參數：極低閾值確保最高敏感度
-        self.detect_shadows = False
-        self.bg_learning_rate = 0.001   # basler_mvc 驗證參數：極低學習率避免小零件被納入背景
+        # 🎯 背景減除參數（basler_mvc 驗證參數）
+        self.bg_history = det_cfg.bg_history
+        self.bg_var_threshold = det_cfg.bg_var_threshold
+        self.detect_shadows = det_cfg.detect_shadows
+        self.bg_learning_rate = det_cfg.bg_learning_rate
 
         # 🚀 高速模式參數
-        self.high_speed_bg_history = 100
-        self.high_speed_bg_var_threshold = 8
-        self.high_speed_min_area = 1
-        self.high_speed_max_area = 2000
-        self.high_speed_binary_threshold = 3
+        self.ultra_high_speed_mode = det_cfg.ultra_high_speed_mode
+        self.target_fps = det_cfg.target_fps
+        self.high_speed_bg_history = det_cfg.high_speed_bg_history
+        self.high_speed_bg_var_threshold = det_cfg.high_speed_bg_var_threshold
+        self.high_speed_min_area = det_cfg.high_speed_min_area
+        self.high_speed_max_area = det_cfg.high_speed_max_area
+        self.high_speed_binary_threshold = det_cfg.high_speed_binary_threshold
 
-        # 🎯 極高敏感度邊緣檢測
-        self.gaussian_blur_kernel = (1, 1)  # 最小模糊保留最多細節
-        self.canny_low_threshold = 2        # 🔧 進一步降低閾值 (3→2)
-        self.canny_high_threshold = 8       # 🔧 進一步降低閾值 (10→8)
-        self.binary_threshold = 1           # 極低閾值提高敏感度
+        # 🎯 邊緣檢測參數
+        self.gaussian_blur_kernel = tuple(det_cfg.gaussian_blur_kernel)
+        self.canny_low_threshold = det_cfg.canny_low_threshold
+        self.canny_high_threshold = det_cfg.canny_high_threshold
+        self.binary_threshold = det_cfg.binary_threshold
 
-        # 🔍 分離優化的形態學處理
-        self.dilate_kernel_size = (1, 1)    # 最小核避免過度膨脹
-        self.dilate_iterations = 0           # 禁用膨脹以保留小零件
-        self.close_kernel_size = (1, 1)     # 禁用閉合避免零件粘連
-        self.enable_watershed_separation = True  # 啟用分水嶺分離算法
-
-        # 🎯 最小化雜訊過濾
-        self.opening_kernel_size = (1, 1)   # 最小開運算核
-        self.opening_iterations = 0          # 禁用開運算以保留小零件
+        # 🔍 形態學處理參數
+        self.dilate_kernel_size = tuple(det_cfg.dilate_kernel_size)
+        self.dilate_iterations = det_cfg.dilate_iterations
+        self.close_kernel_size = tuple(det_cfg.close_kernel_size)
+        self.enable_watershed_separation = det_cfg.enable_watershed_separation
+        self.opening_kernel_size = tuple(det_cfg.opening_kernel_size)
+        self.opening_iterations = det_cfg.opening_iterations
 
         # 連通組件參數
-        self.connectivity = 4  # 4-連通或8-連通
+        self.connectivity = det_cfg.connectivity
 
         # 🎯 ROI 檢測區域參數
-        self.roi_enabled = True
-        self.roi_height = 150  # 🔧 擴大 ROI 區域高度 (120→150)
-        self.roi_position_ratio = 0.10  # 🔧 稍微上移 ROI 位置 (0.12→0.10)
+        self.roi_enabled = det_cfg.roi_enabled
+        self.roi_height = det_cfg.roi_height
+        self.roi_position_ratio = det_cfg.roi_position_ratio
         self.current_roi_y = 0
-        self.current_roi_height = 150
+        self.current_roi_height = det_cfg.roi_height
 
         # 🎯 虛擬光柵計數參數（工業級方案）
-        self.enable_gate_counting = True
-        self.gate_line_position_ratio = 0.5  # 光柵線在 ROI 中的位置（0.5 = 中心線）
-        self.gate_trigger_radius = 20  # 去重半徑（像素）
-        self.gate_history_frames = 8  # 觸發歷史保持幀數（280fps下約28ms）
+        self.enable_gate_counting = gate_cfg.enable_gate_counting
+        self.gate_line_position_ratio = gate_cfg.gate_line_position_ratio
+        self.gate_trigger_radius = gate_cfg.gate_trigger_radius
+        self.gate_history_frames = gate_cfg.gate_history_frames
 
         # 光柵觸發狀態
         self.triggered_positions = {}  # {(x,y): frame_number} 記錄觸發位置和幀號
@@ -95,13 +109,14 @@ class DetectionController:
         self._reset_background_subtractor()
 
         # 📸 調試圖片功能
-        self.debug_save_enabled = False
-        self.debug_save_dir = "basler_pyqt6/recordings/debug"
+        self.debug_save_enabled = debug_cfg.debug_save_enabled
+        self.debug_save_dir = debug_cfg.debug_save_dir
         self.debug_frame_counter = 0
-        self.max_debug_frames = 100
+        self.max_debug_frames = debug_cfg.max_debug_frames
 
         # 輸出初始化狀態
         logger.info("✅ 檢測控制器初始化完成 - 虛擬光柵計數法 (工業級)")
+        logger.info(f"📋 配置載入: min_area={self.min_area}, max_area={self.max_area}, bg_var_threshold={self.bg_var_threshold}")
         logger.info(f"🎯 光柵參數: 位置比例={self.gate_line_position_ratio}, 去重半徑={self.gate_trigger_radius}px, 歷史幀數={self.gate_history_frames}")
 
     def _reset_background_subtractor(self):
