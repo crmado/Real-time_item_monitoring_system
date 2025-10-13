@@ -2,413 +2,364 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Critical Development Guidelines
+
+**IMPORTANT - Read First:**
+
+1. **使用繁體中文回答** - Always respond in Traditional Chinese when communicating with users
+2. **保持專案風格一致** - Follow existing project conventions, DO NOT arbitrarily rename variables, functions, or change code structure
+3. **禁止創建批次檔** - Do not create batch files or shell scripts unless explicitly requested
+4. **最小化文檔** - Avoid writing excessive external documentation. When explanation is needed, add comments directly in the code
+5. **代碼優先** - Focus on writing code with inline comments rather than separate documentation files
+
 ## Project Overview
 
-This is a real-time industrial item monitoring and detection system designed for production line automation. The system features two main architectures:
+**Basler Industrial Vision System** - A high-performance desktop application for real-time object detection and video recording using Basler industrial cameras. The system supports both live camera feeds (280+ FPS) and video file playback for testing without physical hardware.
 
-1. **Basler MVC (Primary)**: High-performance streamlined system optimized for Basler acA640-300gm industrial cameras (280+ FPS)
-2. **Main Application (Legacy)**: Full-featured system with comprehensive UI and multi-camera support
+### Key Architecture Components
 
-## Development Commands
+**Two Main Implementations:**
+1. **basler_pyqt6/** - Production PyQt6 desktop application (primary)
+2. **basler_mvc/** - Reference MVC implementation (for algorithm validation)
 
-### Quick Start
+The project follows a dual-architecture approach where `basler_mvc` serves as the algorithm validation environment, and `basler_pyqt6` is the production desktop application that integrates proven algorithms.
+
+## Core Commands
+
+### Development & Running
+
 ```bash
-# Recommended: Run the high-performance Basler MVC system
-python run_ctk_version.py
+# Quick start (recommended)
+./run_pyqt6.sh
 
-# Alternative: Direct launch
-cd basler_mvc && python main.py
+# Direct run
+python basler_pyqt6/main_v2.py
 
-# Debug mode
-python run_ctk_version.py --debug
+# Install dependencies (Conda)
+conda env create -f environment.yml
+conda activate RPi_4_camera_py312
+./install_deps.sh
 
-# Test system components
-python test_mvc_system.py
-```
-
-### Environment Setup
-```bash
-# Create conda environment
-conda create -n RPi_4_camera python=3.10
-conda activate RPi_4_camera
-
-# Install core dependencies
-pip install customtkinter opencv-python numpy pillow PyYAML
-
-# Install Basler camera support (required for industrial cameras)
-pip install pypylon
-
-# Install all dependencies
+# Install dependencies (pip)
 pip install -r requirements.txt
 ```
 
-### Testing and Validation
+### Testing
+
 ```bash
-# Test MVC system components and imports
-python test_mvc_system.py
+# Test unified configuration system
+python basler_pyqt6/config/test_config.py
 
-# Test thread synchronization fixes
-python test_thread_fix.py
-
-# Validate video recording quality
-python recording_quality_analyzer.py
-
-# Verify video FPS accuracy
-python video_fps_verifier.py
+# Run with test video (no camera required)
+# 1. Launch application
+# 2. File > Load Video File
+# 3. Select from basler_pyqt6/testData/
 ```
 
-### Small Component Detection Optimization
+### Building & Releasing
+
+```bash
+# 1. Update version
+vim basler_pyqt6/version.py  # Change __version__
+
+# 2. Build package
+python scripts/build.py
+
+# 3. Release to server
+python scripts/release.py --notes "Release notes"
+
+# Build options
+python scripts/build.py --skip-clean  # Skip cleanup for faster builds
+python scripts/build.py --no-package  # Build only, no ZIP
+```
+
+### Check camera status
+```bash
+pypylon-listdevices  # List connected Basler cameras
+```
+
+## Architecture Deep Dive
+
+### basler_pyqt6 Structure
+
+```
+basler_pyqt6/
+├── main_v2.py                 # Application entry point
+├── version.py                 # Version & update server config
+├── updater.py                 # Auto-update functionality
+├── config/                    # Unified configuration system
+│   ├── settings.py            # Dataclass-based config definitions
+│   ├── detection_params.json  # Runtime configuration (JSON)
+│   └── test_config.py         # Configuration tests
+├── core/                      # Business logic layer
+│   ├── detection.py           # Detection controller (virtual gate counting)
+│   ├── camera.py              # Basler camera interface
+│   ├── video_player.py        # Video playback manager
+│   ├── video_recorder.py      # Video recording (H.264)
+│   ├── source_manager.py      # Camera/video source abstraction
+│   └── kalman_tracker.py      # Object tracking (currently unused)
+└── ui/                        # PyQt6 interface layer
+    ├── main_window_v2.py      # Main application window
+    ├── widgets/
+    │   ├── debug_panel.py     # Parameter adjustment panel
+    │   ├── camera_control.py  # Camera control widget
+    │   ├── detection_control.py
+    │   ├── recording_control.py
+    │   ├── system_monitor.py  # CPU/RAM monitoring
+    │   └── video_display.py   # Video rendering
+    └── dialogs/
+        └── update_dialog.py   # Update notification dialog
+```
+
+### Configuration System Architecture
+
+**Critical Design Decision**: All detection parameters are centrally managed through the unified configuration system (`basler_pyqt6/config/`).
+
+**Configuration Flow:**
+1. `settings.py` defines dataclass-based configurations (type-safe)
+2. `detection_params.json` persists runtime changes
+3. `detection.py` and UI widgets read from unified config
+4. Changes via UI → config → JSON persistence → next startup
+
+**Configuration Categories:**
+- **DetectionConfig**: 31 parameters for background subtraction, edge detection, morphology
+- **GateConfig**: Virtual gate counting parameters (industrial-grade counting)
+- **UIConfig**: UI control ranges and defaults
+- **PerformanceConfig**: Image scaling, frame skipping
+- **DebugConfig**: Debug output settings
+
+**Key Pattern**: Never hardcode detection parameters. Always read from `get_config()`:
 ```python
-# Apply small component detection optimization (recommended for detecting tiny parts)
-controller.apply_small_component_optimization(start_frame=2500, cleanup_early_images=True)
+from config.settings import get_config
 
-# Manual settings (if needed)
-controller.set_debug_start_frame(2500)  # Start saving debug images from frame 2500
-controller.cleanup_early_debug_images(2500)  # Clean up debug images before frame 2500
+config = get_config()
+min_area = config.detection.min_area  # ✅ Correct
+# min_area = 2  # ❌ Wrong - hardcoding
 ```
 
-### Building Executables
-```bash
-# Build standalone executable (Windows/Linux/Mac)
-# Note: No .spec file found in current codebase
-pyinstaller --onefile basler_mvc/main.py --name basler_mvc_system
-```
+### Detection System Architecture
 
-## Core Architecture
+**Core Algorithm**: Virtual Gate Counting Method (工業級虛擬光柵計數法)
 
-### Basler MVC (High-Performance System)
-The primary system uses a clean MVC pattern optimized for industrial cameras:
+The detection system uses a sophisticated but efficient approach:
 
-```
-basler_mvc/
-├── main.py                           # Entry point with dependency checking
-├── controllers/
-│   └── main_controller.py            # Coordinates camera and detection models
-├── models/
-│   ├── basler_camera_model.py        # Basler camera interface (pypylon)
-│   ├── detection_model.py            # Modular detection algorithms
-│   ├── detection_processor.py        # High-performance frame processing
-│   ├── video_recorder_model.py       # 280+ FPS video recording
-│   └── video_player_model.py         # Video playback with detection
-├── views/
-│   └── main_view_ctk_bright.py       # CustomTkinter high-DPI UI
-├── config/
-│   └── settings.py                   # Centralized configuration
-├── utils/
-│   ├── system_diagnostics.py         # Hardware diagnostic tools
-│   ├── recording_validator.py        # Video quality validation
-│   └── memory_monitor.py             # Memory usage monitoring
-└── styles/                           # Cross-platform UI themes
-```
+1. **ROI-based Processing**: Only processes a horizontal region of interest
+2. **Background Subtraction**: MOG2 algorithm with basler_mvc validated parameters
+3. **Virtual Gate Line**: A horizontal line in the ROI triggers counting when objects cross
+4. **Spatiotemporal Deduplication**: Prevents double-counting using distance threshold and frame history
 
-### Key Design Patterns
-- **MVC Architecture**: Clean separation of concerns with observer pattern
-- **Dependency Injection**: Models are injected into controllers
-- **Multi-threading**: Separate threads for camera capture, processing, and UI
-- **Observer Pattern**: Event-driven communication between components
-- **Strategy Pattern**: Pluggable detection algorithms
+**Why Virtual Gate Instead of Tracking:**
+- O(n) complexity vs O(n²) for tracking
+- Deterministic: each object counted exactly once
+- Handles 280 FPS without performance degradation
+- No ID assignment overhead
 
-## Performance Targets
+**Key Detection Parameters** (from basler_mvc validation):
+- `min_area: 2` - Optimized for tiny parts
+- `bg_var_threshold: 3` - Extremely high sensitivity
+- `bg_learning_rate: 0.001` - Prevents small parts from becoming background
+- `gate_trigger_radius: 20` - Deduplication distance in pixels
 
-### Basler acA640-300gm Specifications
-- **Resolution**: 640x480 Mono8
-- **Target FPS**: 280+ (theoretical max 376)
-- **Capture Latency**: <10ms
-- **Processing FPS**: 200+
-- **UI Update Rate**: 30 FPS (throttled)
+### Source Management
 
-### System Performance Monitoring
-The system includes built-in performance monitoring:
-- Real-time FPS display (camera/processing/detection)
-- Memory usage tracking with warnings
-- Frame drop detection and reporting
-- Hardware health diagnostics
+The application abstracts camera vs. video sources through `SourceManager`:
 
-## Configuration System
-
-### Camera Configuration (basler_mvc/config/settings.py)
 ```python
-CAMERA_CONFIG = {
-    'target_model': 'acA640-300gm',
-    'default_width': 640,
-    'default_height': 480,
-    'default_pixel_format': 'Mono8',
-    'target_fps': 350.0,
-    'default_exposure_time': 1000.0,  # microseconds
-    'enable_jumbo_frames': True,
-    'packet_size': 9000,
-    'grab_strategy': 'LatestImageOnly',
-    'frame_buffer_size': 3
-}
+# Handles both:
+# 1. Basler camera (pypylon)
+# 2. Video files (OpenCV)
+# Provides unified interface to main window
 ```
 
-### Detection Configuration
+This allows testing all detection algorithms without physical hardware.
+
+### Auto-Update System
+
+**Update Flow:**
+1. Client checks `UPDATE_SERVER_URL` (in `version.py`) every 24h
+2. Compares local vs. remote version (semantic versioning)
+3. Downloads ZIP package if update available
+4. Extracts and replaces application
+5. Restarts automatically
+
+**Server Side** (`update_server/`):
+- Flask-based update server
+- Stores releases as ZIP files
+- Maintains `update_manifest.json` with version metadata
+- SFTP upload via `scripts/release.py`
+
+### Build System
+
+**PyInstaller Workflow:**
+1. `basler_pyqt6.spec` defines bundle configuration
+2. `scripts/build.py` orchestrates build process
+3. Outputs to `releases/BaslerVisionSystem_v{version}_{timestamp}.zip`
+4. Includes MD5 checksum and version JSON
+
+**Spec File Key Points:**
+- `--onedir` mode (not `--onefile`) for faster startup
+- Bundles pypylon camera drivers
+- Includes test data directory
+- Platform-specific icon handling
+
+## Version Management
+
+**Single Source of Truth**: `basler_pyqt6/version.py`
+
+Update these values before each release:
 ```python
-DETECTION_CONFIG = {
-    'default_method': 'circle',  # 'circle', 'contour', 'enhanced'
-    'min_area': 100,
-    'max_area': 5000,
-    'enable_detection': True,
-    'circle_detection': {
-        'dp': 1.2,
-        'min_dist': 20,
-        'param1': 50,
-        'param2': 30,
-        'min_radius': 5,
-        'max_radius': 100
-    }
-}
+__version__ = "2.0.1"  # Semantic versioning
+BUILD_DATE = "2025-10-13"
+BUILD_TYPE = "release"  # or "beta", "alpha"
+UPDATE_SERVER_URL = "http://your-server.com:5000/api"
 ```
 
-### Performance Configuration
+Version comparison uses tuple-based semantic comparison:
 ```python
-PERFORMANCE_CONFIG = {
-    'ui_update_fps': 120,  # High-speed UI updates
-    'frame_skip_ratio': 4,
-    'max_processing_queue_size': 5,
-    'fps_calculation_window': 50
-}
+compare_versions("2.0.1", "2.1.0")  # Returns -1 (update needed)
 ```
 
-## Detection Algorithms
+## Important Implementation Details
 
-The system supports multiple detection methods via modular architecture:
+### Camera Configuration
+- Target model: Basler acA640-300gm (GigE Vision)
+- Network setup: Camera at 192.168.1.100, host in same subnet
+- Frame buffer: 3 frames to prevent memory bloat at 280 FPS
+- Grab strategy: LatestImageOnly (discard intermediate frames)
 
-1. **Circle Detection**: HoughCircles for round objects
-2. **Contour Detection**: Morphological operations for irregular shapes  
-3. **Enhanced Detection**: Hybrid method combining multiple approaches
-4. **Background Subtraction**: Motion-based detection with crossing count (recommended for small components)
-5. **Deep Learning**: YOLO integration (via ultralytics)
-
-### Small Component Detection Optimization
-
-The background subtraction detection method has been specifically optimized for detecting and counting small components:
-
-#### Optimized Parameters
-- **Tracking Tolerance**: X=50, Y=80 pixels (increased for small component movement)
-- **Minimum Track Frames**: 2 frames (reduced from 3 for faster detection)
-- **Movement Requirement**: 3 pixels (reduced from 10 for sensitive detection)
-- **Crossing Threshold**: 0.05 (reduced from 0.1 for higher sensitivity)
-- **Confidence Threshold**: 0.05 (reduced from 0.1 for better small object detection)
-
-#### Debug Image Management
-- **Custom Start Frame**: Save debug images only after components appear (e.g., frame 2500)
-- **Early Image Cleanup**: Automatically remove debug images before component appearance
-- **Storage Optimization**: Focus storage on frames containing actual components
-
-### Adding New Detection Methods
-1. Inherit from `DetectionMethod` base class in `basler_mvc/models/detection_base.py`
-2. Implement required methods: `process_frame()`, `detect_objects()`, `set_parameters()`
-3. Register in `DetectionModel` class in `basler_mvc/models/detection_model.py`
-4. Update configuration in `basler_mvc/config/settings.py`
-
-## UI System (CustomTkinter)
-
-### Cross-Platform Display Solution
-The system uses CustomTkinter to solve high-DPI display issues:
-- **Problem**: Standard tkinter appears blurry on high-DPI screens
-- **Solution**: CustomTkinter provides automatic DPI scaling and crisp rendering
-- **Theme Support**: Multiple themes in `styles/` directory
-
-### Running Different Modes
-```bash
-# Normal mode (recommended)
-python run_ctk_version.py
-
-# Debug mode with detailed logging
-python run_ctk_version.py --debug
-```
-
-## Video Recording and Analysis
-
-### High-Speed Recording
-- **Format**: MP4/AVI with configurable codecs
-- **Performance**: 280+ FPS recording capability  
-- **Quality Validation**: Automatic FPS and frame integrity checking
-- **Storage**: Organized in `recordings/` with metadata
-
-### Video Analysis Tools
-```bash
-# Analyze recording quality
-python recording_quality_analyzer.py
-
-# Verify FPS accuracy
-python video_fps_verifier.py
-```
-
-## Industrial Automation Features
-
-### Vibration Motor Control
-The system includes intelligent vibration motor control for automated feeding:
-- **Adaptive Frequency**: Automatically adjusts based on counting progress
-- **Communication**: Supports RS232/485 and TCP/IP protocols
-- **Safety**: Automatic stop on completion or error conditions
-
-### Batch Processing
-- **Automated Counting**: Real-time object counting with duplicate elimination
-- **Small Component Detection**: Optimized tracking for tiny parts with sensitive parameters
-- **Batch Management**: Multi-round processing with automatic record keeping
-- **Progress Monitoring**: Real-time progress bars and completion statistics
-- **Data Logging**: Comprehensive batch records in JSON format
-- **Debug Image Management**: Selective saving and cleanup for efficient storage
-
-## Dependencies and Requirements
-
-### Core Dependencies (Required)
-```bash
-customtkinter    # High-DPI UI framework  
-opencv-python-headless>=4.10.0   # Image processing (headless version from requirements.txt)
-numpy>=1.24.4    # Numerical operations
-pillow>=10.4.0   # Image handling
-PyYAML>=6.0.1    # Configuration file management
-```
-
-### Hardware-Specific Dependencies  
-```bash
-pypylon>=3.0.0   # Basler camera SDK (industrial cameras)
-```
-
-### Optional Dependencies (Available in requirements.txt)
-```bash
-ultralytics>=8.3.0      # YOLO deep learning models
-torch>=2.0.0            # PyTorch backend for AI
-Flask>=3.0.0            # Web interface support
-psutil>=6.0.0           # System monitoring
-memory-profiler         # Memory usage analysis
-```
-
-### Installing Dependencies
-```bash
-# Install all dependencies at once
-pip install -r requirements.txt
-
-# Install minimal dependencies only (if requirements.txt has encoding issues)
-pip install customtkinter opencv-python-headless numpy pillow PyYAML pypylon
-```
-
-## Troubleshooting and Diagnostics
-
-### System Health Checks
-```bash
-# Run comprehensive system diagnostics
-python basler_mvc/utils/system_diagnostics.py
-
-# Memory monitoring (runs automatically in background)
-# Check logs in basler_mvc/logs/basler_mvc.log
-```
-
-### Common Issues and Solutions
-
-#### Camera Connection Issues
-1. **Basler Camera Not Detected**:
-   - Ensure pypylon is installed: `pip install pypylon`
-   - Check camera power and network connection
-   - Verify firewall settings for GigE cameras
-   - Run camera diagnostic: System → Health Check
-
-2. **Low FPS Performance**:
-   - Enable Jumbo Frames (MTU 9000) on network adapter
-   - Close unnecessary background applications
-   - Check CPU and memory usage
-   - Adjust detection parameters to reduce processing load
-
-#### UI Display Issues
-1. **Blurry Interface on High-DPI Screens**:
-   - Use CustomTkinter version: `python run_ctk_version.py`
-   - Install CustomTkinter: `pip install customtkinter`
-
-2. **Interface Not Responding**:
-   - Check logs in `basler_mvc/logs/`
-   - Restart with debug mode: `python run_main_with_debug.py`
-   - Try alternative launcher: `python basler_mvc_launcher.py`
-
-### Log Files and Debugging
-- **Main Log**: `basler_mvc/logs/basler_mvc.log`
-- **Batch Records**: `basler_mvc/batch_records/` (JSON format)
-- **Recording Quality**: `recording_analysis_report.json`
-- **Debug Mode**: Use `run_main_with_debug.py` for verbose logging
-
-## Testing and Quality Assurance
-
-### Running Tests
-```bash
-# Test system functionality and imports
-python test_mvc_system.py
-
-# Test thread synchronization fixes  
-python test_thread_fix.py
-
-# Validate video recording quality
-python recording_quality_analyzer.py
-
-# Verify video frame rate accuracy
-python video_fps_verifier.py
-
-# Run all tests together
-python test_mvc_system.py && python test_thread_fix.py
-```
-
-### Test Coverage
-The testing framework covers:
-- **Import Testing**: Validates all required modules load correctly
-- **MVC Structure**: Ensures all directories and files exist
-- **Detection Algorithms**: Tests circle and contour detection with synthetic data
-- **Performance Validation**: Verifies FPS targets and memory usage
-- **Configuration Validation**: Checks settings.py parameter ranges
-
-## Development Guidelines
-
-### Code Organization
-- **Controllers**: Business logic and model coordination
-- **Models**: Data processing and hardware interfaces
-- **Views**: UI components and user interaction
-- **Utils**: Shared utilities and diagnostic tools
-- **Config**: Centralized configuration management
-
-### Threading Best Practices
-- Camera capture runs in dedicated thread with observer notifications
-- UI updates are throttled to prevent interface blocking
-- Use provided synchronization primitives (locks, events)
-- Memory cleanup is automatic but can be monitored
+### Video Recording
+- Codec: H.264 (libx264)
+- Default CRF: 23 (adjustable quality)
+- Thread-based async recording to avoid UI blocking
+- Auto-generates timestamps in filename
 
 ### Performance Optimization
-- Frame processing uses optimized NumPy operations
-- Detection algorithms are parallelizable where possible
-- Memory usage is monitored with configurable limits
-- UI updates are decoupled from processing pipeline
+The system uses several strategies for high-speed operation:
+- ROI-based processing reduces computation by ~70%
+- Frame skipping option (configurable)
+- Image downscaling option (30%, 50%, 75%, 100%)
+- Minimal morphological operations to preserve small parts
+- Connected components analysis (faster than contour finding)
 
-### Configuration Management
-- All settings centralized in `basler_mvc/config/settings.py`
-- Runtime parameter adjustment through UI
-- Persistent storage of user preferences
-- Validation of configuration parameters on startup
+### basler_mvc Reference
 
-## File Structure and Data Storage
+The MVC implementation serves as the "algorithm lab":
+- Validates detection parameters through experimentation
+- Proven parameters migrate to basler_pyqt6 config
+- Uses simpler architecture for rapid prototyping
+- Not for production deployment
 
-### Recording Storage
-- **Location**: `basler_mvc/recordings/` 
-- **Organization**: Subdirectories by batch size (e.g., `1000顆/`)
-- **Formats**: MP4 video files with metadata
-- **Naming**: Timestamped with format `output_YYYY-MM-DD_HH-MM-SS_count.mp4`
+## Dependency Notes
 
-### Batch Records
-- **Location**: `basler_mvc/batch_records/`
-- **Format**: JSON files with comprehensive batch metadata
-- **Content**: Processing statistics, timestamps, object counts, performance metrics
+**Critical**: Python 3.12+ required for numpy>=1.26.0
 
-### Configuration Updates
-Use the provided functions for runtime configuration changes:
-```python
-from basler_mvc.config.settings import update_config, validate_config
+**Platform-Specific:**
+- PyQt6: Install from conda-forge on Conda environments
+- pypylon: Requires Basler Pylon SDK (auto-installed via pip)
+- opencv-python-headless: GUI-less version (lighter weight)
 
-# Update camera settings
-update_config('camera', {'target_fps': 300.0})
+**Conda vs Pip:**
+The install script (`install_deps.sh`) tries conda first, falls back to pip. PyQt6 installation is most reliable via pip even in conda environments.
 
-# Update detection parameters  
-update_config('detection', {'min_area': 150})
+## Common Gotchas
 
-# Always validate after changes
-validate_config()
-```
+### Configuration Changes Not Applied
+If parameter changes don't take effect:
+1. Check if config loaded: `config = get_config()` returns singleton
+2. Verify JSON file updated: `basler_pyqt6/config/detection_params.json`
+3. For new parameters, add to dataclass in `settings.py` first
 
-The system is designed for 24/7 industrial operation with comprehensive monitoring, automatic error recovery, and performance optimization for high-speed camera applications.
+### Detection Not Working
+1. Verify background subtractor initialized (needs ~100 frames to adapt)
+2. Check ROI placement: must include objects
+3. Validate min_area/max_area range covers target objects
+4. Use debug panel to view binary output
+
+### Build/Package Issues
+1. Missing hidden imports: Add to `basler_pyqt6.spec` hiddenimports list
+2. Data files not included: Add to datas list in spec file
+3. Platform-specific: Test on target platform before releasing
+
+### Performance Issues at High FPS
+1. Enable ROI to reduce processing area
+2. Increase frame skip ratio
+3. Reduce image scale (50% typically sufficient)
+4. Disable unused debug visualizations
+
+## Testing Without Hardware
+
+The system fully supports testing without Basler cameras:
+
+1. Launch application
+2. File > Load Video File
+3. Navigate to `basler_pyqt6/testData/新工業相機收集資料/`
+4. Select test video (MP4 format)
+5. Use debug panel to adjust detection parameters in real-time
+6. Save configuration to persist settings
+
+This workflow allows algorithm development and parameter tuning without physical camera access.
+
+## Code Style Conventions
+
+**Language Usage:**
+- **User Communication**: 繁體中文 (Traditional Chinese) - ALL responses to users
+- **UI Text**: 繁體中文 (Chinese text in interface)
+- **Code Elements**: English (variable names, function names, class names)
+- **Logging**: Chinese for user-facing messages, English for technical/debug logs
+- **Comments**: 繁體中文 for business logic explanations, English for technical implementation notes
+
+**Naming Conventions:**
+- **Class Names**: English PascalCase (e.g., `DetectionController`, `VideoPlayer`)
+- **Functions**: English snake_case (e.g., `process_frame`, `get_config`)
+- **Variables**: English snake_case (e.g., `min_area`, `frame_count`)
+- **Config Keys**: English snake_case (e.g., `bg_var_threshold`, `gate_trigger_radius`)
+- **Constants**: English UPPER_SNAKE_CASE (e.g., `UPDATE_SERVER_URL`, `BUILD_TYPE`)
+
+**Critical Rules:**
+- ⚠️ **DO NOT rename existing variables/functions/classes** - Maintain consistency with established codebase
+- ⚠️ **DO NOT create new batch files or shell scripts** - Use existing scripts only
+- ⚠️ **DO NOT create separate documentation files** - Use inline comments instead
+- ✅ **DO add explanatory comments in code** - Especially for complex algorithms
+- ✅ **DO follow existing patterns** - Study similar code before implementing new features
+
+## Integration Points
+
+### Adding New Detection Algorithms
+
+1. Add parameters to `config/settings.py` DetectionConfig
+2. Implement algorithm in `core/detection.py` DetectionController
+3. Add UI controls in `ui/widgets/debug_panel.py`
+4. Connect signals in `ui/main_window_v2.py`
+5. Update JSON schema version if structure changes
+
+### Adding New UI Widgets
+
+Follow the existing pattern in `ui/widgets/`:
+- Inherit from QWidget
+- Define signals for communication
+- Use Qt Designer layouts (programmatic, not .ui files)
+- Connect to main window via signal/slot mechanism
+
+### Modifying Auto-Update Behavior
+
+Key files:
+- `basler_pyqt6/updater.py` - Client-side update logic
+- `update_server/app.py` - Server endpoints
+- `scripts/release.py` - Upload automation
+
+## Performance Benchmarks
+
+Typical performance on target hardware (example):
+- Camera FPS: 280+ (hardware limited)
+- Processing FPS: 150-200 (with full detection pipeline)
+- UI Update FPS: 60 (capped for smoothness)
+- Detection latency: <5ms per frame
+- Memory usage: ~200MB (steady state)
+
+## External Resources
+
+- **Basler Pylon SDK**: https://www.baslerweb.com/pylon
+- **PyQt6 Documentation**: https://doc.qt.io/qtforpython-6/
+- **OpenCV Docs**: https://docs.opencv.org/4.x/
+- **Update Server**: See `update_server/README.md`
+- **Config System**: See `basler_pyqt6/config/README.md`
