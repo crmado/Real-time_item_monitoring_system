@@ -5,12 +5,17 @@ PyInstaller 打包配置文件
 """
 
 import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-# 應用基本信息
-APP_NAME = 'Basler Vision System'
-VERSION = '2.0.0'
-AUTHOR = 'Industrial Vision'
+# 添加專案路徑到 Python 路徑
+sys.path.insert(0, os.path.abspath('.'))
+
+# 從 version.py 導入版本信息
+from basler_pyqt6.version import __version__, APP_NAME, APP_AUTHOR
+
+VERSION = __version__
+AUTHOR = APP_AUTHOR
 
 # 路徑配置
 block_cipher = None
