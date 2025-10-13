@@ -8,6 +8,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
+# 導入圖示管理器
+from basler_pyqt6.resources.icons import get_icon, Icons
+
 
 class CameraControlWidget(QWidget):
     """相機控制組件"""
@@ -33,8 +36,10 @@ class CameraControlWidget(QWidget):
         group_box = QGroupBox("📷 相機控制")
         group_layout = QVBoxLayout()
 
-        # 檢測按鈕
-        self.detect_btn = QPushButton("🔍 檢測相機")
+        # 檢測按鈕（使用圖示）
+        self.detect_btn = QPushButton(" 檢測相機")
+        self.detect_btn.setIcon(get_icon(Icons.SEARCH, 20))
+        self.detect_btn.setStyleSheet("padding-left: 8px;")
         self.detect_btn.clicked.connect(self.detect_clicked.emit)
         group_layout.addWidget(self.detect_btn)
 
@@ -59,13 +64,17 @@ class CameraControlWidget(QWidget):
         btn_layout.addWidget(self.disconnect_btn)
         group_layout.addLayout(btn_layout)
 
-        # 開始/停止抓取
+        # 開始/停止抓取（使用圖示）
         grab_layout = QHBoxLayout()
-        self.start_btn = QPushButton("▶️ 開始抓取")
+        self.start_btn = QPushButton(" 開始抓取")
+        self.start_btn.setIcon(get_icon(Icons.PLAY, 20))
+        self.start_btn.setStyleSheet("padding-left: 8px;")
         self.start_btn.setEnabled(False)
         self.start_btn.clicked.connect(self.start_clicked.emit)
 
-        self.stop_btn = QPushButton("⏸️ 停止抓取")
+        self.stop_btn = QPushButton(" 停止抓取")
+        self.stop_btn.setIcon(get_icon(Icons.STOP, 20))
+        self.stop_btn.setStyleSheet("padding-left: 8px;")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_clicked.emit)
 
@@ -142,11 +151,11 @@ class CameraControlWidget(QWidget):
             self.disconnect_btn.setEnabled(False)
             self.exposure_slider.setEnabled(False)
             self.start_btn.setEnabled(True)
-            self.start_btn.setText("▶️ 播放")
-            self.stop_btn.setText("⏸️ 暫停")
+            self.start_btn.setText(" 播放")
+            self.stop_btn.setText(" 暫停")
         else:
             # 相機模式：恢復相機控件
             self.detect_btn.setEnabled(True)
             self.camera_list.setEnabled(True)
-            self.start_btn.setText("▶️ 開始抓取")
-            self.stop_btn.setText("⏸️ 停止抓取")
+            self.start_btn.setText(" 開始抓取")
+            self.stop_btn.setText(" 停止抓取")

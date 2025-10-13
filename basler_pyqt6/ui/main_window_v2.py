@@ -28,6 +28,9 @@ from basler_pyqt6.core.video_recorder import VideoRecorder
 from basler_pyqt6.core.updater import AutoUpdater
 from basler_pyqt6.version import DEBUG_MODE
 
+# 導入圖示管理器
+from basler_pyqt6.resources.icons import get_icon, Icons
+
 logger = logging.getLogger(__name__)
 
 
@@ -104,8 +107,9 @@ class MainWindowV2(QMainWindow):
         button_layout.setSpacing(10)
         button_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 主要控制按鈕（一鍵啟動）- 工業級大按鈕
-        self.main_start_btn = QPushButton("▶ 開始檢測")
+        # 主要控制按鈕（一鍵啟動）- 工業級大按鈕（使用圖示）
+        self.main_start_btn = QPushButton(" 開始檢測")
+        self.main_start_btn.setIcon(get_icon(Icons.PLAY, 32))
         self.main_start_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -113,10 +117,12 @@ class MainWindowV2(QMainWindow):
                 border: 3px solid #34d399;
                 border-radius: 12px;
                 padding: 18px 24px;
+                padding-left: 30px;
                 color: #ffffff;
                 font-weight: bold;
                 font-size: 16pt;
                 min-height: 65px;
+                text-align: left;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -135,7 +141,8 @@ class MainWindowV2(QMainWindow):
         self.main_start_btn.clicked.connect(self.on_main_start_clicked)
         button_layout.addWidget(self.main_start_btn)
 
-        self.main_stop_btn = QPushButton("⏹ 停止檢測")
+        self.main_stop_btn = QPushButton(" 停止檢測")
+        self.main_stop_btn.setIcon(get_icon(Icons.STOP, 32))
         self.main_stop_btn.setEnabled(False)
         self.main_stop_btn.setStyleSheet("""
             QPushButton {
@@ -144,10 +151,12 @@ class MainWindowV2(QMainWindow):
                 border: 3px solid #fca5a5;
                 border-radius: 12px;
                 padding: 18px 24px;
+                padding-left: 30px;
                 color: #ffffff;
                 font-weight: bold;
                 font-size: 16pt;
                 min-height: 65px;
+                text-align: left;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -304,20 +313,20 @@ class MainWindowV2(QMainWindow):
         file_menu = menubar.addMenu("檔案(&F)")
 
         # 開啟測試影片
-        load_video_action = QAction("📂 開啟測試影片...", self)
+        load_video_action = QAction("開啟測試影片...", self)
         load_video_action.setShortcut("Ctrl+O")
         load_video_action.setStatusTip("載入 MP4/AVI 影片進行測試")
         load_video_action.triggered.connect(self.load_video_file)
         file_menu.addAction(load_video_action)
 
         # 最近使用的檔案
-        recent_menu = file_menu.addMenu("📁 最近使用")
+        recent_menu = file_menu.addMenu("最近使用")
         recent_menu.setEnabled(False)  # 未來功能
 
         file_menu.addSeparator()
 
         # 匯出功能
-        export_menu = file_menu.addMenu("💾 匯出")
+        export_menu = file_menu.addMenu("匯出")
 
         export_config_action = QAction("匯出配置...", self)
         export_config_action.setStatusTip("將當前檢測參數匯出為 JSON")
@@ -342,7 +351,7 @@ class MainWindowV2(QMainWindow):
         edit_menu = menubar.addMenu("編輯(&E)")
 
         # 設定選項
-        preferences_action = QAction("⚙️ 偏好設定...", self)
+        preferences_action = QAction("偏好設定...", self)
         preferences_action.setShortcut("Ctrl+,")
         preferences_action.setStatusTip("開啟系統設定")
         preferences_action.triggered.connect(self.show_preferences)
@@ -351,7 +360,7 @@ class MainWindowV2(QMainWindow):
         edit_menu.addSeparator()
 
         # 重置配置
-        reset_config_action = QAction("🔄 重置所有設定", self)
+        reset_config_action = QAction("重置所有設定", self)
         reset_config_action.setStatusTip("將所有參數重置為預設值")
         reset_config_action.triggered.connect(self.on_reset_config)
         edit_menu.addAction(reset_config_action)
@@ -360,7 +369,7 @@ class MainWindowV2(QMainWindow):
         view_menu = menubar.addMenu("視圖(&V)")
 
         # 全螢幕模式
-        fullscreen_action = QAction("🖥️ 全螢幕模式", self)
+        fullscreen_action = QAction("全螢幕模式", self)
         fullscreen_action.setShortcut("F11")
         fullscreen_action.setCheckable(True)
         fullscreen_action.setStatusTip("切換全螢幕顯示")
@@ -371,7 +380,7 @@ class MainWindowV2(QMainWindow):
         view_menu.addSeparator()
 
         # 介面縮放
-        zoom_menu = view_menu.addMenu("🔍 介面縮放")
+        zoom_menu = view_menu.addMenu("介面縮放")
 
         zoom_in_action = QAction("放大", self)
         zoom_in_action.setShortcut("Ctrl++")
@@ -392,7 +401,7 @@ class MainWindowV2(QMainWindow):
         camera_menu = menubar.addMenu("相機(&C)")
 
         # 偵測相機
-        detect_camera_action = QAction("🔍 偵測相機", self)
+        detect_camera_action = QAction("偵測相機", self)
         detect_camera_action.setShortcut("Ctrl+D")
         detect_camera_action.setStatusTip("搜尋可用的 Basler 相機")
         detect_camera_action.triggered.connect(self.on_detect_cameras)
@@ -401,12 +410,12 @@ class MainWindowV2(QMainWindow):
         camera_menu.addSeparator()
 
         # 相機模式切換
-        camera_mode_action = QAction("📷 切換到相機模式", self)
+        camera_mode_action = QAction("切換到相機模式", self)
         camera_mode_action.setShortcut("Ctrl+Shift+C")
         camera_mode_action.triggered.connect(self.switch_to_camera_mode)
         camera_menu.addAction(camera_mode_action)
 
-        video_mode_action = QAction("🎬 切換到影片模式", self)
+        video_mode_action = QAction("切換到影片模式", self)
         video_mode_action.setShortcut("Ctrl+Shift+V")
         video_mode_action.triggered.connect(self.load_video_file)
         camera_menu.addAction(video_mode_action)
@@ -415,7 +424,7 @@ class MainWindowV2(QMainWindow):
         tools_menu = menubar.addMenu("工具(&T)")
 
         # 性能測試
-        benchmark_action = QAction("⚡ 性能基準測試", self)
+        benchmark_action = QAction("性能基準測試", self)
         benchmark_action.setStatusTip("測試系統處理速度")
         benchmark_action.setEnabled(False)  # 未來功能
         tools_menu.addAction(benchmark_action)
@@ -423,7 +432,7 @@ class MainWindowV2(QMainWindow):
         tools_menu.addSeparator()
 
         # 清理快取
-        clear_cache_action = QAction("🗑️ 清理快取", self)
+        clear_cache_action = QAction("清理快取", self)
         clear_cache_action.setStatusTip("清除暫存檔案和快取")
         clear_cache_action.triggered.connect(self.clear_cache)
         tools_menu.addAction(clear_cache_action)
@@ -432,7 +441,7 @@ class MainWindowV2(QMainWindow):
         help_menu = menubar.addMenu("幫助(&H)")
 
         # 檢查更新（重要功能）
-        check_update_action = QAction("🔄 檢查更新...", self)
+        check_update_action = QAction("檢查更新...", self)
         check_update_action.setShortcut("Ctrl+U")
         check_update_action.setStatusTip("檢查是否有新版本可用")
         check_update_action.triggered.connect(self.check_for_updates)
@@ -441,14 +450,14 @@ class MainWindowV2(QMainWindow):
         help_menu.addSeparator()
 
         # 使用說明
-        documentation_action = QAction("📖 使用說明", self)
+        documentation_action = QAction("使用說明", self)
         documentation_action.setShortcut("F1")
         documentation_action.setStatusTip("開啟線上說明文件")
         documentation_action.triggered.connect(self.show_documentation)
         help_menu.addAction(documentation_action)
 
         # 鍵盤快捷鍵
-        shortcuts_action = QAction("⌨️ 鍵盤快捷鍵", self)
+        shortcuts_action = QAction("鍵盤快捷鍵", self)
         shortcuts_action.setStatusTip("顯示所有可用的快捷鍵")
         shortcuts_action.triggered.connect(self.show_shortcuts)
         help_menu.addAction(shortcuts_action)
@@ -456,7 +465,7 @@ class MainWindowV2(QMainWindow):
         help_menu.addSeparator()
 
         # 回報問題
-        report_issue_action = QAction("🐛 回報問題", self)
+        report_issue_action = QAction("回報問題", self)
         report_issue_action.setStatusTip("在 GitHub 上回報 Bug")
         report_issue_action.triggered.connect(self.report_issue)
         help_menu.addAction(report_issue_action)
@@ -490,7 +499,7 @@ class MainWindowV2(QMainWindow):
         self.setStatusBar(self.status_bar)
 
         # 主要狀態指示器（左側）
-        self.status_label = QLabel("🟢 系統就緒")
+        self.status_label = QLabel("● 系統就緒")
         self.status_label.setStyleSheet("""
             background-color: transparent;
             color: #10b981;
@@ -506,7 +515,7 @@ class MainWindowV2(QMainWindow):
         self.status_bar.addWidget(separator1)
 
         # 視頻源指示器
-        self.source_label = QLabel("📹 源: 無")
+        self.source_label = QLabel("源: 無")
         self.source_label.setStyleSheet("""
             background-color: transparent;
             color: #00d4ff;
@@ -516,7 +525,7 @@ class MainWindowV2(QMainWindow):
         self.status_bar.addPermanentWidget(self.source_label)
 
         # FPS 指示器（關鍵指標，使用醒目顏色）
-        self.fps_label = QLabel("⚡ 0 FPS")
+        self.fps_label = QLabel("FPS: 0")
         self.fps_label.setStyleSheet("""
             background-color: #1e3a5f;
             color: #00d4ff;
@@ -529,7 +538,7 @@ class MainWindowV2(QMainWindow):
         self.status_bar.addPermanentWidget(self.fps_label)
 
         # 檢測計數指示器
-        self.detection_label = QLabel("🎯 檢測: 0")
+        self.detection_label = QLabel("檢測: 0")
         self.detection_label.setStyleSheet("""
             background-color: #1e5a3a;
             color: #10b981;
@@ -1195,7 +1204,7 @@ class MainWindowV2(QMainWindow):
 
         # 更新 FPS（工業級狀態欄格式）
         fps = self.source_manager.get_fps()
-        self.fps_label.setText(f"⚡ {fps:.0f} FPS")
+        self.fps_label.setText(f"FPS: {fps:.0f}")
 
         # 更新系統監控
         if self.source_manager.source_type == SourceType.CAMERA:

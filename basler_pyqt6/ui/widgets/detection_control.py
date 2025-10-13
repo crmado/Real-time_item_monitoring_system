@@ -8,6 +8,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
+# 導入圖示管理器
+from basler_pyqt6.resources.icons import get_icon, get_pixmap, Icons
+
 
 class DetectionControlWidget(QWidget):
     """小零件檢測控制組件"""
@@ -102,19 +105,44 @@ class DetectionControlWidget(QWidget):
 
         group_layout.addWidget(data_cards_container)
 
-        # === 狀態指示器（大型視覺化）===
-        self.status_label = QLabel("⚪ 待機中")
+        # === 狀態指示器（大型視覺化，使用圖示）===
+        status_container = QWidget()
+        status_layout = QHBoxLayout(status_container)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(10)
+
+        # 狀態圖示
+        self.status_icon = QLabel()
+        self.status_icon.setPixmap(get_pixmap(Icons.TOGGLE_OFF, 32))
+        self.status_icon.setStyleSheet("background: transparent; border: none;")
+        status_layout.addWidget(self.status_icon)
+
+        # 狀態文字
+        self.status_label = QLabel("待機中")
         self.status_label.setStyleSheet("""
             color: #9ca3af;
             font-size: 13pt;
             font-weight: bold;
-            background-color: #1f2a3d;
-            border: 2px solid #4a5568;
-            border-radius: 8px;
-            padding: 10px;
+            background-color: transparent;
+            border: none;
         """)
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        group_layout.addWidget(self.status_label)
+        status_layout.addWidget(self.status_label)
+
+        # 包裝容器
+        status_wrapper = QWidget()
+        status_wrapper.setStyleSheet("""
+            QWidget {
+                background-color: #1f2a3d;
+                border: 2px solid #4a5568;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        status_wrapper_layout = QHBoxLayout(status_wrapper)
+        status_wrapper_layout.setContentsMargins(10, 10, 10, 10)
+        status_wrapper_layout.addWidget(status_container)
+
+        group_layout.addWidget(status_wrapper)
 
         # === 追蹤資訊（次要資訊）===
         self.tracking_label = QLabel("追蹤緩存: 0 筆記錄")
@@ -204,34 +232,34 @@ class DetectionControlWidget(QWidget):
         layout.addStretch()
 
     def update_status(self, enabled: bool, det_count: int = 0, cross_count: int = 0, track_count: int = 0):
-        """更新狀態顯示 - 工業級視覺化"""
+        """更新狀態顯示 - 工業級視覺化（使用圖示）"""
         # 更新大型數據卡片
         self.count_label.setText(f"{det_count}")
         self.crossing_label.setText(f"{cross_count:,}")  # 使用千分位格式化
         self.tracking_label.setText(f"追蹤緩存: {track_count} 筆記錄")
 
-        # 更新狀態指示器（大型視覺化）
+        # 更新狀態指示器（使用 toggle 圖示）
         if enabled:
-            self.status_label.setText("🟢 運行中")
+            # 運行中 - 使用 toggle_on 綠色圖示
+            self.status_icon.setPixmap(get_pixmap(Icons.TOGGLE_ON, 32))
+            self.status_label.setText("運行中")
             self.status_label.setStyleSheet("""
                 color: #10b981;
                 font-size: 13pt;
                 font-weight: bold;
-                background-color: #0d4425;
-                border: 2px solid #10b981;
-                border-radius: 8px;
-                padding: 10px;
+                background-color: transparent;
+                border: none;
             """)
         else:
-            self.status_label.setText("⚪ 待機中")
+            # 待機中 - 使用 toggle_off 灰色圖示
+            self.status_icon.setPixmap(get_pixmap(Icons.TOGGLE_OFF, 32))
+            self.status_label.setText("待機中")
             self.status_label.setStyleSheet("""
                 color: #9ca3af;
                 font-size: 13pt;
                 font-weight: bold;
-                background-color: #1f2a3d;
-                border: 2px solid #4a5568;
-                border-radius: 8px;
-                padding: 10px;
+                background-color: transparent;
+                border: none;
             """)
 
     def set_high_speed_mode(self, enabled: bool):
