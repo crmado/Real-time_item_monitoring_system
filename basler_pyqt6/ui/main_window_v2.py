@@ -40,6 +40,9 @@ class MainWindowV2(QMainWindow):
         self.detection_controller = DetectionController()
         self.video_recorder = VideoRecorder()
 
+        # UI 狀態變量
+        self.ui_scale_factor = 1.0  # UI 縮放因子
+
         # 調試模式變量
         if DEBUG_MODE:
             self.debug_detection_count_history = []  # 檢測數量歷史
@@ -92,87 +95,125 @@ class MainWindowV2(QMainWindow):
         # ========== Tab 2: 檢測監控 ==========
         monitoring_tab = QWidget()
         monitoring_layout = QVBoxLayout(monitoring_tab)
-        monitoring_layout.setSpacing(15)
+        monitoring_layout.setSpacing(12)
         monitoring_layout.setContentsMargins(10, 10, 10, 10)
 
-        # 原始畫面預覽（小）
-        self.camera_preview = VideoDisplayWidget()
-        self.camera_preview.setFixedHeight(200)
-        self.camera_preview.setMinimumWidth(320)
-        self.camera_preview.setStyleSheet("""
-            QWidget {
-                border: 2px solid #00d4ff;
-                border-radius: 8px;
-                background-color: #0a0e27;
-            }
-        """)
-        preview_label = QLabel("📹 原始畫面預覽")
-        preview_label.setStyleSheet("""
-            font-weight: bold;
-            color: #00d4ff;
-            font-size: 13pt;
-            padding: 5px 0px;
-            border-bottom: 2px solid #00d4ff;
-        """)
-        monitoring_layout.addWidget(preview_label)
-        monitoring_layout.addWidget(self.camera_preview)
+        # === 工業級控制按鈕區（更大、更醒目） ===
+        button_container = QWidget()
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setSpacing(10)
+        button_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 主要控制按鈕（一鍵啟動）
-        self.main_start_btn = QPushButton("🚀 開始檢測")
+        # 主要控制按鈕（一鍵啟動）- 工業級大按鈕
+        self.main_start_btn = QPushButton("▶ 開始檢測")
         self.main_start_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #00d4ff, stop:1 #0099cc);
-                border: 2px solid #00ffff;
-                border-radius: 8px;
-                padding: 16px 24px;
-                color: #0a0e27;
+                    stop:0 #10b981, stop:1 #059669);
+                border: 3px solid #34d399;
+                border-radius: 12px;
+                padding: 18px 24px;
+                color: #ffffff;
                 font-weight: bold;
-                font-size: 14pt;
-                min-height: 50px;
+                font-size: 16pt;
+                min-height: 65px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #00ffff, stop:1 #00d4ff);
+                    stop:0 #34d399, stop:1 #10b981);
+                border: 3px solid #6ee7b7;
             }
             QPushButton:pressed {
-                background: #0099cc;
+                background: #059669;
+            }
+            QPushButton:disabled {
+                background-color: #1f2a3d;
+                color: #4a5568;
+                border: 2px solid #2d3748;
             }
         """)
         self.main_start_btn.clicked.connect(self.on_main_start_clicked)
-        monitoring_layout.addWidget(self.main_start_btn)
+        button_layout.addWidget(self.main_start_btn)
 
-        self.main_stop_btn = QPushButton("⏹️ 停止檢測")
+        self.main_stop_btn = QPushButton("⏹ 停止檢測")
         self.main_stop_btn.setEnabled(False)
         self.main_stop_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #ef4444, stop:1 #dc2626);
-                border: 2px solid #fca5a5;
-                border-radius: 8px;
-                padding: 16px 24px;
+                border: 3px solid #fca5a5;
+                border-radius: 12px;
+                padding: 18px 24px;
                 color: #ffffff;
                 font-weight: bold;
-                font-size: 14pt;
-                min-height: 50px;
+                font-size: 16pt;
+                min-height: 65px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #ff5555, stop:1 #ef4444);
+                border: 3px solid #fecaca;
+            }
+            QPushButton:pressed {
+                background: #b91c1c;
+            }
+            QPushButton:disabled {
+                background-color: #1f2a3d;
+                color: #4a5568;
+                border: 2px solid #2d3748;
             }
         """)
         self.main_stop_btn.clicked.connect(self.on_main_stop_clicked)
-        monitoring_layout.addWidget(self.main_stop_btn)
+        button_layout.addWidget(self.main_stop_btn)
 
-        # 檢測控制
+        monitoring_layout.addWidget(button_container)
+
+        # === 原始畫面預覽（小）- 保持原有變數 ===
+        preview_container = QWidget()
+        preview_container.setStyleSheet("""
+            QWidget {
+                background-color: #0a0e27;
+                border: 2px solid #1f3a5f;
+                border-radius: 10px;
+            }
+        """)
+        preview_layout = QVBoxLayout(preview_container)
+        preview_layout.setContentsMargins(8, 8, 8, 8)
+        preview_layout.setSpacing(5)
+
+        preview_label = QLabel("📹 原始畫面")
+        preview_label.setStyleSheet("""
+            font-weight: bold;
+            color: #00d4ff;
+            font-size: 11pt;
+            background-color: transparent;
+            border: none;
+        """)
+        preview_layout.addWidget(preview_label)
+
+        self.camera_preview = VideoDisplayWidget()
+        self.camera_preview.setFixedHeight(180)
+        self.camera_preview.setMinimumWidth(320)
+        self.camera_preview.setStyleSheet("""
+            QWidget {
+                border: 1px solid #00d4ff;
+                border-radius: 6px;
+                background-color: #000000;
+            }
+        """)
+        preview_layout.addWidget(self.camera_preview)
+
+        monitoring_layout.addWidget(preview_container)
+
+        # === 檢測控制（保持原有變數）===
         self.detection_control = DetectionControlWidget()
         monitoring_layout.addWidget(self.detection_control)
 
-        # 錄影控制
+        # === 錄影控制（保持原有變數）===
         self.recording_control = RecordingControlWidget()
         monitoring_layout.addWidget(self.recording_control)
 
-        # 系統監控
+        # === 系統監控（保持原有變數）===
         self.system_monitor = SystemMonitorWidget()
         monitoring_layout.addWidget(self.system_monitor)
 
@@ -185,7 +226,7 @@ class MainWindowV2(QMainWindow):
             logger.info("🛠️ 開發模式已啟用 - 調試工具可用")
 
         # 添加分頁到 TabWidget
-        tab_widget.addTab(camera_settings_tab, "⚙️ 相機設定")
+        tab_widget.addTab(camera_settings_tab, "⚙️ 設定")
         tab_widget.addTab(monitoring_tab, "📊 檢測監控")
 
         if DEBUG_MODE:
@@ -234,63 +275,270 @@ class MainWindowV2(QMainWindow):
         logger.info("✅ UI 初始化完成")
 
     def create_menu_bar(self):
-        """創建菜單欄"""
+        """創建跨平台工業級菜單欄"""
         menubar = self.menuBar()
 
-        # 文件菜單
-        file_menu = menubar.addMenu("文件(&F)")
+        # 設置菜單欄樣式（跨平台一致性）
+        menubar.setStyleSheet("""
+            QMenuBar {
+                background-color: #0a0e27;
+                color: #e0e6f1;
+                border-bottom: 2px solid #1f3a5f;
+                padding: 4px;
+                font-size: 11pt;
+            }
+            QMenuBar::item {
+                padding: 8px 16px;
+                background-color: transparent;
+                border-radius: 4px;
+            }
+            QMenuBar::item:selected {
+                background-color: #1e5a8e;
+            }
+            QMenuBar::item:pressed {
+                background-color: #0d4a7a;
+            }
+        """)
 
-        load_video_action = QAction("📂 加載視頻文件...", self)
+        # ========== 1. 檔案菜單 ==========
+        file_menu = menubar.addMenu("檔案(&F)")
+
+        # 開啟測試影片
+        load_video_action = QAction("📂 開啟測試影片...", self)
         load_video_action.setShortcut("Ctrl+O")
+        load_video_action.setStatusTip("載入 MP4/AVI 影片進行測試")
         load_video_action.triggered.connect(self.load_video_file)
         file_menu.addAction(load_video_action)
 
+        # 最近使用的檔案
+        recent_menu = file_menu.addMenu("📁 最近使用")
+        recent_menu.setEnabled(False)  # 未來功能
+
         file_menu.addSeparator()
 
+        # 匯出功能
+        export_menu = file_menu.addMenu("💾 匯出")
+
+        export_config_action = QAction("匯出配置...", self)
+        export_config_action.setStatusTip("將當前檢測參數匯出為 JSON")
+        export_config_action.triggered.connect(self.on_export_config)
+        export_menu.addAction(export_config_action)
+
+        export_log_action = QAction("匯出運行日誌...", self)
+        export_log_action.setStatusTip("匯出系統運行日誌")
+        export_log_action.setEnabled(False)  # 未來功能
+        export_menu.addAction(export_log_action)
+
+        file_menu.addSeparator()
+
+        # 退出（macOS 會自動處理）
         exit_action = QAction("退出(&X)", self)
         exit_action.setShortcut("Ctrl+Q")
+        exit_action.setStatusTip("關閉應用程式")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # 模式菜單
-        mode_menu = menubar.addMenu("模式(&M)")
+        # ========== 2. 編輯菜單 ==========
+        edit_menu = menubar.addMenu("編輯(&E)")
 
-        camera_mode_action = QAction("📷 相機模式", self)
+        # 設定選項
+        preferences_action = QAction("⚙️ 偏好設定...", self)
+        preferences_action.setShortcut("Ctrl+,")
+        preferences_action.setStatusTip("開啟系統設定")
+        preferences_action.triggered.connect(self.show_preferences)
+        edit_menu.addAction(preferences_action)
+
+        edit_menu.addSeparator()
+
+        # 重置配置
+        reset_config_action = QAction("🔄 重置所有設定", self)
+        reset_config_action.setStatusTip("將所有參數重置為預設值")
+        reset_config_action.triggered.connect(self.on_reset_config)
+        edit_menu.addAction(reset_config_action)
+
+        # ========== 3. 視圖菜單 ==========
+        view_menu = menubar.addMenu("視圖(&V)")
+
+        # 全螢幕模式
+        fullscreen_action = QAction("🖥️ 全螢幕模式", self)
+        fullscreen_action.setShortcut("F11")
+        fullscreen_action.setCheckable(True)
+        fullscreen_action.setStatusTip("切換全螢幕顯示")
+        fullscreen_action.triggered.connect(self.toggle_fullscreen)
+        view_menu.addAction(fullscreen_action)
+        self.fullscreen_action = fullscreen_action  # 保存引用
+
+        view_menu.addSeparator()
+
+        # 介面縮放
+        zoom_menu = view_menu.addMenu("🔍 介面縮放")
+
+        zoom_in_action = QAction("放大", self)
+        zoom_in_action.setShortcut("Ctrl++")
+        zoom_in_action.triggered.connect(lambda: self.adjust_ui_scale(1.1))
+        zoom_menu.addAction(zoom_in_action)
+
+        zoom_out_action = QAction("縮小", self)
+        zoom_out_action.setShortcut("Ctrl+-")
+        zoom_out_action.triggered.connect(lambda: self.adjust_ui_scale(0.9))
+        zoom_menu.addAction(zoom_out_action)
+
+        zoom_reset_action = QAction("重置縮放", self)
+        zoom_reset_action.setShortcut("Ctrl+0")
+        zoom_reset_action.triggered.connect(lambda: self.adjust_ui_scale(1.0, reset=True))
+        zoom_menu.addAction(zoom_reset_action)
+
+        # ========== 4. 相機菜單 ==========
+        camera_menu = menubar.addMenu("相機(&C)")
+
+        # 偵測相機
+        detect_camera_action = QAction("🔍 偵測相機", self)
+        detect_camera_action.setShortcut("Ctrl+D")
+        detect_camera_action.setStatusTip("搜尋可用的 Basler 相機")
+        detect_camera_action.triggered.connect(self.on_detect_cameras)
+        camera_menu.addAction(detect_camera_action)
+
+        camera_menu.addSeparator()
+
+        # 相機模式切換
+        camera_mode_action = QAction("📷 切換到相機模式", self)
+        camera_mode_action.setShortcut("Ctrl+Shift+C")
         camera_mode_action.triggered.connect(self.switch_to_camera_mode)
-        mode_menu.addAction(camera_mode_action)
+        camera_menu.addAction(camera_mode_action)
 
-        video_mode_action = QAction("🎬 視頻模式", self)
+        video_mode_action = QAction("🎬 切換到影片模式", self)
+        video_mode_action.setShortcut("Ctrl+Shift+V")
         video_mode_action.triggered.connect(self.load_video_file)
-        mode_menu.addAction(video_mode_action)
+        camera_menu.addAction(video_mode_action)
 
-        # 幫助菜單
+        # ========== 5. 工具菜單 ==========
+        tools_menu = menubar.addMenu("工具(&T)")
+
+        # 性能測試
+        benchmark_action = QAction("⚡ 性能基準測試", self)
+        benchmark_action.setStatusTip("測試系統處理速度")
+        benchmark_action.setEnabled(False)  # 未來功能
+        tools_menu.addAction(benchmark_action)
+
+        tools_menu.addSeparator()
+
+        # 清理快取
+        clear_cache_action = QAction("🗑️ 清理快取", self)
+        clear_cache_action.setStatusTip("清除暫存檔案和快取")
+        clear_cache_action.triggered.connect(self.clear_cache)
+        tools_menu.addAction(clear_cache_action)
+
+        # ========== 6. 幫助菜單 ==========
         help_menu = menubar.addMenu("幫助(&H)")
 
-        check_update_action = QAction("🔄 檢查更新", self)
+        # 檢查更新（重要功能）
+        check_update_action = QAction("🔄 檢查更新...", self)
+        check_update_action.setShortcut("Ctrl+U")
+        check_update_action.setStatusTip("檢查是否有新版本可用")
         check_update_action.triggered.connect(self.check_for_updates)
         help_menu.addAction(check_update_action)
 
         help_menu.addSeparator()
 
-        about_action = QAction("關於(&A)", self)
+        # 使用說明
+        documentation_action = QAction("📖 使用說明", self)
+        documentation_action.setShortcut("F1")
+        documentation_action.setStatusTip("開啟線上說明文件")
+        documentation_action.triggered.connect(self.show_documentation)
+        help_menu.addAction(documentation_action)
+
+        # 鍵盤快捷鍵
+        shortcuts_action = QAction("⌨️ 鍵盤快捷鍵", self)
+        shortcuts_action.setStatusTip("顯示所有可用的快捷鍵")
+        shortcuts_action.triggered.connect(self.show_shortcuts)
+        help_menu.addAction(shortcuts_action)
+
+        help_menu.addSeparator()
+
+        # 回報問題
+        report_issue_action = QAction("🐛 回報問題", self)
+        report_issue_action.setStatusTip("在 GitHub 上回報 Bug")
+        report_issue_action.triggered.connect(self.report_issue)
+        help_menu.addAction(report_issue_action)
+
+        help_menu.addSeparator()
+
+        # 關於
+        about_action = QAction("關於 Basler 視覺系統(&A)", self)
+        about_action.setStatusTip("顯示版本資訊")
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
     def create_status_bar(self):
-        """創建狀態欄"""
+        """創建狀態欄 - 工業級狀態指示"""
         self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("""
+            QStatusBar {
+                background-color: #0a0e27;
+                color: #00d4ff;
+                border-top: 2px solid #1f3a5f;
+                font-size: 11pt;
+                min-height: 30px;
+            }
+            QStatusBar QLabel {
+                background-color: transparent;
+                color: #e0e6f1;
+                padding: 5px 15px;
+                font-weight: 500;
+            }
+        """)
         self.setStatusBar(self.status_bar)
 
-        self.status_label = QLabel("就緒")
+        # 主要狀態指示器（左側）
+        self.status_label = QLabel("🟢 系統就緒")
+        self.status_label.setStyleSheet("""
+            background-color: transparent;
+            color: #10b981;
+            padding: 5px 15px;
+            font-weight: bold;
+            font-size: 11pt;
+        """)
         self.status_bar.addWidget(self.status_label)
 
-        self.source_label = QLabel("源: 無")
+        # 添加分隔符
+        separator1 = QLabel("│")
+        separator1.setStyleSheet("color: #4a5568; padding: 0px 5px;")
+        self.status_bar.addWidget(separator1)
+
+        # 視頻源指示器
+        self.source_label = QLabel("📹 源: 無")
+        self.source_label.setStyleSheet("""
+            background-color: transparent;
+            color: #00d4ff;
+            padding: 5px 10px;
+            font-size: 10pt;
+        """)
         self.status_bar.addPermanentWidget(self.source_label)
 
-        self.fps_label = QLabel("FPS: 0")
+        # FPS 指示器（關鍵指標，使用醒目顏色）
+        self.fps_label = QLabel("⚡ 0 FPS")
+        self.fps_label.setStyleSheet("""
+            background-color: #1e3a5f;
+            color: #00d4ff;
+            padding: 5px 15px;
+            font-weight: bold;
+            font-size: 10pt;
+            border-radius: 4px;
+            margin: 0px 5px;
+        """)
         self.status_bar.addPermanentWidget(self.fps_label)
 
-        self.detection_label = QLabel("檢測: 0")
+        # 檢測計數指示器
+        self.detection_label = QLabel("🎯 檢測: 0")
+        self.detection_label.setStyleSheet("""
+            background-color: #1e5a3a;
+            color: #10b981;
+            padding: 5px 15px;
+            font-weight: bold;
+            font-size: 10pt;
+            border-radius: 4px;
+            margin: 0px 5px;
+        """)
         self.status_bar.addPermanentWidget(self.detection_label)
 
     def connect_signals(self):
@@ -945,9 +1193,9 @@ class MainWindowV2(QMainWindow):
                         total_frames = int(player.video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
                         self.debug_panel.update_frame_info(current_frame, total_frames)
 
-        # 更新 FPS
+        # 更新 FPS（工業級狀態欄格式）
         fps = self.source_manager.get_fps()
-        self.fps_label.setText(f"FPS: {fps:.1f}")
+        self.fps_label.setText(f"⚡ {fps:.0f} FPS")
 
         # 更新系統監控
         if self.source_manager.source_type == SourceType.CAMERA:
@@ -1216,6 +1464,268 @@ class MainWindowV2(QMainWindow):
             "<hr>"
             "<p>© 2024 Industrial Vision</p>"
         )
+
+    # ========== 新增菜單功能實現 ==========
+
+    def show_preferences(self):
+        """顯示偏好設定對話框"""
+        QMessageBox.information(
+            self,
+            "偏好設定",
+            "⚙️ 偏好設定功能\n\n"
+            "此功能將開啟系統設定面板，讓您可以自訂：\n"
+            "• 預設檢測參數\n"
+            "• UI 主題和外觀\n"
+            "• 快捷鍵設定\n"
+            "• 自動儲存選項\n\n"
+            "此功能規劃中，敬請期待！"
+        )
+        logger.info("偏好設定功能被觸發")
+
+    def on_export_config(self):
+        """匯出當前配置到 JSON 檔案"""
+        from config.settings import get_config
+        from pathlib import Path
+        import json
+        from datetime import datetime
+
+        # 開啟儲存對話框
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "匯出配置",
+            f"basler_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            "JSON 檔案 (*.json)"
+        )
+
+        if file_path:
+            try:
+                # 獲取當前配置
+                config = get_config()
+                config_dict = config.to_dict()
+
+                # 寫入檔案
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_dict, f, ensure_ascii=False, indent=2)
+
+                self.status_label.setText(f"✅ 配置已匯出至: {Path(file_path).name}")
+                QMessageBox.information(
+                    self,
+                    "匯出成功",
+                    f"配置已成功匯出至:\n{file_path}"
+                )
+                logger.info(f"配置已匯出至: {file_path}")
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "匯出失敗",
+                    f"無法匯出配置檔案。\n\n錯誤: {str(e)}"
+                )
+                logger.error(f"配置匯出失敗: {str(e)}")
+
+    def on_reset_config(self):
+        """重置所有設定為預設值"""
+        from config.settings import get_config
+
+        # 二次確認
+        reply = QMessageBox.question(
+            self,
+            "確認重置",
+            "⚠️ 確定要重置所有設定為預設值嗎？\n\n"
+            "這將會：\n"
+            "• 重置所有檢測參數\n"
+            "• 清除自訂設定\n"
+            "• 恢復預設 UI 配置\n\n"
+            "此操作無法復原！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                config = get_config()
+                config.reset_to_default()
+                config.save()
+
+                self.status_label.setText("✅ 設定已重置為預設值")
+                QMessageBox.information(
+                    self,
+                    "重置完成",
+                    "所有設定已成功重置為預設值。\n請重新啟動應用程式以套用變更。"
+                )
+                logger.info("設定已重置為預設值")
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "重置失敗",
+                    f"無法重置設定。\n\n錯誤: {str(e)}"
+                )
+                logger.error(f"設定重置失敗: {str(e)}")
+
+    def toggle_fullscreen(self, checked):
+        """切換全螢幕模式"""
+        if checked:
+            self.showFullScreen()
+            self.status_label.setText("🖥️ 已進入全螢幕模式（按 F11 或 ESC 退出）")
+            logger.info("進入全螢幕模式")
+        else:
+            self.showNormal()
+            self.status_label.setText("🖥️ 已退出全螢幕模式")
+            logger.info("退出全螢幕模式")
+
+    def adjust_ui_scale(self, factor, reset=False):
+        """調整 UI 縮放比例"""
+        if reset:
+            # 重置到 100%
+            self.status_label.setText("🔍 UI 縮放已重置為 100%")
+            logger.info("UI 縮放重置為 100%")
+        else:
+            # 應用縮放（未來實現）
+            scale_percent = int(factor * 100)
+            self.status_label.setText(f"🔍 UI 縮放: {scale_percent}%")
+            logger.info(f"UI 縮放調整為: {scale_percent}%")
+
+        # 提示：功能開發中
+        if not reset:
+            QMessageBox.information(
+                self,
+                "功能開發中",
+                "🔍 UI 縮放功能正在開發中。\n\n"
+                "未來將支援：\n"
+                "• 介面整體縮放\n"
+                "• 字體大小調整\n"
+                "• 自訂顯示密度"
+            )
+
+    def clear_cache(self):
+        """清理快取和暫存檔案"""
+        from pathlib import Path
+
+        reply = QMessageBox.question(
+            self,
+            "確認清理",
+            "🗑️ 確定要清理快取嗎？\n\n"
+            "這將刪除：\n"
+            "• 暫存的影片檔案\n"
+            "• Debug 截圖\n"
+            "• 日誌快取\n\n"
+            "此操作無法復原！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                cleaned_size = 0
+
+                # 清理 screenshots 目錄
+                screenshots_dir = Path("basler_pyqt6/screenshots")
+                if screenshots_dir.exists():
+                    for file in screenshots_dir.glob("*.png"):
+                        cleaned_size += file.stat().st_size
+                        file.unlink()
+
+                # 清理 debug 目錄
+                debug_dir = Path("basler_pyqt6/recordings/debug")
+                if debug_dir.exists():
+                    for file in debug_dir.glob("*"):
+                        if file.is_file():
+                            cleaned_size += file.stat().st_size
+                            file.unlink()
+
+                # 轉換為 MB
+                cleaned_mb = cleaned_size / (1024 * 1024)
+
+                self.status_label.setText(f"✅ 快取已清理（釋放 {cleaned_mb:.2f} MB）")
+                QMessageBox.information(
+                    self,
+                    "清理完成",
+                    f"快取清理成功！\n\n釋放空間: {cleaned_mb:.2f} MB"
+                )
+                logger.info(f"快取已清理，釋放 {cleaned_mb:.2f} MB")
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "清理失敗",
+                    f"無法清理快取。\n\n錯誤: {str(e)}"
+                )
+                logger.error(f"快取清理失敗: {str(e)}")
+
+    def show_documentation(self):
+        """開啟線上使用說明"""
+        import webbrowser
+
+        # GitHub README 連結
+        doc_url = "https://github.com/crmado/Real-time_item_monitoring_system/blob/master/README.md"
+
+        try:
+            webbrowser.open(doc_url)
+            self.status_label.setText("📖 已開啟線上說明文件")
+            logger.info("開啟線上說明文件")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "無法開啟",
+                f"無法開啟瀏覽器。\n\n請手動訪問:\n{doc_url}"
+            )
+            logger.error(f"開啟說明文件失敗: {str(e)}")
+
+    def show_shortcuts(self):
+        """顯示鍵盤快捷鍵列表"""
+        shortcuts_text = """
+        <h3>⌨️ 鍵盤快捷鍵</h3>
+        <table style="width:100%; border-spacing: 10px;">
+        <tr><td><b>檔案操作</b></td><td></td></tr>
+        <tr><td>開啟影片</td><td><code>Ctrl+O</code></td></tr>
+        <tr><td>退出程式</td><td><code>Ctrl+Q</code></td></tr>
+
+        <tr><td><b>編輯</b></td><td></td></tr>
+        <tr><td>偏好設定</td><td><code>Ctrl+,</code></td></tr>
+
+        <tr><td><b>視圖</b></td><td></td></tr>
+        <tr><td>全螢幕</td><td><code>F11</code></td></tr>
+        <tr><td>放大介面</td><td><code>Ctrl++</code></td></tr>
+        <tr><td>縮小介面</td><td><code>Ctrl+-</code></td></tr>
+        <tr><td>重置縮放</td><td><code>Ctrl+0</code></td></tr>
+
+        <tr><td><b>相機</b></td><td></td></tr>
+        <tr><td>偵測相機</td><td><code>Ctrl+D</code></td></tr>
+        <tr><td>相機模式</td><td><code>Ctrl+Shift+C</code></td></tr>
+        <tr><td>影片模式</td><td><code>Ctrl+Shift+V</code></td></tr>
+
+        <tr><td><b>幫助</b></td><td></td></tr>
+        <tr><td>檢查更新</td><td><code>Ctrl+U</code></td></tr>
+        <tr><td>使用說明</td><td><code>F1</code></td></tr>
+        </table>
+        """
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("鍵盤快捷鍵")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setText(shortcuts_text)
+        msg.exec()
+        logger.info("顯示快捷鍵列表")
+
+    def report_issue(self):
+        """開啟 GitHub Issues 頁面回報問題"""
+        import webbrowser
+
+        # GitHub Issues 連結
+        issues_url = "https://github.com/yourusername/Real-time_item_monitoring_system/issues/new"
+
+        try:
+            webbrowser.open(issues_url)
+            self.status_label.setText("🐛 已開啟 GitHub Issues")
+            logger.info("開啟 GitHub Issues 頁面")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "無法開啟",
+                f"無法開啟瀏覽器。\n\n請手動訪問:\n{issues_url}"
+            )
+            logger.error(f"開啟 Issues 頁面失敗: {str(e)}")
 
     def closeEvent(self, event):
         """窗口關閉事件"""
