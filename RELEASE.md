@@ -1,6 +1,6 @@
 # 📦 打包與發布流程
 
-**3 個步驟發布新版本**
+**3 個步驟發布新版本**（使用 SFTP 直接上傳）
 
 ---
 
@@ -23,45 +23,54 @@ python scripts/build.py
 
 **輸出位置：** `releases/BaslerVisionSystem_v{版本}_{時間戳}.zip`
 
-### 3️⃣ 上傳到更新服務器
+### 3️⃣ 上傳到更新服務器（SFTP）
 
 ```bash
 python scripts/release.py --notes "版本 2.0.2 - 修復 bug 和性能優化"
 ```
 
+**腳本會自動：**
+- ✅ 讀取 `.vscode/sftp.json` 配置
+- ✅ 通過 SFTP 上傳 ZIP 文件
+- ✅ 在遠端服務器解壓縮
+- ✅ 更新 `update_manifest.json` 版本清單
+- ✅ 顯示部署結果
+
 ✅ 完成！客戶端將自動檢測到新版本。
 
 ---
 
-## 🌐 首次設置更新服務器（只需一次）
+## 🌐 首次設置 SFTP 配置（只需一次）
 
-### 1. 在服務器上安裝
+### 1. 安裝 paramiko 模組
 
 ```bash
-# 上傳 update_server 目錄到服務器
-scp -r update_server user@your-server.com:~/
-
-# SSH 登入服務器
-ssh user@your-server.com
-
-# 安裝依賴
-cd ~/update_server
-pip install -r requirements.txt
-
-# 啟動服務器
-python app.py
-# 或使用 gunicorn（生產環境）
-./run_server.sh
+pip install paramiko
 ```
 
-### 2. 配置客戶端
+### 2. 配置 SFTP 連接
 
-編輯 `basler_pyqt6/version.py`：
+編輯 `.vscode/sftp.json`：
 
-```python
-UPDATE_SERVER_URL = "http://your-server-ip:5000/api"
-# 或使用域名（建議）
-UPDATE_SERVER_URL = "https://updates.yourdomain.com/api"
+```json
+{
+    "name": "Basler Update Server",
+    "host": "your-server.com",
+    "port": 2224,
+    "username": "fileuser",
+    "password": "your_password",
+    "remotePath": "/home/fileuser/releases"
+}
+```
+
+### 3. 測試連接
+
+```bash
+# 顯示版本信息
+python scripts/release.py --version
+
+# 測試上傳（會自動連接並上傳最新的 release）
+python scripts/release.py --notes "測試版本"
 ```
 
 ---
