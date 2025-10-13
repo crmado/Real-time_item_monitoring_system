@@ -12,7 +12,21 @@
 
 ## 🚀 快速開始
 
-### 安裝
+### 方法 1: 使用 Conda（推薦）
+
+```bash
+# 創建環境
+conda env create -f environment.yml
+conda activate RPi_4_camera_py312
+
+# 快速安裝
+./install_deps.sh
+
+# 運行應用
+./run_pyqt6.sh
+```
+
+### 方法 2: 使用 pip
 
 ```bash
 # 安裝依賴
@@ -111,19 +125,50 @@ python scripts/release.py --notes "更新說明"
 
 ## 🛠️ 系統需求
 
-- **Python**: 3.8+
+- **Python**: 3.12+ （需要 numpy 1.26+）
 - **操作系統**: Windows 10/11, macOS 10.14+, Linux
 - **RAM**: 最低 4GB（建議 8GB+）
 - **相機**（可選）: Basler acA640-300gm 或其他 Basler GigE 相機
 
-## 📚 依賴項
+## 📚 依賴說明
 
-- PyQt6 - GUI 框架
-- OpenCV - 視覺處理
-- pypylon - Basler 相機驅動
-- numpy - 數值運算
-- psutil - 系統監控
-- requests - HTTP 請求（自動更新）
+所有依賴都在 `requirements.txt` 中：
+
+### 桌面應用依賴
+- **PyQt6** - GUI 框架
+- **opencv-python-headless** - 視覺處理（無 GUI 版本）
+- **pypylon** - Basler 相機驅動
+- **numpy** - 數值運算
+- **Pillow** - 圖像處理
+- **psutil** - 系統監控
+- **PyYAML** - 配置文件解析
+
+### 網絡功能
+- **requests** - HTTP 請求（自動更新功能）
+- **paramiko** - SSH/SFTP（發布部署用）
+
+### 開發工具
+- **pyinstaller** - 打包成獨立應用
+
+### 更新服務器（可選）
+如需運行更新服務器，requirements.txt 已包含：
+- **Flask** - Web 框架
+- **Flask-CORS** - 跨域支持
+- **Werkzeug** - WSGI 工具
+- **gunicorn** - 生產級服務器
+
+### 安裝注意事項
+
+**Conda 用戶**：PyQt6 需要從 `conda-forge` 安裝
+```bash
+# 如果 conda 安裝失敗，使用完整路徑
+/Users/crmado/anaconda3/bin/conda install -c conda-forge pyqt=6.6
+
+# 或直接用 pip（最可靠）
+pip install -r requirements.txt
+```
+
+**Python 版本**：需要 3.12+ 因為 numpy>=1.26 要求。如果使用 Python 3.9-3.11，請修改 requirements.txt 中 numpy 版本為 `numpy>=1.21.0,<1.26.0`
 
 ## 🐛 故障排除
 

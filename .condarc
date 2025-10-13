@@ -1,0 +1,5 @@
+# Conda 配置文件
+channels:
+  - conda-forge
+  - defaults
+channel_priority: flexible
