@@ -68,6 +68,8 @@ releases/
 htmlcov/
 testData/
 basler_mvc/
+**/test_*.py
+**/test_*.ipynb
 
 # 文檔和範例（非必要）
 DEVELOPMENT_GUIDE.md
