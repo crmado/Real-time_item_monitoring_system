@@ -137,6 +137,40 @@ class DebugConfig:
 
 
 @dataclass
+class PackagingConfig:
+    """定量包裝控制配置（工業級震動機控制）"""
+
+    # 🎯 包裝目標參數
+    target_count: int = 150                    # 目標數量（顆）
+    enable_auto_packaging: bool = False         # 是否啟用自動包裝模式
+
+    # ⚡ 震動機速度控制閾值（百分比）
+    speed_full_threshold: float = 0.85         # 全速運轉閾值（< 85% 時全速）
+    speed_medium_threshold: float = 0.93       # 中速運轉閾值（85%-93% 時中速）
+    speed_slow_threshold: float = 0.97         # 慢速運轉閾值（93%-97% 時慢速）
+    # >= 97% 時極慢速，達到目標時停止
+
+    # 🔧 震動機速度設定（百分比，0-100）
+    vibrator_speed_full: int = 100             # 全速（100%）
+    vibrator_speed_medium: int = 60            # 中速（60%）
+    vibrator_speed_slow: int = 30              # 慢速（30%）
+    vibrator_speed_creep: int = 10             # 極慢速（10%）
+
+    # ⏱️ 反應時間補償
+    stop_delay_frames: int = 10                # 停止延遲補償幀數（震動機慣性）
+    advance_stop_count: int = 2                # 提前停止顆數（考慮飛行中零件）
+
+    # 🔊 提示音設定
+    enable_sound_alert: bool = True            # 啟用提示音
+    alert_on_target_reached: bool = True       # 達到目標時提示
+    alert_on_speed_change: bool = False        # 速度變化時提示
+
+    # 📊 統計參數
+    enable_batch_tracking: bool = True         # 啟用批次追蹤
+    auto_reset_on_complete: bool = False       # 完成後自動重置
+
+
+@dataclass
 class AppConfig:
     """應用程序總配置"""
 
@@ -145,6 +179,7 @@ class AppConfig:
     ui: UIConfig = field(default_factory=UIConfig)
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     debug: DebugConfig = field(default_factory=DebugConfig)
+    packaging: PackagingConfig = field(default_factory=PackagingConfig)
 
     # 配置檔案路徑
     config_file: Optional[Path] = None
@@ -161,7 +196,8 @@ class AppConfig:
             'gate': asdict(self.gate),
             'ui': asdict(self.ui),
             'performance': asdict(self.performance),
-            'debug': asdict(self.debug)
+            'debug': asdict(self.debug),
+            'packaging': asdict(self.packaging)
         }
 
     def save(self, file_path: Optional[Path] = None) -> bool:
@@ -220,6 +256,7 @@ class AppConfig:
                 ui=UIConfig(**data.get('ui', {})),
                 performance=PerformanceConfig(**data.get('performance', {})),
                 debug=DebugConfig(**data.get('debug', {})),
+                packaging=PackagingConfig(**data.get('packaging', {})),
                 config_file=file_path
             )
 

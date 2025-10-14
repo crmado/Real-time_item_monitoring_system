@@ -16,6 +16,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.settings import get_config, AppConfig
 
+# 導入震動機控制器
+from basler_pyqt6.core.vibrator_controller import (
+    create_vibrator_controller,
+    create_dual_vibrator_manager,
+    VibratorSpeed,
+    VibratorControllerBase,
+    DualVibratorManager
+)
+
 logger = logging.getLogger(__name__)
 
 # 虛擬光柵計數法 - 無需額外導入
@@ -114,10 +123,36 @@ class DetectionController:
         self.debug_frame_counter = 0
         self.max_debug_frames = debug_cfg.max_debug_frames
 
+        # 🎯 定量包裝控制參數
+        pkg_cfg = self.config.packaging
+        self.packaging_enabled = pkg_cfg.enable_auto_packaging
+        self.target_count = pkg_cfg.target_count
+        self.advance_stop_count = pkg_cfg.advance_stop_count
+
+        # 速度控制閾值
+        self.speed_full_threshold = pkg_cfg.speed_full_threshold
+        self.speed_medium_threshold = pkg_cfg.speed_medium_threshold
+        self.speed_slow_threshold = pkg_cfg.speed_slow_threshold
+
+        # 震動機速度設定
+        self.vibrator_speed_full = pkg_cfg.vibrator_speed_full
+        self.vibrator_speed_medium = pkg_cfg.vibrator_speed_medium
+        self.vibrator_speed_slow = pkg_cfg.vibrator_speed_slow
+        self.vibrator_speed_creep = pkg_cfg.vibrator_speed_creep
+
+        # 雙震動機管理器（預設使用模擬控制器）
+        self.vibrator: Optional[DualVibratorManager] = None
+        self._init_vibrator_controller()
+
+        # 包裝狀態
+        self.current_speed = VibratorSpeed.STOP
+        self.packaging_completed = False
+
         # 輸出初始化狀態
         logger.info("✅ 檢測控制器初始化完成 - 虛擬光柵計數法 (工業級)")
         logger.info(f"📋 配置載入: min_area={self.min_area}, max_area={self.max_area}, bg_var_threshold={self.bg_var_threshold}")
         logger.info(f"🎯 光柵參數: 位置比例={self.gate_line_position_ratio}, 去重半徑={self.gate_trigger_radius}px, 歷史幀數={self.gate_history_frames}")
+        logger.info(f"📦 包裝控制: 目標={self.target_count}顆, 自動模式={'啟用' if self.packaging_enabled else '停用'}")
 
     def _reset_background_subtractor(self):
         """重置背景減除器"""
@@ -455,6 +490,10 @@ class DetectionController:
 
                         logger.info(f"✅ 光柵計數 #{self.crossing_counter} - 位置:({cx},{cy}), 幀:{self.current_frame_count}")
 
+                        # 🎯 自動包裝模式：根據計數更新震動機速度
+                        if self.packaging_enabled:
+                            self._update_vibrator_speed()
+
             # 調試信息（每 100 幀輸出一次）
             if self.current_frame_count % 100 == 0:
                 logger.debug(f"🎯 光柵狀態 (第{self.current_frame_count}幀): "
@@ -585,3 +624,162 @@ class DetectionController:
         self.target_fps = target_fps
         self._reset_background_subtractor()
         logger.info(f"超高速模式: {'啟用' if enabled else '禁用'} (目標 {target_fps} fps)")
+
+    # ==================== 定量包裝控制方法 ====================
+
+    def _init_vibrator_controller(self):
+        """初始化雙震動機管理器（模擬模式）"""
+        self.vibrator = create_dual_vibrator_manager(
+            controller_type="simulated",
+            name1="震動機A",
+            name2="震動機B"
+        )
+        logger.info("🔧 雙震動機管理器已初始化（模擬模式）")
+
+    def enable_packaging_mode(self, enabled: bool):
+        """
+        啟用/停用自動包裝模式
+
+        Args:
+            enabled: True=啟用, False=停用
+        """
+        self.packaging_enabled = enabled
+        if enabled:
+            logger.info("📦 自動包裝模式已啟用")
+            self.packaging_completed = False
+            if self.vibrator:
+                self.vibrator.start()
+                self._update_vibrator_speed()
+        else:
+            logger.info("📦 自動包裝模式已停用")
+            if self.vibrator:
+                self.vibrator.stop()
+                self.current_speed = VibratorSpeed.STOP
+
+    def set_target_count(self, count: int):
+        """
+        設定目標包裝數量
+
+        Args:
+            count: 目標數量
+        """
+        self.target_count = count
+        logger.info(f"🎯 目標數量已設定: {count} 顆")
+        self.packaging_completed = False
+
+    def set_speed_thresholds(self, full: float = None, medium: float = None,
+                            slow: float = None):
+        """
+        設定速度控制閾值
+
+        Args:
+            full: 全速閾值（百分比）
+            medium: 中速閾值（百分比）
+            slow: 慢速閾值（百分比）
+        """
+        if full is not None:
+            self.speed_full_threshold = full
+        if medium is not None:
+            self.speed_medium_threshold = medium
+        if slow is not None:
+            self.speed_slow_threshold = slow
+
+        logger.info(f"⚙️  速度閾值已更新: 全速<{self.speed_full_threshold:.0%}, "
+                   f"中速<{self.speed_medium_threshold:.0%}, "
+                   f"慢速<{self.speed_slow_threshold:.0%}")
+
+    def _update_vibrator_speed(self):
+        """
+        根據當前計數自動調整震動機速度
+        核心自動控制邏輯
+        """
+        if not self.packaging_enabled or not self.vibrator:
+            return
+
+        current_count = self.crossing_counter
+        target = self.target_count
+
+        # 檢查是否已完成
+        if current_count >= target:
+            if not self.packaging_completed:
+                self.packaging_completed = True
+                self.vibrator.set_speed(VibratorSpeed.STOP)
+                self.current_speed = VibratorSpeed.STOP
+                logger.info(f"🎉 包裝完成！已達目標: {current_count}/{target} 顆")
+            return
+
+        # 計算完成度百分比
+        progress = current_count / target if target > 0 else 0
+
+        # 計算提前停止閾值（考慮飛行中零件）
+        effective_target = target - self.advance_stop_count
+        effective_progress = current_count / effective_target if effective_target > 0 else 0
+
+        # 根據進度自動調整速度
+        new_speed = self.current_speed
+
+        if effective_progress >= self.speed_slow_threshold:
+            # >= 97% - 極慢速精細控制
+            new_speed = VibratorSpeed.CREEP
+        elif effective_progress >= self.speed_medium_threshold:
+            # 93%-97% - 慢速
+            new_speed = VibratorSpeed.SLOW
+        elif effective_progress >= self.speed_full_threshold:
+            # 85%-93% - 中速
+            new_speed = VibratorSpeed.MEDIUM
+        else:
+            # < 85% - 全速
+            new_speed = VibratorSpeed.FULL
+
+        # 僅在速度變化時更新
+        if new_speed != self.current_speed:
+            self.vibrator.set_speed(new_speed)
+            self.current_speed = new_speed
+            logger.info(f"⚡ 速度調整: {str(new_speed)} "
+                       f"({current_count}/{target}顆, {progress:.1%}完成)")
+
+    def get_packaging_status(self) -> Dict[str, Any]:
+        """
+        獲取包裝狀態資訊（含雙震動機狀態）
+
+        Returns:
+            包裝狀態字典
+        """
+        # 獲取雙震動機狀態
+        vibrator_status = {'vibrator1': {}, 'vibrator2': {}}
+        if self.vibrator:
+            dual_status = self.vibrator.get_status()
+            vibrator_status = {
+                'vibrator1': {
+                    'speed': str(self.current_speed),
+                    'speed_percent': self.current_speed.value,
+                    'is_running': dual_status['vibrator1']['is_running']
+                },
+                'vibrator2': {
+                    'speed': str(self.current_speed),
+                    'speed_percent': self.current_speed.value,
+                    'is_running': dual_status['vibrator2']['is_running']
+                }
+            }
+
+        return {
+            'enabled': self.packaging_enabled,
+            'current_count': self.crossing_counter,
+            'target_count': self.target_count,
+            'progress_percent': (self.crossing_counter / self.target_count * 100)
+                               if self.target_count > 0 else 0,
+            'vibrator_speed': str(self.current_speed),
+            'vibrator_speed_percent': self.current_speed.value,
+            'vibrator1': vibrator_status['vibrator1'],
+            'vibrator2': vibrator_status['vibrator2'],
+            'completed': self.packaging_completed
+        }
+
+    def reset_packaging(self):
+        """重置包裝狀態（保留目標設定）"""
+        self.reset()  # 重置計數
+        self.packaging_completed = False
+        if self.vibrator and self.vibrator.is_running:
+            self.vibrator.stop()
+        self.current_speed = VibratorSpeed.STOP
+        logger.info("🔄 包裝狀態已重置")

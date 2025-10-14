@@ -82,6 +82,8 @@ class Icons:
     # 按鈕圖示
     PLAY = "play"
     STOP = "stop"
+    PAUSE = "pause"
+    RESET = "replay"
     SEARCH = "search"
     SETTINGS = "settings"
 

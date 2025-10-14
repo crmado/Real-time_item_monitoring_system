@@ -15,7 +15,7 @@ from PyQt6.QtGui import QAction
 
 from basler_pyqt6.ui.widgets.camera_control import CameraControlWidget
 from basler_pyqt6.ui.widgets.video_display import VideoDisplayWidget
-from basler_pyqt6.ui.widgets.detection_control import DetectionControlWidget
+# DetectionControlWidget 已移除，功能整合到 PackagingControlWidget
 from basler_pyqt6.ui.widgets.recording_control import RecordingControlWidget
 from basler_pyqt6.ui.widgets.system_monitor import SystemMonitorWidget
 from basler_pyqt6.ui.widgets.debug_panel import DebugPanelWidget
@@ -98,86 +98,10 @@ class MainWindowV2(QMainWindow):
         # ========== Tab 2: 檢測監控 ==========
         monitoring_tab = QWidget()
         monitoring_layout = QVBoxLayout(monitoring_tab)
-        monitoring_layout.setSpacing(12)
-        monitoring_layout.setContentsMargins(10, 10, 10, 10)
+        monitoring_layout.setSpacing(15)
+        monitoring_layout.setContentsMargins(15, 15, 15, 15)
 
-        # === 工業級控制按鈕區（更大、更醒目） ===
-        button_container = QWidget()
-        button_layout = QHBoxLayout(button_container)
-        button_layout.setSpacing(10)
-        button_layout.setContentsMargins(0, 0, 0, 0)
-
-        # 主要控制按鈕（一鍵啟動）- 工業級大按鈕（使用圖示）
-        self.main_start_btn = QPushButton(" 開始檢測")
-        self.main_start_btn.setIcon(get_icon(Icons.PLAY, 32))
-        self.main_start_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #10b981, stop:1 #059669);
-                border: 3px solid #34d399;
-                border-radius: 12px;
-                padding: 18px 24px;
-                padding-left: 30px;
-                color: #ffffff;
-                font-weight: bold;
-                font-size: 16pt;
-                min-height: 65px;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #34d399, stop:1 #10b981);
-                border: 3px solid #6ee7b7;
-            }
-            QPushButton:pressed {
-                background: #059669;
-            }
-            QPushButton:disabled {
-                background-color: #1f2a3d;
-                color: #4a5568;
-                border: 2px solid #2d3748;
-            }
-        """)
-        self.main_start_btn.clicked.connect(self.on_main_start_clicked)
-        button_layout.addWidget(self.main_start_btn)
-
-        self.main_stop_btn = QPushButton(" 停止檢測")
-        self.main_stop_btn.setIcon(get_icon(Icons.STOP, 32))
-        self.main_stop_btn.setEnabled(False)
-        self.main_stop_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ef4444, stop:1 #dc2626);
-                border: 3px solid #fca5a5;
-                border-radius: 12px;
-                padding: 18px 24px;
-                padding-left: 30px;
-                color: #ffffff;
-                font-weight: bold;
-                font-size: 16pt;
-                min-height: 65px;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ff5555, stop:1 #ef4444);
-                border: 3px solid #fecaca;
-            }
-            QPushButton:pressed {
-                background: #b91c1c;
-            }
-            QPushButton:disabled {
-                background-color: #1f2a3d;
-                color: #4a5568;
-                border: 2px solid #2d3748;
-            }
-        """)
-        self.main_stop_btn.clicked.connect(self.on_main_stop_clicked)
-        button_layout.addWidget(self.main_stop_btn)
-
-        monitoring_layout.addWidget(button_container)
-
-        # === 原始畫面預覽（小）- 保持原有變數 ===
+        # === 原始畫面預覽（上方，放大顯示） ===
         preview_container = QWidget()
         preview_container.setStyleSheet("""
             QWidget {
@@ -187,22 +111,22 @@ class MainWindowV2(QMainWindow):
             }
         """)
         preview_layout = QVBoxLayout(preview_container)
-        preview_layout.setContentsMargins(8, 8, 8, 8)
-        preview_layout.setSpacing(5)
+        preview_layout.setContentsMargins(10, 10, 10, 10)
+        preview_layout.setSpacing(8)
 
         preview_label = QLabel("📹 原始畫面")
         preview_label.setStyleSheet("""
             font-weight: bold;
             color: #00d4ff;
-            font-size: 11pt;
+            font-size: 12pt;
             background-color: transparent;
             border: none;
         """)
         preview_layout.addWidget(preview_label)
 
         self.camera_preview = VideoDisplayWidget()
-        self.camera_preview.setFixedHeight(180)
-        self.camera_preview.setMinimumWidth(320)
+        self.camera_preview.setFixedHeight(300)  # 放大顯示
+        self.camera_preview.setMinimumWidth(400)
         self.camera_preview.setStyleSheet("""
             QWidget {
                 border: 1px solid #00d4ff;
@@ -210,23 +134,21 @@ class MainWindowV2(QMainWindow):
                 background-color: #000000;
             }
         """)
-        preview_layout.addWidget(self.camera_preview)
+        preview_layout.addWidget(self.camera_preview, 0, Qt.AlignmentFlag.AlignCenter)
 
         monitoring_layout.addWidget(preview_container)
 
-        # === 檢測控制（保持原有變數）===
-        self.detection_control = DetectionControlWidget()
-        monitoring_layout.addWidget(self.detection_control)
-
-        # === 錄影控制（保持原有變數）===
-        self.recording_control = RecordingControlWidget()
-        monitoring_layout.addWidget(self.recording_control)
-
-        # === 系統監控（保持原有變數）===
-        self.system_monitor = SystemMonitorWidget()
-        monitoring_layout.addWidget(self.system_monitor)
+        # === 包裝控制中心（下方） ===
+        from basler_pyqt6.ui.widgets.packaging_control import PackagingControlWidget
+        self.packaging_control = PackagingControlWidget()
+        monitoring_layout.addWidget(self.packaging_control)
 
         monitoring_layout.addStretch()
+
+        # === 錄影控制和系統監控已移到狀態欄 ===
+        # 保留變數引用用於更新
+        self.recording_control = RecordingControlWidget()
+        self.system_monitor = SystemMonitorWidget()
 
         # ========== Tab 3: 調試工具（僅開發模式） ==========
         if DEBUG_MODE:
@@ -478,6 +400,7 @@ class MainWindowV2(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    """ 底部狀態欄  """
     def create_status_bar(self):
         """創建狀態欄 - 工業級狀態指示"""
         self.status_bar = QStatusBar()
@@ -550,6 +473,31 @@ class MainWindowV2(QMainWindow):
         """)
         self.status_bar.addPermanentWidget(self.detection_label)
 
+        # 錄影狀態指示器（精簡版）
+        self.recording_status_label = QLabel("⏺️ 錄影: 停止")
+        self.recording_status_label.setStyleSheet("""
+            background-color: #4b5563;
+            color: #9ca3af;
+            padding: 5px 15px;
+            font-size: 10pt;
+            border-radius: 4px;
+            margin: 0px 5px;
+        """)
+        self.recording_status_label.setVisible(False)  # 預設隱藏，錄影時顯示
+        self.status_bar.addPermanentWidget(self.recording_status_label)
+
+        # 系統資源監控（精簡版）
+        self.system_status_label = QLabel("💻 CPU: 0% | RAM: 0%")
+        self.system_status_label.setStyleSheet("""
+            background-color: #1e293b;
+            color: #cbd5e1;
+            padding: 5px 15px;
+            font-size: 9pt;
+            border-radius: 4px;
+            margin: 0px 5px;
+        """)
+        self.status_bar.addPermanentWidget(self.system_status_label)
+
     def connect_signals(self):
         """連接信號"""
         # 相機控制
@@ -560,11 +508,14 @@ class MainWindowV2(QMainWindow):
         self.camera_control.stop_clicked.connect(self.on_stop_source)
         self.camera_control.exposure_changed.connect(self.on_exposure_changed)
 
-        # 檢測控制
-        self.detection_control.enable_changed.connect(self.on_detection_enable_changed)
-        self.detection_control.roi_enabled_changed.connect(self.on_roi_enabled_changed)
-        self.detection_control.high_speed_changed.connect(self.on_high_speed_changed)
-        self.detection_control.reset_requested.connect(self.on_detection_reset)
+        # 檢測控制信號已移除（功能已整合到包裝控制）
+
+        # 定量包裝控制
+        self.packaging_control.start_packaging_requested.connect(self.on_start_packaging)
+        self.packaging_control.pause_packaging_requested.connect(self.on_pause_packaging)
+        self.packaging_control.reset_count_requested.connect(self.on_reset_packaging)
+        self.packaging_control.target_count_changed.connect(self.on_target_count_changed)
+        self.packaging_control.threshold_changed.connect(self.on_threshold_changed)
 
         # 錄影控制
         self.recording_control.start_recording.connect(self.on_start_recording)
@@ -689,6 +640,56 @@ class MainWindowV2(QMainWindow):
         self.status_label.setText("檢測計數器已重置")
         logger.info("✅ 檢測計數器已重置")
 
+    # ==================== 定量包裝控制處理 ====================
+
+    def on_start_packaging(self):
+        """開始包裝 - 一鍵啟動檢測和震動機"""
+        logger.info("📦 開始定量包裝")
+
+        # 1. 啟用檢測（如果尚未啟用）
+        if not self.detection_controller.enabled:
+            self.detection_controller.enable()
+            logger.info("✅ 自動啟用檢測")
+
+        # 2. 啟用包裝模式（自動控制震動機）
+        self.detection_controller.enable_packaging_mode(True)
+
+        # 3. 更新狀態
+        target = self.packaging_control.get_target_count()
+        self.status_label.setText(f"📦 包裝中... (目標: {target}顆)")
+        logger.info(f"🎯 目標數量: {target}顆")
+
+    def on_pause_packaging(self):
+        """暫停包裝"""
+        logger.info("⏸ 暫停包裝")
+        self.detection_controller.enable_packaging_mode(False)
+        self.status_label.setText("包裝已暫停")
+
+    def on_reset_packaging(self):
+        """重置包裝計數"""
+        logger.info("🔄 重置包裝計數")
+        self.detection_controller.reset_packaging()
+        self.packaging_control.update_count(0)
+        self.status_label.setText("包裝計數已重置")
+
+    def on_target_count_changed(self, count: int):
+        """目標數量變更"""
+        logger.info(f"🎯 目標數量變更: {count}顆")
+        self.detection_controller.set_target_count(count)
+
+    def on_threshold_changed(self, threshold_name: str, value: float):
+        """速度閾值變更"""
+        logger.info(f"⚙️  閾值變更: {threshold_name} = {value:.2%}")
+        # 更新 DetectionController 的閾值
+        if threshold_name == "speed_medium":
+            self.detection_controller.speed_medium_threshold = value
+        elif threshold_name == "speed_slow":
+            self.detection_controller.speed_slow_threshold = value
+        elif threshold_name == "speed_creep":
+            self.detection_controller.speed_slow_threshold = value
+
+    # ==================== 錄影控制處理 ====================
+
     def on_start_recording(self):
         """開始錄影"""
         # 獲取當前幀以確定錄製參數
@@ -719,6 +720,9 @@ class MainWindowV2(QMainWindow):
         """停止錄影"""
         recording_info = self.video_recorder.stop_recording()
 
+        # 隱藏狀態欄錄影指示器
+        self.recording_status_label.setVisible(False)
+
         if recording_info:
             self.status_label.setText("✅ 錄製完成")
 
@@ -736,68 +740,6 @@ class MainWindowV2(QMainWindow):
             logger.info(f"錄製完成: {recording_info}")
         else:
             self.status_label.setText("錄製停止")
-
-    def on_main_start_clicked(self):
-        """主要啟動按鈕 - 一鍵啟動檢測（合併開始抓取 + 啟用檢測）"""
-        # 1. 開始視頻源（相機抓取或視頻播放）
-        if self.source_manager.source_type == SourceType.CAMERA:
-            # 檢查相機是否已連接
-            if not self.source_manager.camera_controller.camera:
-                QMessageBox.warning(self, "錯誤", "請先在「相機設定」頁面連接相機！")
-                return
-
-            self.source_manager.camera_controller.start_grabbing()
-            self.status_label.setText("🚀 開始檢測（相機模式）")
-            logger.info("啟動相機抓取")
-
-        elif self.source_manager.source_type == SourceType.VIDEO:
-            self.source_manager.video_player.start_playing(loop=False)
-            self.status_label.setText("🚀 開始檢測（視頻模式）")
-            logger.info("啟動視頻播放")
-        else:
-            QMessageBox.warning(self, "錯誤", "未選擇視頻源")
-            return
-
-        # 2. 自動啟用檢測
-        self.detection_controller.enable()
-        self.detection_control.enable_checkbox.setChecked(True)
-
-        # 3. 更新按鈕狀態
-        self.main_start_btn.setEnabled(False)
-        self.main_stop_btn.setEnabled(True)
-
-        # 4. 啟用錄製功能
-        self.recording_control.set_enabled(True)
-
-        logger.info("✅ 一鍵啟動完成：視頻源已啟動 + 檢測已啟用")
-
-    def on_main_stop_clicked(self):
-        """主要停止按鈕 - 停止所有檢測活動"""
-        # 1. 如果正在錄製，先停止錄製
-        if self.video_recorder.is_recording:
-            self.on_stop_recording()
-
-        # 2. 停止檢測
-        self.detection_controller.disable()
-        self.detection_control.enable_checkbox.setChecked(False)
-
-        # 3. 停止視頻源
-        if self.source_manager.source_type == SourceType.CAMERA:
-            self.source_manager.camera_controller.stop_grabbing()
-            logger.info("停止相機抓取")
-        elif self.source_manager.source_type == SourceType.VIDEO:
-            self.source_manager.video_player.stop_playing()
-            logger.info("停止視頻播放")
-
-        # 4. 更新按鈕狀態
-        self.main_start_btn.setEnabled(True)
-        self.main_stop_btn.setEnabled(False)
-
-        # 5. 禁用錄製功能
-        self.recording_control.set_enabled(False)
-
-        self.status_label.setText("⏹️ 已停止檢測")
-        logger.info("✅ 已停止所有檢測活動")
 
     # ========== 調試工具方法（僅開發模式） ==========
 
@@ -1122,11 +1064,16 @@ class MainWindowV2(QMainWindow):
                 detected_frame, objects = self.detection_controller.process_frame(frame)
                 count = len(objects)
                 crossing_count = self.detection_controller.get_count()
-                # 虛擬光柵：顯示當前觸發歷史中的記錄數
-                gate_triggers = len(self.detection_controller.triggered_positions)
 
                 self.detection_label.setText(f"檢測: {count} | 穿越: {crossing_count}")
-                self.detection_control.update_status(True, count, crossing_count, gate_triggers)
+
+                # 🎯 更新包裝控制狀態
+                self.packaging_control.update_count(crossing_count)
+                pkg_status = self.detection_controller.get_packaging_status()
+                self.packaging_control.update_vibrator_status(
+                    pkg_status['vibrator1'],
+                    pkg_status['vibrator2']
+                )
 
                 # 如果圖像有縮放，檢測結果需要縮放回原始尺寸顯示
                 if DEBUG_MODE and self.perf_image_scale < 1.0:
@@ -1135,7 +1082,6 @@ class MainWindowV2(QMainWindow):
             else:
                 detected_frame = original_frame  # 使用原始幀
                 count = 0
-                self.detection_control.update_status(False, 0, 0, 0)
 
             if DEBUG_MODE:
                 detect_time = (time.perf_counter() - detect_start) * 1000
@@ -1166,6 +1112,19 @@ class MainWindowV2(QMainWindow):
                 # 更新錄製狀態
                 status = self.video_recorder.get_recording_status()
                 self.recording_control.update_frame_count(status['frames_recorded'])
+
+                # 更新狀態欄錄影指示器
+                self.recording_status_label.setText(f"⏺️ 錄影: {status['frames_recorded']} 幀")
+                self.recording_status_label.setStyleSheet("""
+                    background-color: #dc2626;
+                    color: #ffffff;
+                    padding: 5px 15px;
+                    font-size: 10pt;
+                    font-weight: bold;
+                    border-radius: 4px;
+                    margin: 0px 5px;
+                """)
+                self.recording_status_label.setVisible(True)
 
             # 調試模式：更新性能指標和統計
             if DEBUG_MODE:
@@ -1213,6 +1172,38 @@ class MainWindowV2(QMainWindow):
         elif self.source_manager.source_type == SourceType.VIDEO:
             total_frames = self.source_manager.video_player.total_frames
             self.system_monitor.update_camera_stats(fps, total_frames)
+
+        # 更新狀態欄系統資源監控（每秒更新一次）
+        import psutil
+        if not hasattr(self, '_last_sys_update_time'):
+            self._last_sys_update_time = 0
+        import time
+        current_time = time.time()
+        if current_time - self._last_sys_update_time >= 1.0:  # 每秒更新
+            try:
+                cpu_percent = psutil.cpu_percent(interval=0)
+                ram_percent = psutil.virtual_memory().percent
+                self.system_status_label.setText(f"💻 CPU: {cpu_percent:.0f}% | RAM: {ram_percent:.0f}%")
+
+                # 根據負載調整顏色
+                if cpu_percent > 80 or ram_percent > 80:
+                    bg_color = "#7f1d1d"  # 紅色 - 高負載
+                elif cpu_percent > 60 or ram_percent > 60:
+                    bg_color = "#78350f"  # 橙色 - 中負載
+                else:
+                    bg_color = "#1e293b"  # 正常
+
+                self.system_status_label.setStyleSheet(f"""
+                    background-color: {bg_color};
+                    color: #cbd5e1;
+                    padding: 5px 15px;
+                    font-size: 9pt;
+                    border-radius: 4px;
+                    margin: 0px 5px;
+                """)
+                self._last_sys_update_time = current_time
+            except:
+                pass  # 忽略錯誤
 
     def apply_styles(self):
         """應用專業監控系統樣式"""
