@@ -33,11 +33,16 @@ hidden_imports = [
     'yaml',
 ]
 
-# 數據文件（如果有配置文件、圖標等）
+# 數據文件（配置文件、測試資料等）
 datas = [
-    # 可以添加圖標、配置文件等
+    # 配置檔案（必要）
+    ('basler_pyqt6/config/detection_params.json', 'config'),
+
+    # 測試資料目錄（用於無硬體測試）
+    # ('basler_pyqt6/testData', 'testData'),
+
+    # 可以添加圖標等資源
     # ('resources/icon.ico', 'resources'),
-    # ('config/*.yaml', 'config'),
 ]
 
 # 分析階段

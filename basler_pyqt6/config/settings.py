@@ -4,6 +4,7 @@ basler_pyqt6 統一配置管理
 基於 basler_mvc 的配置管理架構
 """
 
+import sys
 import json
 import logging
 from pathlib import Path
@@ -12,8 +13,18 @@ from dataclasses import dataclass, asdict, field
 
 logger = logging.getLogger(__name__)
 
-# 項目根目錄
-PROJECT_ROOT = Path(__file__).parent.parent
+# 項目根目錄（支援 PyInstaller 打包）
+def _get_project_root() -> Path:
+    """獲取專案根目錄，支援開發環境和打包環境"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包後的環境
+        # sys._MEIPASS 是 PyInstaller 解壓資源的臨時目錄
+        return Path(sys._MEIPASS)
+    else:
+        # 開發環境
+        return Path(__file__).parent.parent
+
+PROJECT_ROOT = _get_project_root()
 
 
 # ==================== 檢測配置類 ====================
