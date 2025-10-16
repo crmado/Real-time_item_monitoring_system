@@ -107,5 +107,88 @@
     "debug_save_enabled": false,
     "debug_save_dir": "basler_pyqt6/recordings/debug",
     "max_debug_frames": 100
+  },
+  "packaging": {
+    "target_count": 150,
+    "enable_auto_packaging": false,
+    "speed_full_threshold": 0.85,
+    "speed_medium_threshold": 0.93,
+    "speed_slow_threshold": 0.97,
+    "vibrator_speed_full": 100,
+    "vibrator_speed_medium": 60,
+    "vibrator_speed_slow": 30,
+    "vibrator_speed_creep": 10,
+    "stop_delay_frames": 10,
+    "advance_stop_count": 2,
+    "enable_sound_alert": true,
+    "alert_on_target_reached": true,
+    "alert_on_speed_change": false,
+    "enable_batch_tracking": true,
+    "auto_reset_on_complete": false
+  },
+  "part_library": {
+    "part_types": [
+      {
+        "part_id": "screw_mini",
+        "part_name": "極小螺絲",
+        "part_image": "resources/parts/screw_mini.jpg",
+        "description": "直徑 1-3mm 的微型螺絲",
+        "min_area": 2,
+        "max_area": 100,
+        "bg_var_threshold": 3,
+        "bg_learning_rate": 0.001,
+        "gate_trigger_radius": 15,
+        "gate_history_frames": 8,
+        "is_circular": false,
+        "is_reflective": true,
+        "requires_high_speed": false
+      },
+      {
+        "part_id": "plastic_pellet",
+        "part_name": "塑膠粒",
+        "part_image": "resources/parts/plastic_pellet.jpg",
+        "description": "標準塑膠原料顆粒",
+        "min_area": 10,
+        "max_area": 500,
+        "bg_var_threshold": 5,
+        "bg_learning_rate": 0.005,
+        "gate_trigger_radius": 20,
+        "gate_history_frames": 10,
+        "is_circular": true,
+        "is_reflective": false,
+        "requires_high_speed": false
+      },
+      {
+        "part_id": "metal_washer",
+        "part_name": "金屬墊片",
+        "part_image": "resources/parts/metal_washer.jpg",
+        "description": "圓形金屬墊片（高反光）",
+        "min_area": 50,
+        "max_area": 2000,
+        "bg_var_threshold": 8,
+        "bg_learning_rate": 0.002,
+        "gate_trigger_radius": 25,
+        "gate_history_frames": 12,
+        "is_circular": true,
+        "is_reflective": true,
+        "requires_high_speed": false
+      },
+      {
+        "part_id": "electronic_component",
+        "part_name": "電子元件",
+        "part_image": "resources/parts/electronic_component.jpg",
+        "description": "SMD/DIP 電子零件",
+        "min_area": 5,
+        "max_area": 1500,
+        "bg_var_threshold": 4,
+        "bg_learning_rate": 0.001,
+        "gate_trigger_radius": 18,
+        "gate_history_frames": 8,
+        "is_circular": false,
+        "is_reflective": false,
+        "requires_high_speed": false
+      }
+    ],
+    "current_part_id": "screw_mini"
   }
 }

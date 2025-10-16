@@ -516,6 +516,7 @@ class MainWindowV2(QMainWindow):
         self.packaging_control.reset_count_requested.connect(self.on_reset_packaging)
         self.packaging_control.target_count_changed.connect(self.on_target_count_changed)
         self.packaging_control.threshold_changed.connect(self.on_threshold_changed)
+        self.packaging_control.part_type_changed.connect(self.on_part_type_changed)
 
         # 錄影控制
         self.recording_control.start_recording.connect(self.on_start_recording)
@@ -687,6 +688,52 @@ class MainWindowV2(QMainWindow):
             self.detection_controller.speed_slow_threshold = value
         elif threshold_name == "speed_creep":
             self.detection_controller.speed_slow_threshold = value
+
+    def on_part_type_changed(self, part_id: str):
+        """
+        零件類型變更處理 - 自動切換檢測參數
+
+        Args:
+            part_id: 選擇的零件類型 ID
+        """
+        from config.settings import get_config
+
+        logger.info(f"🔧 零件類型切換: {part_id}")
+
+        # 獲取配置
+        config = get_config()
+        part_data = config.part_library.get_part_type(part_id)
+
+        if not part_data:
+            logger.error(f"❌ 找不到零件類型: {part_id}")
+            return
+
+        # 更新檢測參數
+        self.detection_controller.min_area = part_data["min_area"]
+        self.detection_controller.max_area = part_data["max_area"]
+        self.detection_controller.bg_var_threshold = part_data["bg_var_threshold"]
+        self.detection_controller.bg_learning_rate = part_data["bg_learning_rate"]
+        self.detection_controller.current_learning_rate = part_data["bg_learning_rate"]
+
+        # 更新虛擬光柵參數
+        self.detection_controller.gate_trigger_radius = part_data["gate_trigger_radius"]
+        self.detection_controller.gate_history_frames = part_data["gate_history_frames"]
+
+        # 重置背景減除器以應用新參數
+        self.detection_controller._reset_background_subtractor()
+
+        # 更新配置庫的當前選擇
+        config.part_library.current_part_id = part_id
+        config.save()
+
+        # 顯示狀態訊息
+        part_name = part_data["part_name"]
+        self.status_label.setText(f"✅ 已切換至 [{part_name}] 檢測模式")
+        logger.info(f"✅ 已切換至 [{part_name}] 檢測模式")
+        logger.info(f"   • 面積範圍: {part_data['min_area']} - {part_data['max_area']} px")
+        logger.info(f"   • 背景敏感度: {part_data['bg_var_threshold']}")
+        logger.info(f"   • 學習率: {part_data['bg_learning_rate']}")
+        logger.info(f"   • 光柵去重半徑: {part_data['gate_trigger_radius']} px")
 
     # ==================== 錄影控制處理 ====================
 

@@ -171,6 +171,94 @@ class PackagingConfig:
 
 
 @dataclass
+class PartTypeConfig:
+    """零件類型配置（用於切換不同檢測方法）"""
+
+    # 零件基本資訊
+    part_id: str = "default"                      # 零件ID（唯一標識）
+    part_name: str = "標準小零件"                 # 零件名稱（顯示用）
+    part_image: str = ""                          # 零件照片路徑（相對於 basler_pyqt6/）
+    description: str = "通用小零件檢測"           # 零件描述
+
+    # 🎯 專屬檢測參數（可以為每種零件自訂參數）
+    min_area: int = 2                             # 最小面積
+    max_area: int = 3000                          # 最大面積
+    bg_var_threshold: int = 3                     # 背景敏感度
+    bg_learning_rate: float = 0.001               # 背景學習率
+    gate_trigger_radius: int = 20                 # 虛擬光柵去重半徑
+    gate_history_frames: int = 8                  # 歷史幀數
+
+    # 零件特性標記（輔助資訊）
+    is_circular: bool = False                     # 是否為圓形零件
+    is_reflective: bool = False                   # 是否有反光特性
+    requires_high_speed: bool = False             # 是否需要高速模式
+
+
+@dataclass
+class PartTypeLibrary:
+    """零件類型庫（預定義的零件類型集合）"""
+
+    # 零件類型列表
+    part_types: list = field(default_factory=lambda: [
+        # 🎯 已驗證的零件類型：極小零件（基於 basler_mvc 驗證參數）
+        {
+            "part_id": "default_small_part",
+            "part_name": "極小零件（已驗證）",
+            "part_image": "resources/parts/small_part.jpg",
+            "description": "極小螺絲/零件（basler_mvc 驗證參數）",
+            "min_area": 2,
+            "max_area": 3000,
+            "bg_var_threshold": 3,
+            "bg_learning_rate": 0.001,
+            "gate_trigger_radius": 20,
+            "gate_history_frames": 8,
+            "is_circular": False,
+            "is_reflective": True,
+            "requires_high_speed": False
+        },
+        # 📝 範本：新零件類型（需自行測試參數）
+        # 使用步驟：
+        # 1. 複製此範本
+        # 2. 修改 part_id 和 part_name
+        # 3. 使用調試面板測試並記錄最佳參數
+        # 4. 填入測試後的參數值
+        # {
+        #     "part_id": "my_new_part",
+        #     "part_name": "我的新零件",
+        #     "part_image": "",
+        #     "description": "零件描述",
+        #     "min_area": 2,              # 🔧 需測試
+        #     "max_area": 3000,           # 🔧 需測試
+        #     "bg_var_threshold": 3,      # 🔧 需測試
+        #     "bg_learning_rate": 0.001,  # 🔧 需測試
+        #     "gate_trigger_radius": 20,  # 🔧 需測試
+        #     "gate_history_frames": 8,   # 🔧 需測試
+        #     "is_circular": False,
+        #     "is_reflective": False,
+        #     "requires_high_speed": False
+        # },
+    ])
+
+    # 當前選擇的零件類型 ID
+    current_part_id: str = "default_small_part"
+
+    def get_part_type(self, part_id: str) -> Optional[dict]:
+        """根據 ID 獲取零件類型配置"""
+        for part in self.part_types:
+            if part["part_id"] == part_id:
+                return part
+        return None
+
+    def get_all_part_ids(self) -> list:
+        """獲取所有零件類型 ID"""
+        return [part["part_id"] for part in self.part_types]
+
+    def get_all_part_names(self) -> list:
+        """獲取所有零件類型名稱"""
+        return [part["part_name"] for part in self.part_types]
+
+
+@dataclass
 class AppConfig:
     """應用程序總配置"""
 
@@ -180,6 +268,7 @@ class AppConfig:
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     debug: DebugConfig = field(default_factory=DebugConfig)
     packaging: PackagingConfig = field(default_factory=PackagingConfig)
+    part_library: PartTypeLibrary = field(default_factory=PartTypeLibrary)
 
     # 配置檔案路徑
     config_file: Optional[Path] = None
@@ -197,7 +286,8 @@ class AppConfig:
             'ui': asdict(self.ui),
             'performance': asdict(self.performance),
             'debug': asdict(self.debug),
-            'packaging': asdict(self.packaging)
+            'packaging': asdict(self.packaging),
+            'part_library': asdict(self.part_library)
         }
 
     def save(self, file_path: Optional[Path] = None) -> bool:
@@ -257,6 +347,7 @@ class AppConfig:
                 performance=PerformanceConfig(**data.get('performance', {})),
                 debug=DebugConfig(**data.get('debug', {})),
                 packaging=PackagingConfig(**data.get('packaging', {})),
+                part_library=PartTypeLibrary(**data.get('part_library', {})),
                 config_file=file_path
             )
 

@@ -12,6 +12,9 @@ from PyQt6.QtGui import QFont
 # 導入圖示管理器
 from basler_pyqt6.resources.icons import get_icon, Icons
 
+# 導入零件選擇器
+from basler_pyqt6.ui.widgets.part_selector import PartSelectorWidget
+
 
 class PackagingControlWidget(QWidget):
     """定量包裝控制組件 - 工業級操作面板"""
@@ -22,6 +25,7 @@ class PackagingControlWidget(QWidget):
     reset_count_requested = pyqtSignal()          # 重置計數請求
     target_count_changed = pyqtSignal(int)        # 目標數量變更
     threshold_changed = pyqtSignal(str, float)    # 閾值變更 (threshold_name, value)
+    part_type_changed = pyqtSignal(str)           # 零件類型變更 (part_id)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,6 +37,11 @@ class PackagingControlWidget(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ========== 區塊 0: 零件檢測種類選擇 ==========
+        self.part_selector = PartSelectorWidget()
+        self.part_selector.part_type_changed.connect(self._on_part_type_changed)
+        main_layout.addWidget(self.part_selector)
 
         # ========== 區塊 1: 包裝參數設定 ==========
         params_group = QGroupBox("📦 定量包裝設定")
@@ -616,3 +625,13 @@ class PackagingControlWidget(QWidget):
     def set_target_count(self, count: int):
         """設定目標數量"""
         self.target_count_spinbox.setValue(count)
+
+    def _on_part_type_changed(self, part_id: str):
+        """
+        零件類型變更處理
+
+        Args:
+            part_id: 新選擇的零件類型 ID
+        """
+        # 發射信號給主視窗
+        self.part_type_changed.emit(part_id)
