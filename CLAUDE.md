@@ -101,12 +101,18 @@ basler_pyqt6/
 └── ui/                        # PyQt6 interface layer
     ├── main_window_v2.py      # Main application window
     ├── widgets/
-    │   ├── debug_panel.py     # Parameter adjustment panel
-    │   ├── camera_control.py  # Camera control widget
-    │   ├── detection_control.py
-    │   ├── recording_control.py
-    │   ├── system_monitor.py  # CPU/RAM monitoring
-    │   └── video_display.py   # Video rendering
+    │   ├── debug_panel.py            # Parameter adjustment panel
+    │   ├── camera_control.py         # Camera control widget
+    │   ├── detection_control.py      # Detection control widget
+    │   ├── recording_control.py      # Recording control widget
+    │   ├── packaging_control.py      # Method panel container (QStackedWidget)
+    │   ├── part_selector.py          # Part type selector
+    │   ├── method_selector.py        # Detection method selector
+    │   ├── method_panels/            # Dynamic method-specific panels
+    │   │   ├── counting_method_panel.py        # Counting/packaging UI
+    │   │   └── defect_detection_method_panel.py # Defect detection UI
+    │   ├── system_monitor.py         # CPU/RAM monitoring
+    │   └── video_display.py          # Video rendering
     └── dialogs/
         └── update_dialog.py   # Update notification dialog
 ```
@@ -127,6 +133,8 @@ basler_pyqt6/
 - **UIConfig**: UI control ranges and defaults
 - **PerformanceConfig**: Image scaling, frame skipping
 - **DebugConfig**: Debug output settings
+- **PackagingConfig**: Packaging vibrator speeds and control parameters
+- **PartTypeLibrary**: Part type definitions and available detection methods
 
 **Key Pattern**: Never hardcode detection parameters. Always read from `get_config()`:
 ```python
@@ -159,6 +167,61 @@ The detection system uses a sophisticated but efficient approach:
 - `bg_var_threshold: 3` - Extremely high sensitivity
 - `bg_learning_rate: 0.001` - Prevents small parts from becoming background
 - `gate_trigger_radius: 20` - Deduplication distance in pixels
+
+### Dynamic Method Panel Architecture
+
+**Key Design**: UI adapts based on selected detection method
+
+The system uses a **QStackedWidget-based architecture** to dynamically display method-specific control panels:
+
+**Architecture Layers:**
+1. **PackagingControlWidget** (Container)
+   - Uses QStackedWidget to stack multiple method panels
+   - Forwards child panel signals to main window
+   - Handles method switching logic
+
+2. **Method-Specific Panels**
+   - **CountingMethodPanel**: For quantitative counting/packaging
+     - Target count setting
+     - Progress display with large font
+     - Dual vibrator status indicators
+     - Packaging control buttons (Start/Pause/Reset)
+     - Speed threshold adjustments
+
+   - **DefectDetectionMethodPanel**: For surface defect inspection
+     - Pass rate display with color coding
+     - Pass/Fail statistics
+     - Defect type distribution (scratch, dent, discoloration)
+     - Detection sensitivity control
+     - Clear statistics button
+
+**Signal Forwarding Pattern:**
+```python
+# Child panel emits signal
+counting_panel.start_packaging_requested.emit()
+
+# Container forwards to main window
+packaging_control.start_packaging_requested.emit()
+
+# Main window handles the action
+main_window.on_start_packaging()
+```
+
+**Why This Architecture:**
+- **Decoupling**: Main window doesn't need to know internal panel structure
+- **Extensibility**: Easy to add new detection methods by creating new panels
+- **Maintainability**: Each method's UI logic is isolated in its own module
+- **Memory Efficiency**: QStackedWidget only shows one panel at a time
+
+**Signal Timing Issue Fix:**
+When PartSelectorWidget emits signals during `__init__`, the parent's signal connections may not be established yet. Solution: Manual initialization trigger after connections are set up.
+
+```python
+# In PackagingControlWidget.init_ui()
+current_part_id = self.part_selector.get_current_part_id()
+if current_part_id:
+    self._on_part_type_changed(current_part_id)  # Manual trigger
+```
 
 ### Source Management
 
@@ -199,8 +262,32 @@ This allows testing all detection algorithms without physical hardware.
 **Spec File Key Points:**
 - `--onedir` mode (not `--onefile`) for faster startup
 - Bundles pypylon camera drivers
-- Includes test data directory
+- **Data Files**: Must explicitly include non-Python files
+  - `detection_params.json`: Configuration persistence
+  - `testData/`: Test videos (optional, ~1.5GB, can be commented out for smaller packages)
 - Platform-specific icon handling
+
+**Path Handling in Packaged Environment:**
+When accessing data files in code, always use the `_get_project_root()` pattern to support both development and packaged environments:
+
+```python
+import sys
+from pathlib import Path
+
+def _get_project_root() -> Path:
+    if getattr(sys, 'frozen', False):
+        # PyInstaller sets sys.frozen = True
+        # sys._MEIPASS is the temp directory where resources are extracted
+        return Path(sys._MEIPASS)
+    else:
+        # Development: use relative path
+        return Path(__file__).parent.parent
+
+PROJECT_ROOT = _get_project_root()
+config_file = PROJECT_ROOT / "config" / "detection_params.json"
+```
+
+This pattern is implemented in `basler_pyqt6/config/settings.py` to ensure configuration files are correctly loaded in both environments.
 
 ## Version Management
 
