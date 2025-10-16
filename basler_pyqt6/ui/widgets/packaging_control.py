@@ -12,20 +12,23 @@ from PyQt6.QtGui import QFont
 # 導入圖示管理器
 from basler_pyqt6.resources.icons import get_icon, Icons
 
-# 導入零件選擇器
+# 導入零件選擇器和方法選擇器
 from basler_pyqt6.ui.widgets.part_selector import PartSelectorWidget
+from basler_pyqt6.ui.widgets.method_selector import MethodSelectorWidget
+from basler_pyqt6.config.settings import get_config
 
 
 class PackagingControlWidget(QWidget):
     """定量包裝控制組件 - 工業級操作面板"""
 
     # 信號定義
-    start_packaging_requested = pyqtSignal()      # 開始包裝請求
-    pause_packaging_requested = pyqtSignal()      # 暫停包裝請求
-    reset_count_requested = pyqtSignal()          # 重置計數請求
-    target_count_changed = pyqtSignal(int)        # 目標數量變更
-    threshold_changed = pyqtSignal(str, float)    # 閾值變更 (threshold_name, value)
-    part_type_changed = pyqtSignal(str)           # 零件類型變更 (part_id)
+    start_packaging_requested = pyqtSignal()            # 開始包裝請求
+    pause_packaging_requested = pyqtSignal()            # 暫停包裝請求
+    reset_count_requested = pyqtSignal()                # 重置計數請求
+    target_count_changed = pyqtSignal(int)              # 目標數量變更
+    threshold_changed = pyqtSignal(str, float)          # 閾值變更 (threshold_name, value)
+    part_type_changed = pyqtSignal(str)                 # 零件類型變更 (part_id)
+    detection_method_changed = pyqtSignal(str, str)     # 檢測方法變更 (part_id, method_id)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,6 +45,11 @@ class PackagingControlWidget(QWidget):
         self.part_selector = PartSelectorWidget()
         self.part_selector.part_type_changed.connect(self._on_part_type_changed)
         main_layout.addWidget(self.part_selector)
+
+        # ========== 區塊 0.5: 檢測方法選擇 ==========
+        self.method_selector = MethodSelectorWidget()
+        self.method_selector.method_changed.connect(self._on_method_changed)
+        main_layout.addWidget(self.method_selector)
 
         # ========== 區塊 1: 包裝參數設定 ==========
         params_group = QGroupBox("📦 定量包裝設定")
@@ -630,8 +638,34 @@ class PackagingControlWidget(QWidget):
         """
         零件類型變更處理
 
+        當零件被選擇時：
+        1. 載入該零件的可用檢測方法
+        2. 發射零件變更信號
+
         Args:
             part_id: 新選擇的零件類型 ID
         """
+        # 獲取配置
+        config = get_config()
+        profile = config.part_library.get_part_profile(part_id)
+
+        if profile:
+            # 載入可用的檢測方法
+            available_methods = profile.get("available_methods", [])
+            current_method_id = profile.get("current_method_id", "counting")
+
+            self.method_selector.load_methods(part_id, available_methods, current_method_id)
+
         # 發射信號給主視窗
         self.part_type_changed.emit(part_id)
+
+    def _on_method_changed(self, part_id: str, method_id: str):
+        """
+        檢測方法變更處理
+
+        Args:
+            part_id: 零件 ID
+            method_id: 檢測方法 ID
+        """
+        # 發射信號給主視窗
+        self.detection_method_changed.emit(part_id, method_id)

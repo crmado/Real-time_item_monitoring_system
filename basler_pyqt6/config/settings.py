@@ -171,91 +171,223 @@ class PackagingConfig:
 
 
 @dataclass
-class PartTypeConfig:
-    """零件類型配置（用於切換不同檢測方法）"""
+class DetectionMethodConfig:
+    """
+    檢測方法配置（抽象基類結構）
 
+    每種檢測意圖有不同的配置需求
+    """
+    method_id: str = "unknown"                    # 方法 ID
+    method_name: str = "Unknown Method"           # 方法名稱
+    method_description: str = ""                  # 方法描述
+    intent: str = "counting"                      # 檢測意圖：counting, defect_detection, etc.
+
+
+@dataclass
+class CountingMethodConfig(DetectionMethodConfig):
+    """
+    計數檢測方法配置
+
+    包含背景減除、虛擬光柵、定量包裝的所有參數
+    """
+    method_id: str = "counting"
+    method_name: str = "定量計數"
+    method_description: str = "虛擬光柵計數法（高速、高精度）"
+    intent: str = "counting"
+
+    # === 檢測參數（從 DetectionConfig 繼承）===
+    min_area: int = 2
+    max_area: int = 3000
+    bg_var_threshold: int = 3
+    bg_learning_rate: float = 0.001
+    bg_history: int = 1000
+    roi_enabled: bool = True
+    roi_height: int = 150
+    roi_position_ratio: float = 0.10
+
+    # === 虛擬光柵參數（從 GateConfig 繼承）===
+    gate_trigger_radius: int = 20
+    gate_history_frames: int = 8
+    gate_line_position_ratio: float = 0.5
+
+    # === 包裝控制參數（從 PackagingConfig 繼承）===
+    target_count: int = 150
+    speed_full_threshold: float = 0.85
+    speed_medium_threshold: float = 0.93
+    speed_slow_threshold: float = 0.97
+
+
+@dataclass
+class DefectDetectionMethodConfig(DetectionMethodConfig):
+    """
+    瑕疵檢測方法配置
+
+    包含邊緣檢測、特徵分析、瑕疵判定的參數
+    """
+    method_id: str = "defect_detection"
+    method_name: str = "表面瑕疵檢測"
+    method_description: str = "基於影像處理的瑕疵檢測（開發中）"
+    intent: str = "defect_detection"
+
+    # === 瑕疵檢測參數 ===
+    defect_threshold: float = 0.5                 # 瑕疵判定閾值
+    defect_types: list = field(default_factory=lambda: ["scratch", "dent", "discoloration"])
+    edge_detection_enabled: bool = True           # 啟用邊緣檢測
+    canny_low: int = 50                           # Canny 低閾值
+    canny_high: int = 150                         # Canny 高閾值
+
+
+@dataclass
+class PartDetectionProfile:
+    """
+    零件檢測配置檔
+
+    將零件類型與可用的檢測方法關聯
+    一個零件可以有多種檢測方法（不同意圖）
+    """
     # 零件基本資訊
-    part_id: str = "default"                      # 零件ID（唯一標識）
-    part_name: str = "標準小零件"                 # 零件名稱（顯示用）
-    part_image: str = ""                          # 零件照片路徑（相對於 basler_pyqt6/）
-    description: str = "通用小零件檢測"           # 零件描述
+    part_id: str = "default"
+    part_name: str = "標準小零件"
+    part_image: str = ""
+    description: str = ""
 
-    # 🎯 專屬檢測參數（可以為每種零件自訂參數）
-    min_area: int = 2                             # 最小面積
-    max_area: int = 3000                          # 最大面積
-    bg_var_threshold: int = 3                     # 背景敏感度
-    bg_learning_rate: float = 0.001               # 背景學習率
-    gate_trigger_radius: int = 20                 # 虛擬光柵去重半徑
-    gate_history_frames: int = 8                  # 歷史幀數
+    # 零件特性標記
+    is_circular: bool = False
+    is_reflective: bool = False
+    requires_high_speed: bool = False
 
-    # 零件特性標記（輔助資訊）
-    is_circular: bool = False                     # 是否為圓形零件
-    is_reflective: bool = False                   # 是否有反光特性
-    requires_high_speed: bool = False             # 是否需要高速模式
+    # 可用的檢測方法列表
+    available_methods: list = field(default_factory=list)
+    # 格式： [{"method_id": "counting", "config": {...}}, ...]
+
+    # 當前選擇的方法 ID
+    current_method_id: str = "counting"
 
 
 @dataclass
 class PartTypeLibrary:
-    """零件類型庫（預定義的零件類型集合）"""
+    """
+    零件類型庫（預定義的零件類型集合）
 
-    # 零件類型列表
-    part_types: list = field(default_factory=lambda: [
-        # 🎯 已驗證的零件類型：極小零件（基於 basler_mvc 驗證參數）
+    使用新架構：零件 -> 檢測方法 -> 配置參數
+    """
+
+    # 零件配置檔列表
+    part_profiles: list = field(default_factory=lambda: [
+        # 🎯 已驗證的零件：極小零件
         {
             "part_id": "default_small_part",
             "part_name": "極小零件（已驗證）",
             "part_image": "resources/parts/small_part.jpg",
             "description": "極小螺絲/零件（basler_mvc 驗證參數）",
-            "min_area": 2,
-            "max_area": 3000,
-            "bg_var_threshold": 3,
-            "bg_learning_rate": 0.001,
-            "gate_trigger_radius": 20,
-            "gate_history_frames": 8,
             "is_circular": False,
             "is_reflective": True,
-            "requires_high_speed": False
+            "requires_high_speed": False,
+
+            # 可用的檢測方法
+            "available_methods": [
+                # 方法 1：定量計數（已驗證）
+                {
+                    "method_id": "counting",
+                    "method_name": "定量計數",
+                    "method_description": "虛擬光柵計數法",
+                    "config": {
+                        "min_area": 2,
+                        "max_area": 3000,
+                        "bg_var_threshold": 3,
+                        "bg_learning_rate": 0.001,
+                        "bg_history": 1000,
+                        "roi_enabled": True,
+                        "roi_height": 150,
+                        "roi_position_ratio": 0.10,
+                        "gate_trigger_radius": 20,
+                        "gate_history_frames": 8,
+                        "gate_line_position_ratio": 0.5,
+                        "target_count": 150,
+                        "speed_full_threshold": 0.85,
+                        "speed_medium_threshold": 0.93,
+                        "speed_slow_threshold": 0.97
+                    }
+                },
+                # 方法 2：瑕疵檢測（框架）
+                {
+                    "method_id": "defect_detection",
+                    "method_name": "表面瑕疵檢測",
+                    "method_description": "影像瑕疵分析（開發中）",
+                    "config": {
+                        "defect_threshold": 0.5,
+                        "defect_types": ["scratch", "dent"],
+                        "edge_detection_enabled": True,
+                        "canny_low": 50,
+                        "canny_high": 150
+                    }
+                }
+            ],
+
+            # 當前選擇的方法
+            "current_method_id": "counting"
         },
-        # 📝 範本：新零件類型（需自行測試參數）
-        # 使用步驟：
-        # 1. 複製此範本
-        # 2. 修改 part_id 和 part_name
-        # 3. 使用調試面板測試並記錄最佳參數
-        # 4. 填入測試後的參數值
+
+        # 📝 範本：新零件配置檔（需自行測試）
         # {
         #     "part_id": "my_new_part",
         #     "part_name": "我的新零件",
         #     "part_image": "",
         #     "description": "零件描述",
-        #     "min_area": 2,              # 🔧 需測試
-        #     "max_area": 3000,           # 🔧 需測試
-        #     "bg_var_threshold": 3,      # 🔧 需測試
-        #     "bg_learning_rate": 0.001,  # 🔧 需測試
-        #     "gate_trigger_radius": 20,  # 🔧 需測試
-        #     "gate_history_frames": 8,   # 🔧 需測試
         #     "is_circular": False,
         #     "is_reflective": False,
-        #     "requires_high_speed": False
-        # },
+        #     "requires_high_speed": False,
+        #     "available_methods": [
+        #         {
+        #             "method_id": "counting",
+        #             "method_name": "定量計數",
+        #             "method_description": "虛擬光柵計數法",
+        #             "config": {
+        #                 "min_area": 2,           # 🔧 需測試
+        #                 "max_area": 3000,        # 🔧 需測試
+        #                 # ... 其他參數
+        #             }
+        #         }
+        #     ],
+        #     "current_method_id": "counting"
+        # }
     ])
 
-    # 當前選擇的零件類型 ID
+    # 當前選擇的零件 ID
     current_part_id: str = "default_small_part"
 
-    def get_part_type(self, part_id: str) -> Optional[dict]:
-        """根據 ID 獲取零件類型配置"""
-        for part in self.part_types:
-            if part["part_id"] == part_id:
-                return part
+    def get_part_profile(self, part_id: str) -> Optional[dict]:
+        """根據 ID 獲取零件配置檔"""
+        for profile in self.part_profiles:
+            if profile["part_id"] == part_id:
+                return profile
+        return None
+
+    def get_detection_method(self, part_id: str, method_id: str) -> Optional[dict]:
+        """獲取特定零件的特定檢測方法配置"""
+        profile = self.get_part_profile(part_id)
+        if not profile:
+            return None
+
+        for method in profile.get("available_methods", []):
+            if method["method_id"] == method_id:
+                return method
         return None
 
     def get_all_part_ids(self) -> list:
-        """獲取所有零件類型 ID"""
-        return [part["part_id"] for part in self.part_types]
+        """獲取所有零件 ID"""
+        return [profile["part_id"] for profile in self.part_profiles]
 
     def get_all_part_names(self) -> list:
-        """獲取所有零件類型名稱"""
-        return [part["part_name"] for part in self.part_types]
+        """獲取所有零件名稱"""
+        return [profile["part_name"] for profile in self.part_profiles]
+
+    def get_available_methods(self, part_id: str) -> list:
+        """獲取特定零件的所有可用檢測方法"""
+        profile = self.get_part_profile(part_id)
+        if not profile:
+            return []
+        return profile.get("available_methods", [])
 
 
 @dataclass

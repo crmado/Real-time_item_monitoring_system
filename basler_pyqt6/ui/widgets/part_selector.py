@@ -270,13 +270,13 @@ class PartSelectorWidget(QWidget):
         # 清空現有卡片
         self.cards.clear()
 
-        # 創建卡片
-        for part_data in part_library.part_types:
+        # 創建卡片（使用新的 part_profiles 結構）
+        for profile in part_library.part_profiles:
             card = PartTypeCard(
-                part_id=part_data["part_id"],
-                part_name=part_data["part_name"],
-                part_image=part_data.get("part_image", ""),
-                description=part_data.get("description", "")
+                part_id=profile["part_id"],
+                part_name=profile["part_name"],
+                part_image=profile.get("part_image", ""),
+                description=profile.get("description", "")
             )
             card.clicked.connect(self._on_card_clicked)
 
@@ -285,12 +285,14 @@ class PartSelectorWidget(QWidget):
                 self.cards_layout.count() - 1,
                 card
             )
-            self.cards[part_data["part_id"]] = card
+            self.cards[profile["part_id"]] = card
 
         # 設定預設選擇（配置中的當前零件）
         default_part_id = part_library.current_part_id
         if default_part_id in self.cards:
             self.select_part_type(default_part_id)
+            # 🔧 自動觸發信號，讓檢測方法選擇器同步載入
+            self.part_type_changed.emit(default_part_id)
 
     def _on_card_clicked(self, part_id: str):
         """卡片點擊處理"""

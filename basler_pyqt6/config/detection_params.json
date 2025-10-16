@@ -127,68 +127,57 @@
     "auto_reset_on_complete": false
   },
   "part_library": {
-    "part_types": [
+    "part_profiles": [
       {
-        "part_id": "screw_mini",
-        "part_name": "極小螺絲",
-        "part_image": "resources/parts/screw_mini.jpg",
-        "description": "直徑 1-3mm 的微型螺絲",
-        "min_area": 2,
-        "max_area": 100,
-        "bg_var_threshold": 3,
-        "bg_learning_rate": 0.001,
-        "gate_trigger_radius": 15,
-        "gate_history_frames": 8,
+        "part_id": "default_small_part",
+        "part_name": "極小零件（已驗證）",
+        "part_image": "resources/parts/small_part.jpg",
+        "description": "極小螺絲/零件（basler_mvc 驗證參數）",
         "is_circular": false,
         "is_reflective": true,
-        "requires_high_speed": false
-      },
-      {
-        "part_id": "plastic_pellet",
-        "part_name": "塑膠粒",
-        "part_image": "resources/parts/plastic_pellet.jpg",
-        "description": "標準塑膠原料顆粒",
-        "min_area": 10,
-        "max_area": 500,
-        "bg_var_threshold": 5,
-        "bg_learning_rate": 0.005,
-        "gate_trigger_radius": 20,
-        "gate_history_frames": 10,
-        "is_circular": true,
-        "is_reflective": false,
-        "requires_high_speed": false
-      },
-      {
-        "part_id": "metal_washer",
-        "part_name": "金屬墊片",
-        "part_image": "resources/parts/metal_washer.jpg",
-        "description": "圓形金屬墊片（高反光）",
-        "min_area": 50,
-        "max_area": 2000,
-        "bg_var_threshold": 8,
-        "bg_learning_rate": 0.002,
-        "gate_trigger_radius": 25,
-        "gate_history_frames": 12,
-        "is_circular": true,
-        "is_reflective": true,
-        "requires_high_speed": false
-      },
-      {
-        "part_id": "electronic_component",
-        "part_name": "電子元件",
-        "part_image": "resources/parts/electronic_component.jpg",
-        "description": "SMD/DIP 電子零件",
-        "min_area": 5,
-        "max_area": 1500,
-        "bg_var_threshold": 4,
-        "bg_learning_rate": 0.001,
-        "gate_trigger_radius": 18,
-        "gate_history_frames": 8,
-        "is_circular": false,
-        "is_reflective": false,
-        "requires_high_speed": false
+        "requires_high_speed": false,
+        "available_methods": [
+          {
+            "method_id": "counting",
+            "method_name": "定量計數",
+            "method_description": "虛擬光柵計數法",
+            "config": {
+              "min_area": 2,
+              "max_area": 3000,
+              "bg_var_threshold": 3,
+              "bg_learning_rate": 0.001,
+              "bg_history": 1000,
+              "roi_enabled": true,
+              "roi_height": 150,
+              "roi_position_ratio": 0.1,
+              "gate_trigger_radius": 20,
+              "gate_history_frames": 8,
+              "gate_line_position_ratio": 0.5,
+              "target_count": 150,
+              "speed_full_threshold": 0.85,
+              "speed_medium_threshold": 0.93,
+              "speed_slow_threshold": 0.97
+            }
+          },
+          {
+            "method_id": "defect_detection",
+            "method_name": "表面瑕疵檢測",
+            "method_description": "影像瑕疵分析（開發中）",
+            "config": {
+              "defect_threshold": 0.5,
+              "defect_types": [
+                "scratch",
+                "dent"
+              ],
+              "edge_detection_enabled": true,
+              "canny_low": 50,
+              "canny_high": 150
+            }
+          }
+        ],
+        "current_method_id": "counting"
       }
     ],
-    "current_part_id": "screw_mini"
+    "current_part_id": "default_small_part"
   }
 }

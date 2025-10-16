@@ -517,6 +517,7 @@ class MainWindowV2(QMainWindow):
         self.packaging_control.target_count_changed.connect(self.on_target_count_changed)
         self.packaging_control.threshold_changed.connect(self.on_threshold_changed)
         self.packaging_control.part_type_changed.connect(self.on_part_type_changed)
+        self.packaging_control.detection_method_changed.connect(self.on_detection_method_changed)
 
         # 錄影控制
         self.recording_control.start_recording.connect(self.on_start_recording)
@@ -691,7 +692,10 @@ class MainWindowV2(QMainWindow):
 
     def on_part_type_changed(self, part_id: str):
         """
-        零件類型變更處理 - 自動切換檢測參數
+        零件類型變更處理
+
+        注意：新架構下，零件切換只是第一步
+        還需要等待用戶選擇檢測方法後才會真正切換參數
 
         Args:
             part_id: 選擇的零件類型 ID
@@ -702,38 +706,104 @@ class MainWindowV2(QMainWindow):
 
         # 獲取配置
         config = get_config()
-        part_data = config.part_library.get_part_type(part_id)
+        profile = config.part_library.get_part_profile(part_id)
 
-        if not part_data:
+        if not profile:
             logger.error(f"❌ 找不到零件類型: {part_id}")
             return
 
-        # 更新檢測參數
-        self.detection_controller.min_area = part_data["min_area"]
-        self.detection_controller.max_area = part_data["max_area"]
-        self.detection_controller.bg_var_threshold = part_data["bg_var_threshold"]
-        self.detection_controller.bg_learning_rate = part_data["bg_learning_rate"]
-        self.detection_controller.current_learning_rate = part_data["bg_learning_rate"]
-
-        # 更新虛擬光柵參數
-        self.detection_controller.gate_trigger_radius = part_data["gate_trigger_radius"]
-        self.detection_controller.gate_history_frames = part_data["gate_history_frames"]
-
-        # 重置背景減除器以應用新參數
-        self.detection_controller._reset_background_subtractor()
-
         # 更新配置庫的當前選擇
         config.part_library.current_part_id = part_id
-        config.save()
 
         # 顯示狀態訊息
-        part_name = part_data["part_name"]
-        self.status_label.setText(f"✅ 已切換至 [{part_name}] 檢測模式")
-        logger.info(f"✅ 已切換至 [{part_name}] 檢測模式")
-        logger.info(f"   • 面積範圍: {part_data['min_area']} - {part_data['max_area']} px")
-        logger.info(f"   • 背景敏感度: {part_data['bg_var_threshold']}")
-        logger.info(f"   • 學習率: {part_data['bg_learning_rate']}")
-        logger.info(f"   • 光柵去重半徑: {part_data['gate_trigger_radius']} px")
+        part_name = profile["part_name"]
+        self.status_label.setText(f"✅ 已選擇零件: [{part_name}]，請選擇檢測方法")
+        logger.info(f"✅ 已選擇零件: [{part_name}]")
+        logger.info(f"   可用方法: {len(profile.get('available_methods', []))} 種")
+
+    def on_detection_method_changed(self, part_id: str, method_id: str):
+        """
+        檢測方法變更處理 - 根據方法類型切換檢測參數
+
+        Args:
+            part_id: 零件 ID
+            method_id: 檢測方法 ID
+        """
+        from config.settings import get_config
+
+        logger.info(f"🎯 檢測方法切換: {part_id} -> {method_id}")
+
+        # 獲取配置
+        config = get_config()
+        method_config = config.part_library.get_detection_method(part_id, method_id)
+
+        if not method_config:
+            logger.error(f"❌ 找不到檢測方法: {part_id}/{method_id}")
+            return
+
+        method_name = method_config.get("method_name", "Unknown")
+        method_params = method_config.get("config", {})
+
+        # 根據方法類型切換參數
+        if method_id == "counting":
+            # ===== 計數檢測方法 =====
+            logger.info(f"📊 切換到計數模式: {method_name}")
+
+            # 更新檢測參數
+            self.detection_controller.min_area = method_params.get("min_area", 2)
+            self.detection_controller.max_area = method_params.get("max_area", 3000)
+            self.detection_controller.bg_var_threshold = method_params.get("bg_var_threshold", 3)
+            self.detection_controller.bg_learning_rate = method_params.get("bg_learning_rate", 0.001)
+            self.detection_controller.current_learning_rate = method_params.get("bg_learning_rate", 0.001)
+
+            # 更新虛擬光柵參數
+            self.detection_controller.gate_trigger_radius = method_params.get("gate_trigger_radius", 20)
+            self.detection_controller.gate_history_frames = method_params.get("gate_history_frames", 8)
+
+            # 重置背景減除器以應用新參數
+            self.detection_controller._reset_background_subtractor()
+
+            # 顯示包裝控制面板（計數模式特有）
+            # TODO: 實作動態顯示/隱藏包裝參數設定區塊
+
+            # 顯示狀態訊息
+            self.status_label.setText(f"✅ 已切換至 [{method_name}] 模式")
+            logger.info(f"✅ 已切換至 [{method_name}] 模式")
+            logger.info(f"   • 面積範圍: {method_params.get('min_area')} - {method_params.get('max_area')} px")
+            logger.info(f"   • 背景敏感度: {method_params.get('bg_var_threshold')}")
+            logger.info(f"   • 學習率: {method_params.get('bg_learning_rate')}")
+            logger.info(f"   • 光柵去重半徑: {method_params.get('gate_trigger_radius')} px")
+
+        elif method_id == "defect_detection":
+            # ===== 瑕疵檢測方法 =====
+            logger.info(f"🔍 切換到瑕疵檢測模式: {method_name}")
+
+            # TODO: 實作瑕疵檢測參數更新
+            # TODO: 隱藏包裝控制面板
+            # TODO: 顯示瑕疵檢測控制面板
+
+            # 暫時顯示提示訊息
+            self.status_label.setText(f"⚠️ [{method_name}] 功能開發中")
+            logger.warning(f"⚠️ [{method_name}] 功能尚未實作")
+
+            QMessageBox.information(
+                self,
+                "功能開發中",
+                f"🔍 {method_name}\n\n"
+                "此功能正在開發中，敬請期待！\n\n"
+                "目前可用的檢測方法：\n"
+                "• 📊 定量計數 - 已完成"
+            )
+
+        else:
+            logger.warning(f"⚠️ 未知的檢測方法: {method_id}")
+            self.status_label.setText(f"❌ 未知的檢測方法: {method_id}")
+
+        # 更新配置庫的當前方法選擇
+        profile = config.part_library.get_part_profile(part_id)
+        if profile:
+            profile["current_method_id"] = method_id
+            config.save()
 
     # ==================== 錄影控制處理 ====================
 
