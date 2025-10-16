@@ -510,12 +510,20 @@ class MainWindowV2(QMainWindow):
 
         # 檢測控制信號已移除（功能已整合到包裝控制）
 
-        # 定量包裝控制
+        # 定量包裝控制（計數方法）
         self.packaging_control.start_packaging_requested.connect(self.on_start_packaging)
         self.packaging_control.pause_packaging_requested.connect(self.on_pause_packaging)
         self.packaging_control.reset_count_requested.connect(self.on_reset_packaging)
         self.packaging_control.target_count_changed.connect(self.on_target_count_changed)
         self.packaging_control.threshold_changed.connect(self.on_threshold_changed)
+
+        # 瑕疵檢測控制（瑕疵檢測方法）
+        self.packaging_control.start_defect_detection_requested.connect(self.on_start_defect_detection)
+        self.packaging_control.stop_defect_detection_requested.connect(self.on_stop_defect_detection)
+        self.packaging_control.clear_defect_stats_requested.connect(self.on_clear_defect_stats)
+        self.packaging_control.defect_sensitivity_changed.connect(self.on_defect_sensitivity_changed)
+
+        # 零件類型和檢測方法變更
         self.packaging_control.part_type_changed.connect(self.on_part_type_changed)
         self.packaging_control.detection_method_changed.connect(self.on_detection_method_changed)
 
@@ -689,6 +697,39 @@ class MainWindowV2(QMainWindow):
             self.detection_controller.speed_slow_threshold = value
         elif threshold_name == "speed_creep":
             self.detection_controller.speed_slow_threshold = value
+
+    # ==================== 瑕疵檢測控制處理 ====================
+
+    def on_start_defect_detection(self):
+        """開始瑕疵檢測"""
+        logger.info("🔍 開始瑕疵檢測")
+
+        # 啟用檢測（如果尚未啟用）
+        if not self.detection_controller.enabled:
+            self.detection_controller.enable()
+            logger.info("✅ 自動啟用檢測")
+
+        self.status_label.setText("🔍 瑕疵檢測運行中...")
+
+    def on_stop_defect_detection(self):
+        """停止瑕疵檢測"""
+        logger.info("⏹ 停止瑕疵檢測")
+        self.detection_controller.disable()
+        self.status_label.setText("瑕疵檢測已停止")
+
+    def on_clear_defect_stats(self):
+        """清除瑕疵統計數據"""
+        logger.info("🔄 清除瑕疵統計")
+        # TODO: 重置瑕疵檢測相關的統計數據
+        self.status_label.setText("瑕疵統計已清除")
+
+    def on_defect_sensitivity_changed(self, value: float):
+        """瑕疵檢測靈敏度變更"""
+        logger.info(f"⚙️  瑕疵檢測靈敏度變更: {value:.2f}")
+        # TODO: 更新瑕疵檢測參數
+        # self.detection_controller.set_defect_sensitivity(value)
+
+    # ==================== 零件類型和方法變更處理 ====================
 
     def on_part_type_changed(self, part_id: str):
         """
