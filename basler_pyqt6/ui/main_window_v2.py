@@ -154,7 +154,7 @@ class MainWindowV2(QMainWindow):
         if DEBUG_MODE:
             self.debug_panel = DebugPanelWidget()
             # 稍後連接調試面板信號
-            logger.info("🛠️ 開發模式已啟用 - 調試工具可用")
+            logger.info("🛠️ 開發模式已啟用 - 調試工具可用（包含問題回報錄製）")
 
         # 添加分頁到 TabWidget
         tab_widget.addTab(camera_settings_tab, "⚙️ 設定")
@@ -1254,6 +1254,8 @@ class MainWindowV2(QMainWindow):
             # 調試模式：更新調試面板的原始畫面
             if DEBUG_MODE:
                 self.debug_panel.original_display.update_frame(original_frame)
+                # 將原始幀傳遞給錄製上傳組件
+                self.debug_panel.write_recording_upload_frame(original_frame)
 
                 draw_time = (time.perf_counter() - draw_start) * 1000
 

@@ -20,6 +20,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from video_display import VideoDisplayWidget
 
+# 導入錄製上傳組件
+from recording_upload_widget import RecordingUploadWidget
+
 # 導入統一配置管理
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config.settings import get_config, save_config
@@ -59,6 +62,10 @@ class DebugPanelWidget(QWidget):
         self.config = get_config()
 
         self.all_param_widgets = []  # 保存所有參數控件（用於鎖定）
+
+        # 錄製上傳組件
+        self.recording_upload_widget = None
+
         self.init_ui()
 
         # 發送初始性能優化參數（從配置讀取）
@@ -426,6 +433,17 @@ class DebugPanelWidget(QWidget):
         action_layout.addWidget(export_btn)
         layout.addLayout(action_layout)
 
+        # === 問題回報錄製 ===
+        record_group = QGroupBox("📹 問題回報錄製")
+        record_layout = QVBoxLayout()
+
+        # 整合 RecordingUploadWidget
+        self.recording_upload_widget = RecordingUploadWidget()
+        record_layout.addWidget(self.recording_upload_widget)
+
+        record_group.setLayout(record_layout)
+        layout.addWidget(record_group)
+
         layout.addStretch()
 
     def create_param_slider(self, label: str, min_val: int, max_val: int,
@@ -563,3 +581,8 @@ class DebugPanelWidget(QWidget):
         for widget in self.all_param_widgets:
             widget.setEnabled(True)
         logger.debug("參數面板已解鎖（已暫停）")
+
+    def write_recording_upload_frame(self, frame):
+        """將幀傳遞給錄製上傳組件"""
+        if self.recording_upload_widget:
+            self.recording_upload_widget.write_frame(frame)
