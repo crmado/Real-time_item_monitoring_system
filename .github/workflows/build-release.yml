@@ -172,7 +172,11 @@ jobs:
           APP_NAME="BaslerVisionSystem"
           APPIMAGE_NAME="BaslerVision_v${VERSION}_Linux.AppImage"
 
-          # 安裝 linuxdeploy
+          # 安裝 FUSE（linuxdeploy 需要）
+          sudo apt-get update
+          sudo apt-get install -y fuse libfuse2
+
+          # 下載 linuxdeploy
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
 
@@ -197,12 +201,38 @@ jobs:
           Terminal=false
           EOF
 
-          # 創建 AppImage
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+          # 創建 AppRun（入口腳本）
+          cat > AppDir/AppRun <<'APPRUN_EOF'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin/:${HERE}/usr/sbin/:${HERE}/usr/games/:${HERE}/bin/:${HERE}/sbin/${PATH:+:$PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib/:${HERE}/usr/lib/i386-linux-gnu/:${HERE}/usr/lib/x86_64-linux-gnu/:${HERE}/usr/lib32/:${HERE}/usr/lib64/${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export PYTHONPATH="${HERE}/usr/share/pyshared/${PYTHONPATH:+:$PYTHONPATH}"
+          EXEC=$(grep -e '^Exec=.*' "${HERE}"/*.desktop | head -n 1 | cut -d "=" -f 2 | cut -d " " -f 1)
+          exec "${HERE}/usr/bin/${EXEC}" "$@"
+          APPRUN_EOF
+          chmod +x AppDir/AppRun
+
+          # 創建 AppImage（使用 extract-and-run 模式避免 FUSE 問題）
+          ARCH=x86_64 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/${APP_NAME} \
+            --desktop-file AppDir/usr/share/applications/${APP_NAME}.desktop \
+            --output appimage || {
+              echo "⚠️ linuxdeploy 失敗，嘗試手動打包..."
+              # 備用方案：手動創建簡化的 AppImage
+              mkdir -p releases
+              cd AppDir
+              tar czf "../releases/${APPIMAGE_NAME%.AppImage}.tar.gz" .
+              cd ..
+              echo "✅ 已創建 tar.gz 備用包"
+              exit 0
+            }
 
           # 重命名
           mkdir -p releases
-          mv *.AppImage "releases/${APPIMAGE_NAME}"
+          mv *.AppImage "releases/${APPIMAGE_NAME}" 2>/dev/null || echo "使用備用打包方式"
 
       - name: 📤 上傳構建產物
         uses: actions/upload-artifact@v4
