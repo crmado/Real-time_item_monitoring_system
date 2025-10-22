@@ -234,12 +234,32 @@ jobs:
           mkdir -p releases
           mv *.AppImage "releases/${APPIMAGE_NAME}" 2>/dev/null || echo "使用備用打包方式"
 
+      - name: 📦 準備上傳產物
+        shell: bash
+        run: |
+          # 確保 releases 目錄存在
+          mkdir -p releases
+
+          # 如果 releases 目錄為空（安裝程序創建失敗），複製 dist 內容
+          if [ -z "$(ls -A releases)" ]; then
+            echo "⚠️ releases 目錄為空，複製 dist 內容作為備用..."
+            cd dist/BaslerVisionSystem
+            zip -r "../../releases/BaslerVisionSystem-${{ matrix.platform }}-dist.zip" .
+            cd ../..
+            echo "✅ 已創建備用壓縮包"
+          fi
+
+          # 顯示將要上傳的文件
+          echo "📁 將上傳以下文件："
+          ls -lh releases/
+
       - name: 📤 上傳構建產物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}-v${{ steps.version.outputs.VERSION }}
           path: releases/*
           retention-days: 30
+          if-no-files-found: warn
 
       - name: 📊 顯示構建信息
         shell: bash
