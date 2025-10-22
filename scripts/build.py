@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 應用程式打包腳本
 使用 PyInstaller 將應用打包成獨立可執行文件
@@ -13,6 +14,12 @@ import platform
 import subprocess
 from datetime import datetime
 from pathlib import Path
+
+# 修復 Windows 編碼問題：確保 stdout 使用 UTF-8
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # 添加專案根目錄到 Python 路徑
 project_root = Path(__file__).parent.parent
