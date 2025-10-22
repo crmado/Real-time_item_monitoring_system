@@ -9,6 +9,8 @@ import sys
 import shutil
 import hashlib
 import zipfile
+import platform
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +19,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from basler_pyqt6.version import __version__, APP_NAME_SHORT, BUILD_TYPE
+
+
+# 平台檢測
+SYSTEM = platform.system().lower()  # 'windows', 'darwin', 'linux'
+IS_WINDOWS = SYSTEM == 'windows'
+IS_MACOS = SYSTEM == 'darwin'
+IS_LINUX = SYSTEM == 'linux'
 
 
 class AppBuilder:
@@ -28,6 +37,33 @@ class AppBuilder:
         self.build_dir = self.project_root / "build"
         self.releases_dir = self.project_root / "releases"
         self.spec_file = self.project_root / "basler_pyqt6.spec"
+        self.installer_dir = self.project_root / "installer"
+
+        # 平台相關配置
+        self.platform_name = self._get_platform_name()
+        self.installer_ext = self._get_installer_extension()
+
+    def _get_platform_name(self):
+        """獲取平台名稱"""
+        if IS_WINDOWS:
+            return "Windows"
+        elif IS_MACOS:
+            return "macOS"
+        elif IS_LINUX:
+            return "Linux"
+        else:
+            return "Unknown"
+
+    def _get_installer_extension(self):
+        """獲取安裝程序擴展名"""
+        if IS_WINDOWS:
+            return ".exe"
+        elif IS_MACOS:
+            return ".dmg"
+        elif IS_LINUX:
+            return ".AppImage"
+        else:
+            return ".zip"
 
     def clean(self):
         """清理舊的構建文件"""
@@ -44,6 +80,7 @@ class AppBuilder:
         """執行 PyInstaller 打包"""
         print("🔨 開始打包應用程式...")
         print(f"   版本: {__version__}")
+        print(f"   平台: {self.platform_name}")
         print(f"   類型: {BUILD_TYPE}")
 
         # 執行 PyInstaller
@@ -107,7 +144,7 @@ class AppBuilder:
         print(f"   創建 ZIP: {zip_path.name}")
 
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(release_dir):
+            for root, _, files in os.walk(release_dir):
                 for file in files:
                     file_path = Path(root) / file
                     arcname = file_path.relative_to(release_dir)
@@ -148,10 +185,80 @@ class AppBuilder:
 
         return release_info
 
-    def run(self, skip_clean=False):
+    def create_installer(self):
+        """創建平台特定的安裝程序"""
+        print(f"🎁 創建 {self.platform_name} 安裝程序...")
+
+        if IS_WINDOWS:
+            return self._create_windows_installer()
+        elif IS_MACOS:
+            return self._create_macos_installer()
+        elif IS_LINUX:
+            return self._create_linux_installer()
+        else:
+            print("⚠️ 當前平台不支援自動創建安裝程序")
+            return None
+
+    def _create_windows_installer(self):
+        """創建 Windows 安裝程序（使用 Inno Setup）"""
+        iss_file = self.installer_dir / "windows_installer.iss"
+
+        if not iss_file.exists():
+            print("❌ 找不到 Inno Setup 配置文件")
+            return None
+
+        # 檢查 Inno Setup 是否安裝
+        iscc_paths = [
+            r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            r"C:\Program Files\Inno Setup 6\ISCC.exe",
+        ]
+
+        iscc_exe = None
+        for path in iscc_paths:
+            if os.path.exists(path):
+                iscc_exe = path
+                break
+
+        if not iscc_exe:
+            print("⚠️ 未找到 Inno Setup，請從 https://jrsoftware.org/isdl.php 下載安裝")
+            print("   或手動運行: iscc installer/windows_installer.iss")
+            return None
+
+        # 設置環境變量
+        env = os.environ.copy()
+        env['APP_VERSION'] = __version__
+
+        # 執行編譯
+        print(f"   使用 Inno Setup 編譯...")
+        try:
+            subprocess.run([iscc_exe, str(iss_file)],
+                         env=env, check=True, capture_output=True)
+            installer_name = f"BaslerVision_Setup_v{__version__}.exe"
+            print(f"✅ Windows 安裝程序創建成功: {installer_name}")
+            return self.releases_dir / installer_name
+        except subprocess.CalledProcessError as e:
+            print(f"❌ 創建安裝程序失敗: {e}")
+            return None
+
+    def _create_macos_installer(self):
+        """創建 macOS DMG 安裝包"""
+        print("   macOS DMG 創建需要在 GitHub Actions 或 macOS 機器上運行")
+        print("   提示: 使用 'brew install create-dmg' 安裝工具")
+        print("   或推送到 GitHub 讓 Actions 自動構建")
+        return None
+
+    def _create_linux_installer(self):
+        """創建 Linux AppImage"""
+        print("   Linux AppImage 創建需要在 GitHub Actions 或 Linux 機器上運行")
+        print("   提示: 使用 linuxdeploy 工具")
+        print("   或推送到 GitHub 讓 Actions 自動構建")
+        return None
+
+    def run(self, skip_clean=False, create_installer=True):
         """執行完整的構建流程"""
         print("=" * 60)
         print(f"🚀 開始構建 {APP_NAME_SHORT} v{__version__}")
+        print(f"   平台: {self.platform_name}")
         print("=" * 60)
         print()
 
@@ -161,6 +268,12 @@ class AppBuilder:
 
             self.build()
             release_info = self.create_release_package()
+
+            # 創建安裝程序（可選）
+            if create_installer:
+                installer_path = self.create_installer()
+                if installer_path:
+                    release_info['installer'] = str(installer_path)
 
             print()
             print("=" * 60)
@@ -188,17 +301,29 @@ def main():
                        help='跳過清理步驟')
     parser.add_argument('--no-package', action='store_true',
                        help='只打包不創建發布包')
+    parser.add_argument('--no-installer', action='store_true',
+                       help='不創建平台安裝程序')
+    parser.add_argument('--show-platform', action='store_true',
+                       help='顯示當前平台信息')
 
     args = parser.parse_args()
 
     builder = AppBuilder()
+
+    # 顯示平台信息
+    if args.show_platform:
+        print(f"當前平台: {builder.platform_name}")
+        print(f"系統: {SYSTEM}")
+        print(f"安裝程序格式: {builder.installer_ext}")
+        return
 
     if args.no_package:
         if not args.skip_clean:
             builder.clean()
         builder.build()
     else:
-        builder.run(skip_clean=args.skip_clean)
+        builder.run(skip_clean=args.skip_clean,
+                   create_installer=not args.no_installer)
 
 
 if __name__ == '__main__':

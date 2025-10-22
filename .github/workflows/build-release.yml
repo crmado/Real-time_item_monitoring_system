@@ -1,0 +1,315 @@
+name: Build Multi-Platform Release
+
+# 觸發條件
+on:
+  # 手動觸發
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本號 (例如: 2.0.3)'
+        required: true
+        type: string
+      create_release:
+        description: '是否創建 GitHub Release'
+        required: true
+        type: boolean
+        default: false
+
+  # 推送標籤時自動觸發 (例如: v2.0.3)
+  push:
+    tags:
+      - 'v*.*.*'
+
+  # Pull Request 時進行測試打包（不上傳）
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'basler_pyqt6/**'
+      - 'scripts/**'
+      - 'basler_pyqt6.spec'
+      - 'requirements.txt'
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Windows 打包
+          - os: windows-latest
+            platform: windows
+            artifact_name: BaslerVision-Windows
+            installer_ext: .exe
+
+          # macOS 打包
+          - os: macos-latest
+            platform: macos
+            artifact_name: BaslerVision-macOS
+            installer_ext: .dmg
+
+          # Linux 打包
+          - os: ubuntu-latest
+            platform: linux
+            artifact_name: BaslerVision-Linux
+            installer_ext: .AppImage
+
+    steps:
+      - name: 📥 檢出代碼
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 獲取完整歷史以便正確生成版本號
+
+      - name: 🐍 設置 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: 📦 安裝依賴 (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # 安裝 Inno Setup (Windows 安裝程序生成器)
+          choco install innosetup -y
+
+      - name: 📦 安裝依賴 (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # 安裝 create-dmg (macOS 磁碟映像生成器)
+          brew install create-dmg
+
+      - name: 📦 安裝依賴 (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🔨 執行 PyInstaller 打包
+        run: |
+          python scripts/build.py --no-package
+        env:
+          PYTHONUNBUFFERED: 1
+
+      - name: 📝 生成版本信息
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "📌 版本號: $VERSION"
+
+      - name: 🎁 創建 Windows 安裝程序
+        if: matrix.platform == 'windows'
+        run: |
+          # 設置環境變量供 Inno Setup 使用
+          $env:APP_VERSION="${{ steps.version.outputs.VERSION }}"
+          # 編譯安裝程序
+          iscc installer/windows_installer.iss
+        shell: pwsh
+
+      - name: 🎁 創建 macOS DMG 安裝包
+        if: matrix.platform == 'macos'
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          APP_NAME="BaslerVisionSystem"
+          DMG_NAME="BaslerVision_v${VERSION}_macOS.dmg"
+
+          # 創建 .app 結構
+          mkdir -p "dist/${APP_NAME}.app/Contents/MacOS"
+          mkdir -p "dist/${APP_NAME}.app/Contents/Resources"
+
+          # 複製執行文件
+          cp -R "dist/${APP_NAME}/"* "dist/${APP_NAME}.app/Contents/MacOS/"
+
+          # 創建 Info.plist
+          cat > "dist/${APP_NAME}.app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.basler.visionsystem</string>
+              <key>CFBundleName</key>
+              <string>Basler Vision System</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # 創建 DMG
+          create-dmg \
+            --volname "Basler Vision System" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --app-drop-link 600 185 \
+            "releases/${DMG_NAME}" \
+            "dist/${APP_NAME}.app"
+
+      - name: 🎁 創建 Linux AppImage
+        if: matrix.platform == 'linux'
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          APP_NAME="BaslerVisionSystem"
+          APPIMAGE_NAME="BaslerVision_v${VERSION}_Linux.AppImage"
+
+          # 安裝 linuxdeploy
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+
+          # 創建 AppDir 結構
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          # 複製應用程式
+          cp -R dist/${APP_NAME}/* AppDir/usr/bin/
+
+          # 創建 .desktop 文件
+          cat > AppDir/usr/share/applications/${APP_NAME}.desktop <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=Basler Vision System
+          Comment=工業視覺檢測系統
+          Exec=${APP_NAME}
+          Icon=${APP_NAME}
+          Categories=Utility;
+          Terminal=false
+          EOF
+
+          # 創建 AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
+
+          # 重命名
+          mkdir -p releases
+          mv *.AppImage "releases/${APPIMAGE_NAME}"
+
+      - name: 📤 上傳構建產物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-v${{ steps.version.outputs.VERSION }}
+          path: releases/*
+          retention-days: 30
+
+      - name: 📊 顯示構建信息
+        shell: bash
+        run: |
+          echo "✅ 構建完成！"
+          echo "📦 平台: ${{ matrix.platform }}"
+          echo "📌 版本: ${{ steps.version.outputs.VERSION }}"
+          echo "📁 產物:"
+          ls -lh releases/
+
+  # 創建 GitHub Release（僅在手動觸發且選擇創建時）
+  create-release:
+    name: 創建 GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+
+    steps:
+      - name: 📥 檢出代碼
+        uses: actions/checkout@v4
+
+      - name: 📝 生成版本信息
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 📥 下載所有構建產物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 📦 整理發布文件
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          ls -lh release-files/
+
+      - name: 🚀 創建 GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: Basler Vision System v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## 🎉 版本 ${{ steps.version.outputs.VERSION }}
+
+            ### 📦 下載
+
+            - **Windows**: `BaslerVision_Setup_v${{ steps.version.outputs.VERSION }}.exe`
+            - **macOS**: `BaslerVision_v${{ steps.version.outputs.VERSION }}_macOS.dmg`
+            - **Linux**: `BaslerVision_v${{ steps.version.outputs.VERSION }}_Linux.AppImage`
+
+            ### 📋 安裝說明
+
+            #### Windows
+            1. 下載 `.exe` 安裝程序
+            2. 以管理員身份運行
+            3. 跟隨安裝嚮導完成安裝
+
+            #### macOS
+            1. 下載 `.dmg` 磁碟映像
+            2. 雙擊掛載
+            3. 將應用程式拖到 Applications 文件夾
+
+            #### Linux
+            1. 下載 `.AppImage` 文件
+            2. 添加執行權限: `chmod +x BaslerVision*.AppImage`
+            3. 直接運行: `./BaslerVision*.AppImage`
+
+            ### 🔗 相關鏈接
+
+            - [完整變更日誌](CHANGELOG.md)
+            - [使用文檔](README.md)
+            - [問題反饋](https://github.com/${{ github.repository }}/issues)
+
+          files: release-files/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 通知構建結果（可選）
+  notify:
+    name: 構建結果通知
+    needs: [build, create-release]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: 📊 檢查構建狀態
+        run: |
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            echo "✅ 所有平台構建成功！"
+          else
+            echo "❌ 構建失敗，請檢查日誌"
+            exit 1
+          fi

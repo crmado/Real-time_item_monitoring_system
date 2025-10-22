@@ -3,8 +3,8 @@
 集中管理應用版本信息
 """
 
-__version__ = "2.0.2"
-__version_info__ = (2, 0, 2)
+__version__ = "2.0.3"
+__version_info__ = (2, 0, 3)
 
 # 應用元數據
 APP_NAME = "Basler Vision System"
@@ -22,7 +22,7 @@ UPDATE_SERVER_URL = "http://172.105.217.66:5000/api"  # 請修改為你的服務
 UPDATE_CHECK_INTERVAL = 86400  # 24 小時檢查一次（秒）
 
 # 構建信息
-BUILD_DATE = "2025-10-16"
+BUILD_DATE = "2025-10-22"
 BUILD_TYPE = "release"  # release / beta / alpha
 
 # 開發模式配置（通過環境變數控制）
