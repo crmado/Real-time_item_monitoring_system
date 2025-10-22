@@ -3,8 +3,8 @@
 集中管理應用版本信息
 """
 
-__version__ = "2.0.3"
-__version_info__ = (2, 0, 3)
+__version__ = "2.0.4"
+__version_info__ = (2, 0, 4)
 
 # 應用元數據
 APP_NAME = "Basler Vision System"
