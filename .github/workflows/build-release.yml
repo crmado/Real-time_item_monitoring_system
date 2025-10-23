@@ -232,7 +232,19 @@ jobs:
             Basler Vision System - Linux 快速啟動
           ═══════════════════════════════════════════════════════════════
 
-          🚀 快速安裝（Ubuntu/Debian）：
+          ⚠️  注意：此二進制文件僅支援 x86_64 架構
+
+          如果您使用 ARM 設備（Rock 5B, 樹莓派等）或遇到執行錯誤，
+          請從源碼安裝：
+
+            git clone https://github.com/你的用戶名/專案.git
+            cd Real-time_item_monitoring_system
+            ./install_arm.sh    # ARM 設備
+            ./run.sh            # 啟動應用
+
+          ─────────────────────────────────────────────────────────────
+
+          🚀 x86_64 快速安裝（Ubuntu/Debian）：
 
           1. 安裝依賴：
              sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 \
@@ -242,7 +254,6 @@ jobs:
           3. 添加權限：chmod +x BaslerVisionSystem
           4. 運行：./BaslerVisionSystem
 
-          📖 完整說明請查看 INSTALL.txt
           ═══════════════════════════════════════════════════════════════
           README_EOF
 

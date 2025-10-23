@@ -1,8 +1,63 @@
 # 🐧 Linux 安裝指南
 
+## ⚠️ 重要提示
+
+如果預構建的二進制文件無法運行（錯誤：`cannot execute binary file`），請使用**方式 1（Python 源碼）**，這是最可靠的方式，支持所有架構。
+
+---
+
 ## 📦 安裝方式
 
-### 方式 1：從 tar.gz 安裝（當前可用）
+### 方式 1：從 Python 源碼運行（推薦 - 最可靠）
+
+**優點**：
+- ✅ 支持所有 Linux 架構（x86_64, ARM, etc.）
+- ✅ 不依賴預編譯的二進制文件
+- ✅ 易於調試和更新
+- ✅ 適用於開發和生產環境
+
+**步驟**：
+
+```bash
+# 1. 克隆源碼倉庫
+git clone https://github.com/你的用戶名/Real-time_item_monitoring_system.git
+cd Real-time_item_monitoring_system
+
+# 2. 安裝 Python 依賴（推薦使用 Conda）
+conda env create -f environment.yml
+conda activate RPi_4_camera_py312
+
+# 或使用 pip
+pip install -r requirements.txt
+
+# 3. 安裝系統 Qt 依賴（Ubuntu/Debian）
+sudo apt-get update
+sudo apt-get install -y \
+    libxcb-xinerama0 \
+    libxcb-cursor0 \
+    libxkbcommon-x11-0 \
+    libgl1-mesa-glx \
+    libglib2.0-0
+
+# 4. 運行應用程式
+python basler_pyqt6/main_v2.py
+```
+
+**其他發行版依賴安裝**：
+
+```bash
+# Fedora/RHEL
+sudo dnf install -y xcb-util-wm xcb-util-image mesa-libGL glib2
+
+# Arch Linux
+sudo pacman -S libxcb xcb-util-wm mesa glib2
+```
+
+---
+
+### 方式 2：從預構建二進制安裝（僅 x86_64）
+
+**⚠️ 注意**：僅適用於 x86_64 架構。如遇到 `cannot execute binary file` 錯誤，請使用方式 1。
 
 如果您下載的是 `BaslerVision_*.tar.gz` 文件：
 

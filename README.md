@@ -245,30 +245,45 @@ sudo pacman -S libxcb xcb-util-wm mesa
 
 ### Linux 快速安裝指南
 
-如果您下載的是 **tar.gz** 文件（AppImage 打包失敗時的備用格式）：
+#### ⭐ 方式 1：從 Python 源碼運行（推薦）
+
+**最可靠的方式，支持所有架構（x86_64, ARM, etc.）**
 
 ```bash
-# 1. 解壓縮
-tar -xzf BaslerVision_*.tar.gz
-cd usr/bin
+# 1. 克隆源碼
+git clone https://github.com/你的用戶名/Real-time_item_monitoring_system.git
+cd Real-time_item_monitoring_system
 
-# 2. 安裝依賴（Ubuntu/Debian）
-sudo apt-get update
+# 2. 安裝依賴
+pip install -r requirements.txt
+
+# 3. 安裝 Qt 依賴（Ubuntu/Debian）
 sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
 
-# 3. 添加執行權限並運行
+# 4. 運行應用
+python basler_pyqt6/main_v2.py
+```
+
+#### 方式 2：從預構建二進制（僅 x86_64）
+
+**tar.gz 文件**：
+```bash
+tar -xzf BaslerVision_*.tar.gz
+cd usr/bin
+sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
 chmod +x BaslerVisionSystem
 ./BaslerVisionSystem
 ```
 
-如果您下載的是 **AppImage** 文件：
-
+**AppImage 文件**：
 ```bash
 chmod +x BaslerVision_*.AppImage
 ./BaslerVision_*.AppImage
 ```
 
-📖 **完整安裝指南**（包含自動安裝腳本、系統整合、故障排除）請查看 [LINUX_INSTALL.md](LINUX_INSTALL.md)
+⚠️ **遇到 `cannot execute binary file` 錯誤？** 請使用方式 1 或查看 [Linux 故障排除指南](LINUX_TROUBLESHOOTING.md)
+
+📖 **完整安裝指南**（包含自動安裝腳本、系統整合、Docker 容器）請查看 [LINUX_INSTALL.md](LINUX_INSTALL.md)
 
 ## 📚 依賴說明
 
@@ -332,6 +347,14 @@ pypylon-listdevices
 ### 打包問題
 
 詳見 [RELEASE.md](RELEASE.md) 的故障排除章節
+
+### Linux 執行錯誤
+
+如果遇到 `cannot execute binary file: exec format error`：
+
+1. **檢查系統架構**：`uname -m`（必須是 x86_64）
+2. **使用 Python 源碼運行**（推薦）：詳見上方「Linux 快速安裝指南」
+3. **完整診斷工具**：查看 [LINUX_TROUBLESHOOTING.md](LINUX_TROUBLESHOOTING.md)
 
 ## 📝 開發
 
