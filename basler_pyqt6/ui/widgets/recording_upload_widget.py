@@ -18,10 +18,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QColor
 
-# 導入錄製器
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from core.video_recorder import VideoRecorder
+# 導入錄製器（使用相對導入以支援 PyInstaller）
+from ...core.video_recorder import VideoRecorder
 
 logger = logging.getLogger(__name__)
 

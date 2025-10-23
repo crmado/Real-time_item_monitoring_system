@@ -10,11 +10,8 @@ import os
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 
-# 導入統一配置管理
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from config.settings import get_config, AppConfig
+# 導入統一配置管理（使用相對導入以支援 PyInstaller）
+from ..config.settings import get_config, AppConfig
 
 # 導入震動機控制器
 from basler_pyqt6.core.vibrator_controller import (

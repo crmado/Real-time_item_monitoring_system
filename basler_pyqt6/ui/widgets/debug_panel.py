@@ -15,17 +15,14 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-# 導入視頻顯示組件
-import sys
-sys.path.insert(0, str(Path(__file__).parent))
-from video_display import VideoDisplayWidget
+# 導入視頻顯示組件（使用相對導入以支援 PyInstaller）
+from .video_display import VideoDisplayWidget
 
 # 導入錄製上傳組件
-from recording_upload_widget import RecordingUploadWidget
+from .recording_upload_widget import RecordingUploadWidget
 
 # 導入統一配置管理
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config.settings import get_config, save_config
+from ...config.settings import get_config, save_config
 
 logger = logging.getLogger(__name__)
 

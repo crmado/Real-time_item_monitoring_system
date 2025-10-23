@@ -23,14 +23,36 @@ basler_path = os.path.abspath('basler_pyqt6')
 
 # 收集所有子模組
 hidden_imports = [
+    # PyQt6
     'PyQt6.QtCore',
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
-    'cv2',
+    'PyQt6.QtMultimedia',
+    'PyQt6.sip',
+
+    # NumPy 相關（修復 NumPy 2.x 打包問題）
     'numpy',
+    'numpy._core',
+    'numpy._core._exceptions',
+    'numpy._core._multiarray_umath',
+    'numpy._core._dtype_ctypes',
+    'numpy._core._methods',  # NumPy 2.x 使用 _core 而非 core
+    'numpy.lib.format',
+
+    # OpenCV
+    'cv2',
+
+    # Basler pypylon
     'pypylon',
+
+    # 其他依賴
     'psutil',
     'yaml',
+
+    # 配置和更新系統
+    'dataclasses',
+    'json',
+    'requests',
 ]
 
 # 數據文件（配置文件、測試資料等）
@@ -81,7 +103,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,  # 使用 UPX 壓縮
-    console=False,  # False = 不顯示控制台窗口
+    console=True,  # True = 顯示控制台窗口（調試用，正式版改為 False）
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
