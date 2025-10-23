@@ -71,8 +71,10 @@ class AutoUpdater:
             UpdateInfo: 如果有更新返回更新信息，否則返回 None
         """
         try:
-            # 構建檢查更新的 API 端點
-            check_url = urljoin(self.update_url, f"/check_update?version={self.current_version}")
+            # 構建檢查更新的 API 端點 (使用正確的伺服器路由)
+            # 確保 base URL 以 / 結尾，避免 urljoin 替換路徑
+            base_url = self.update_url if self.update_url.endswith('/') else self.update_url + '/'
+            check_url = urljoin(base_url, "updates/latest")
 
             logger.info(f"🔍 檢查更新: {check_url}")
 
@@ -83,20 +85,32 @@ class AutoUpdater:
                 headers={'User-Agent': f'BaslerVision/{self.current_version}'}
             )
 
+            if response.status_code == 404:
+                logger.warning(f"⚠️ 更新服務器無可用版本 (404)")
+                return None
+
             if response.status_code != 200:
                 logger.warning(f"⚠️ 更新檢查失敗，狀態碼: {response.status_code}")
                 return None
 
-            # 解析響應
+            # 解析響應 (伺服器直接返回更新信息，不包裝在 update_available 中)
             data = response.json()
 
-            if not data.get('update_available', False):
-                logger.info("✅ 當前已是最新版本")
-                return None
+            # 適配伺服器返回的欄位名稱差異
+            adapted_data = {
+                'version': data.get('version', ''),
+                'release_date': data.get('publish_date', ''),  # publish_date → release_date
+                'download_url': data.get('download_url', ''),
+                'changelog': data.get('release_notes', ''),  # release_notes → changelog
+                'file_size': data.get('file_size', 0),
+                'checksum': data.get('md5', ''),  # md5 → checksum
+                'mandatory': False  # 伺服器未提供此欄位，默認為 False
+            }
 
             # 創建更新信息對象
-            update_info = UpdateInfo(data.get('update_info', {}))
+            update_info = UpdateInfo(adapted_data)
 
+            # 檢查是否為新版本
             if update_info.is_newer_than(self.current_version):
                 logger.info(f"🆕 發現新版本: {update_info.version}")
                 return update_info

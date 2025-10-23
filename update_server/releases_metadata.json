@@ -1,0 +1,22 @@
+{
+  "releases": [
+    {
+      "version": "2.0.6",
+      "filename": "BaslerVision_v2.0.6_test.zip",
+      "file_size": 7071731,
+      "md5": "abc123def456",
+      "build_type": "release",
+      "release_notes": "測試版本 - 修復自動更新 API 端點問題",
+      "publish_date": "2025-10-23T11:00:00"
+    },
+    {
+      "version": "2.0.2",
+      "filename": "BaslerVision_v2.0.2_20251016_134255.zip",
+      "file_size": 171334197,
+      "md5": "test_md5_hash",
+      "build_type": "release",
+      "release_notes": "2.0.2 版本發布",
+      "publish_date": "2025-10-16T13:42:55"
+    }
+  ]
+}

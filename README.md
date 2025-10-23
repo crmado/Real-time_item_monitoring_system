@@ -52,7 +52,6 @@ python basler_pyqt6/main_v2.py
 basler_pyqt6/
 ├── main_v2.py              # 主程序入口
 ├── version.py              # 版本管理
-├── updater.py              # 自動更新模組
 ├── config/                 # 統一配置系統
 │   ├── settings.py         # 配置定義
 │   └── detection_params.json # 配置持久化
@@ -68,15 +67,19 @@ basler_pyqt6/
 ├── core/
 │   ├── camera.py           # 相機管理
 │   ├── detection.py        # 檢測控制器
-│   └── video_recorder.py   # 錄製引擎
+│   ├── video_recorder.py   # 錄製引擎
+│   └── updater.py          # 自動更新模組
 └── testData/               # 測試視頻
 
 scripts/
-├── build.py                # 打包腳本
-└── release.py              # 發布腳本
+├── build.py                # 打包腳本（本地打包或 CI 使用）
+└── release.py              # 發布到自動更新服務器 (SFTP)
 
 update_server/
-└── app.py                  # 更新服務器
+└── app.py                  # 自動更新服務器 API
+
+.github/workflows/
+└── build-release.yml       # GitHub Actions 自動構建多平台安裝包
 ```
 
 ## 🎯 主要功能
@@ -123,18 +126,60 @@ update_server/
 
 詳細說明請參閱 [RELEASE.md](RELEASE.md)
 
-### 快速發布
+### 🔄 兩種發布方式
+
+#### 方式 1：GitHub Release（推薦 - 自動化多平台）
+
+適用於正式版本發布，自動構建 Windows/macOS/Linux 三平台安裝包：
 
 ```bash
 # 1. 更新版本號
 vim basler_pyqt6/version.py
 
-# 2. 打包
+# 2. 提交並打標籤
+git add .
+git commit -m "chore: 準備發布 v2.0.6"
+git tag v2.0.6
+git push origin master --tags
+
+# 3. GitHub Actions 自動構建並創建 Release
+# 訪問 https://github.com/你的用戶名/專案名/releases 查看
+```
+
+**優點**：
+- ✅ 自動構建三個平台（Windows .exe / macOS .dmg / Linux .AppImage）
+- ✅ 自動創建 GitHub Release 並上傳安裝包
+- ✅ 無需本地安裝打包工具
+- ✅ 用戶可直接從 GitHub 下載
+
+#### 方式 2：本地打包 + 自動更新服務器
+
+適用於快速迭代或內部測試，支援應用內自動更新：
+
+```bash
+# 1. 更新版本號
+vim basler_pyqt6/version.py
+
+# 2. 本地打包
 python scripts/build.py
 
-# 3. 發布
+# 3. 上傳到自動更新服務器
 python scripts/release.py --notes "更新說明"
+
+# 用戶通過應用內「檢查更新」功能獲取更新
 ```
+
+**優點**：
+- ✅ 快速發布單一平台
+- ✅ 支援應用內自動更新
+- ✅ 適合內部測試版本
+- ✅ 不需要推送到 GitHub
+
+### 🎯 選擇建議
+
+- **正式發布**：使用 GitHub Actions（方式 1）
+- **測試版本**：使用本地打包（方式 2）
+- **完整覆蓋**：兩者都用（GitHub Release + 更新服務器）
 
 ## 🔄 自動更新
 
@@ -142,11 +187,34 @@ python scripts/release.py --notes "更新說明"
 
 **幫助 > 檢查更新**
 
+### 更新流程
+
 系統會自動：
-1. 檢查服務器上的最新版本
-2. 顯示更新日誌
-3. 下載並安裝更新
-4. 重啟應用
+1. **檢查新版本**：連接到更新服務器 API (`/api/updates/latest`)
+2. **版本比較**：使用語義化版本比較（例如：2.0.6 > 2.0.5）
+3. **顯示更新信息**：
+   - 新版本號
+   - 發布日期
+   - 更新說明
+   - 文件大小和校驗碼
+4. **下載更新**：後台下載更新包並顯示進度
+5. **安裝並重啟**：自動安裝並重啟應用
+
+### 配置更新服務器
+
+在 `basler_pyqt6/version.py` 中配置：
+
+```python
+UPDATE_SERVER_URL = "http://your-server.com:5000/api"
+UPDATE_CHECK_INTERVAL = 86400  # 24 小時檢查一次
+```
+
+### 故障排除
+
+如果更新檢查失敗：
+- **404 錯誤**：伺服器上沒有可用的發布版本
+- **連接錯誤**：檢查 `UPDATE_SERVER_URL` 是否正確
+- **超時**：檢查網絡連接或增加超時設定
 
 ## 🛠️ 系統需求
 
@@ -222,11 +290,25 @@ pypylon-listdevices
 
 ### 當前版本
 
-**Version**: 2.0.2
-**Build Date**: 2025-10-16
+**Version**: 2.0.5
+**Build Date**: 2025-10-23
 **Build Type**: Release
 
 ### 版本歷史
+
+- **v2.0.5** (2025-10-23)
+  - 🔧 修復自動更新 API 端點路徑 (404 錯誤)
+  - 🌐 適配更新服務器響應格式
+  - ✅ 改善錯誤處理和日誌輸出
+  - 📝 完善文檔和開發指南
+
+- **v2.0.4** (2025-10-22)
+  - 🔐 修復 GitHub Actions 創建 Release 的權限問題
+  - 📦 改進自動化發布流程
+
+- **v2.0.3** (2025-10-21)
+  - 🐛 修復 PyInstaller 打包的模組導入問題
+  - 📂 優化資源文件打包策略
 
 - **v2.0.2** (2025-10-16)
   - 🎯 實作動態方法面板切換架構
@@ -236,14 +318,14 @@ pypylon-listdevices
   - 🎨 優化 UI 佈局和信號處理
 
 - **v2.0.1** (2025-10-13)
-  - 實現虛擬光柵計數法
-  - 簡化追蹤系統
-  - 性能優化
+  - ⚡ 實現虛擬光柵計數法
+  - 🔄 簡化追蹤系統
+  - 🚀 性能優化
 
-- **v2.0.0** (2024-10-05)
-  - 全新 PyQt6 界面
-  - 優化檢測算法
-  - 添加自動更新功能
+- **v2.0.0** (2025-10-05)
+  - ✨ 全新 PyQt6 界面
+  - 🎯 優化檢測算法
+  - 🔄 添加自動更新功能
 
 ## 📄 授權
 
@@ -255,5 +337,5 @@ pypylon-listdevices
 
 ---
 
-**文檔更新**: 2025-10-16
+**文檔更新**: 2025-10-23
 **維護者**: Development Team
