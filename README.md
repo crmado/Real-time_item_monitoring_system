@@ -219,9 +219,56 @@ UPDATE_CHECK_INTERVAL = 86400  # 24 小時檢查一次
 ## 🛠️ 系統需求
 
 - **Python**: 3.12+ （需要 numpy 1.26+）
-- **操作系統**: Windows 10/11, macOS 10.14+, Linux
+- **操作系統**:
+  - Windows 10/11
+  - macOS 10.14+
+  - Linux (Ubuntu 20.04+, Debian 11+, Fedora, Arch)
 - **RAM**: 最低 4GB（建議 8GB+）
 - **相機**（可選）: Basler acA640-300gm 或其他 Basler GigE 相機
+
+### Linux 特殊要求
+
+運行前需安裝 Qt 依賴：
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
+
+# Fedora/RHEL
+sudo dnf install -y xcb-util-wm xcb-util-image mesa-libGL
+
+# Arch Linux
+sudo pacman -S libxcb xcb-util-wm mesa
+```
+
+詳細說明請參閱 [LINUX_INSTALL.md](LINUX_INSTALL.md)
+
+### Linux 快速安裝指南
+
+如果您下載的是 **tar.gz** 文件（AppImage 打包失敗時的備用格式）：
+
+```bash
+# 1. 解壓縮
+tar -xzf BaslerVision_*.tar.gz
+cd usr/bin
+
+# 2. 安裝依賴（Ubuntu/Debian）
+sudo apt-get update
+sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
+
+# 3. 添加執行權限並運行
+chmod +x BaslerVisionSystem
+./BaslerVisionSystem
+```
+
+如果您下載的是 **AppImage** 文件：
+
+```bash
+chmod +x BaslerVision_*.AppImage
+./BaslerVision_*.AppImage
+```
+
+📖 **完整安裝指南**（包含自動安裝腳本、系統整合、故障排除）請查看 [LINUX_INSTALL.md](LINUX_INSTALL.md)
 
 ## 📚 依賴說明
 

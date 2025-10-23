@@ -220,19 +220,88 @@ jobs:
             --executable AppDir/usr/bin/${APP_NAME} \
             --desktop-file AppDir/usr/share/applications/${APP_NAME}.desktop \
             --output appimage || {
-              echo "⚠️ linuxdeploy 失敗，嘗試手動打包..."
-              # 備用方案：手動創建簡化的 AppImage
+              echo "⚠️ linuxdeploy 失敗，使用 tar.gz 備用方案..."
+
+              # 備用方案：創建可直接使用的 tar.gz 包
               mkdir -p releases
               cd AppDir
+
+              # 創建簡短的快速啟動指南（放在根目錄）
+              cat > README.txt <<'README_EOF'
+          ═══════════════════════════════════════════════════════════════
+            Basler Vision System - Linux 快速啟動
+          ═══════════════════════════════════════════════════════════════
+
+          🚀 快速安裝（Ubuntu/Debian）：
+
+          1. 安裝依賴：
+             sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 \
+                                     libxkbcommon-x11-0 libgl1-mesa-glx
+
+          2. 進入目錄：cd usr/bin
+          3. 添加權限：chmod +x BaslerVisionSystem
+          4. 運行：./BaslerVisionSystem
+
+          📖 完整說明請查看 INSTALL.txt
+          ═══════════════════════════════════════════════════════════════
+          README_EOF
+
+              # 創建詳細安裝說明
+              cat > INSTALL.txt <<'INSTALL_EOF'
+          Basler Vision System - Linux 安裝說明
+          ========================================
+
+          快速安裝：
+
+          1. 安裝依賴（Ubuntu/Debian）：
+             sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
+
+          2. 進入解壓目錄：
+             cd usr/bin
+
+          3. 添加執行權限並運行：
+             chmod +x BaslerVisionSystem
+             ./BaslerVisionSystem
+
+          其他發行版或完整安裝指南，請參閱：
+          https://github.com/你的用戶名/專案名/blob/master/LINUX_INSTALL.md
+          INSTALL_EOF
+
               tar czf "../releases/${APPIMAGE_NAME%.AppImage}.tar.gz" .
               cd ..
+
+              # 創建安裝說明摘要文件（用於 Release notes）
+              cat > "../releases/LINUX_INSTALL_NOTES.txt" <<'NOTES_EOF'
+          ⚠️ 注意：此版本使用 tar.gz 格式（AppImage 打包失敗）
+
+          解壓後會看到：
+          - README.txt     ← 快速啟動指南（先看這個！）
+          - INSTALL.txt    ← 詳細安裝說明
+          - usr/bin/       ← 應用程式目錄
+
+          快速安裝（Ubuntu/Debian）：
+          1. tar -xzf BaslerVision_*.tar.gz
+          2. cat README.txt
+          3. sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
+          4. cd usr/bin && chmod +x BaslerVisionSystem && ./BaslerVisionSystem
+          NOTES_EOF
+
               echo "✅ 已創建 tar.gz 備用包"
+              echo "   包含文件："
+              echo "   - README.txt (快速啟動指南)"
+              echo "   - INSTALL.txt (詳細安裝說明)"
+              echo "   - usr/bin/BaslerVisionSystem (主程式)"
               exit 0
             }
 
-          # 重命名
+          # 重命名 AppImage
           mkdir -p releases
-          mv *.AppImage "releases/${APPIMAGE_NAME}" 2>/dev/null || echo "使用備用打包方式"
+          if ls *.AppImage 1> /dev/null 2>&1; then
+            mv *.AppImage "releases/${APPIMAGE_NAME}"
+            echo "✅ AppImage 創建成功"
+          else
+            echo "⚠️ 使用 tar.gz 備用方式"
+          fi
 
       - name: 📦 準備上傳產物
         shell: bash
@@ -334,9 +403,30 @@ jobs:
             3. 將應用程式拖到 Applications 文件夾
 
             #### Linux
-            1. 下載 `.AppImage` 文件
-            2. 添加執行權限: `chmod +x BaslerVision*.AppImage`
-            3. 直接運行: `./BaslerVision*.AppImage`
+
+            **如果是 AppImage 格式**：
+            ```bash
+            chmod +x BaslerVision_*.AppImage
+            ./BaslerVision_*.AppImage
+            ```
+
+            **如果是 tar.gz 格式**（AppImage 打包失敗時的備用方案）：
+            ```bash
+            # 解壓縮
+            tar -xzf BaslerVision_*.tar.gz
+
+            # 查看安裝說明
+            cat INSTALL.txt
+
+            # 快速安裝（Ubuntu/Debian）
+            sudo apt-get install -y libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 libgl1-mesa-glx
+            cd usr/bin
+            chmod +x BaslerVisionSystem
+            ./BaslerVisionSystem
+            ```
+
+            📖 **完整 Linux 安裝指南**（包含其他發行版、自動安裝腳本、故障排除）：
+            [LINUX_INSTALL.md](LINUX_INSTALL.md)
 
             ### 🔗 相關鏈接
 
