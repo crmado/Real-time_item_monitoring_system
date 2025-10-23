@@ -27,7 +27,9 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# 步驟 2: 安裝系統依賴（Qt 圖形庫）
+# 步驟 2: 安裝系統依賴（Qt 圖形庫 + PyQt6）
+#
+# 重要：ARM 架構直接用系統的 PyQt6，避免編譯問題
 # -----------------------------------------------------------------------------
 echo "[2/5] 安裝系統依賴..."
 sudo apt-get update -qq
@@ -35,6 +37,7 @@ sudo apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    python3-pyqt6 \
     libxcb-xinerama0 \
     libxcb-cursor0 \
     libxkbcommon-x11-0 \
@@ -46,16 +49,20 @@ echo "✅ 系統依賴安裝完成"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 步驟 3: 創建 Python 虛擬環境（推薦，避免污染系統）
+# 步驟 3: 創建 Python 虛擬環境（使用 --system-site-packages）
+#
+# 重要：必須加 --system-site-packages 才能使用系統的 PyQt6
 # -----------------------------------------------------------------------------
 echo "[3/5] 創建 Python 虛擬環境..."
 
 if [ -d "venv" ]; then
-    echo "虛擬環境已存在，跳過創建"
-else
-    python3 -m venv venv
-    echo "✅ 虛擬環境創建完成"
+    echo "刪除舊的虛擬環境..."
+    rm -rf venv
 fi
+
+# 創建虛擬環境並允許訪問系統套件（PyQt6）
+python3 -m venv --system-site-packages venv
+echo "✅ 虛擬環境創建完成（已啟用系統套件訪問）"
 
 # 啟用虛擬環境
 source venv/bin/activate
@@ -63,9 +70,11 @@ echo "✅ 虛擬環境已啟用"
 echo ""
 
 # -----------------------------------------------------------------------------
-# 步驟 4: 安裝 Python 依賴（從 requirements.txt）
+# 步驟 4: 安裝 Python 依賴（跳過 PyQt6）
+#
+# 重要：PyQt6 已從系統安裝，這裡只安裝其他依賴
 # -----------------------------------------------------------------------------
-echo "[4/5] 安裝 Python 依賴（這需要幾分鐘）..."
+echo "[4/5] 安裝 Python 依賴（跳過 PyQt6，使用系統版本）..."
 
 if [ ! -f "requirements.txt" ]; then
     echo "❌ 找不到 requirements.txt"
@@ -76,10 +85,17 @@ fi
 # 升級 pip
 pip install --upgrade pip
 
-# 安裝依賴（顯示進度）
-pip install -r requirements.txt
+# 創建臨時 requirements（排除 PyQt6）
+grep -v "^PyQt6" requirements.txt > requirements_arm.txt
+
+# 安裝依賴（排除 PyQt6）
+pip install -r requirements_arm.txt
+
+# 清理臨時文件
+rm requirements_arm.txt
 
 echo "✅ Python 依賴安裝完成"
+echo "   PyQt6: 使用系統版本"
 echo ""
 
 # -----------------------------------------------------------------------------
