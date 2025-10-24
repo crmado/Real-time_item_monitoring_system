@@ -25,7 +25,7 @@ from basler_pyqt6.ui.dialogs.update_dialog import UpdateDialog
 from basler_pyqt6.core.source_manager import SourceManager, SourceType
 from basler_pyqt6.core.detection import DetectionController
 from basler_pyqt6.core.video_recorder import VideoRecorder
-from basler_pyqt6.core.updater import AutoUpdater
+from basler_pyqt6.core.smart_updater import get_smart_updater, UpdateMode
 from basler_pyqt6.version import DEBUG_MODE
 
 # 導入圖示管理器
@@ -1572,23 +1572,43 @@ class MainWindowV2(QMainWindow):
         """)
 
     def check_for_updates(self):
-        """檢查軟件更新"""
+        """
+        檢查軟件更新（智能選擇 Git 或 OTA）
+
+        根據運行環境自動選擇：
+        - 源碼環境（Rock 5B）：使用 git pull
+        - 打包環境：使用 HTTP 下載
+        """
         self.status_label.setText("🔍 正在檢查更新...")
 
         try:
-            updater = AutoUpdater()
-            update_info = updater.check_for_updates(timeout=10)
+            # 獲取智能更新器
+            updater = get_smart_updater()
+
+            # 顯示更新模式
+            mode_desc = updater.get_update_mode_description()
+            logger.info(f"更新模式: {mode_desc}")
+
+            # 檢查更新
+            update_info = updater.check_for_updates()
 
             if update_info:
-                # 有更新，顯示更新對話框
-                dialog = UpdateDialog(update_info, self)
-                dialog.exec()
+                mode = update_info.get('mode')
+
+                if mode == 'git':
+                    # Git 更新模式
+                    self._show_git_update_dialog(updater, update_info)
+                elif mode == 'ota':
+                    # OTA 更新模式
+                    self._show_ota_update_dialog(updater, update_info)
             else:
                 # 無更新
                 QMessageBox.information(
                     self,
                     "軟件更新",
-                    "✅ 當前已是最新版本！"
+                    f"✅ 當前已是最新版本！\n\n"
+                    f"當前版本: {updater.get_current_version()}\n"
+                    f"更新方式: {mode_desc}"
                 )
 
             self.status_label.setText("就緒")
@@ -1601,6 +1621,104 @@ class MainWindowV2(QMainWindow):
                 f"無法檢查更新，請稍後再試。\n\n錯誤: {str(e)}"
             )
             self.status_label.setText("就緒")
+
+    def _show_git_update_dialog(self, updater, update_info):
+        """顯示 Git 更新對話框"""
+        new_commits = update_info.get('new_commits', 0)
+        branch = update_info.get('branch', 'master')
+        commit_log = update_info.get('commit_log', '')
+
+        message = (
+            f"🆕 發現 {new_commits} 個新提交！\n\n"
+            f"分支: {branch}\n"
+            f"當前版本: {update_info.get('current_version')}\n\n"
+            f"最近的提交:\n{commit_log}\n\n"
+            f"是否立即更新？\n"
+            f"（更新後需要重啟應用）"
+        )
+
+        reply = QMessageBox.question(
+            self,
+            "Git 更新可用",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.status_label.setText("⬇️ 正在更新...")
+
+            # 執行 git pull
+            success = updater.perform_update(update_info, restart=False)
+
+            if success:
+                QMessageBox.information(
+                    self,
+                    "更新成功",
+                    "✅ 更新完成！\n\n"
+                    "請重新啟動應用以應用更新。\n\n"
+                    "提示：如果 requirements.txt 有變更，\n"
+                    "請運行: pip install -r requirements.txt"
+                )
+                # 關閉應用
+                self.close()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "更新失敗",
+                    "❌ 更新失敗，請查看日誌。\n\n"
+                    "您也可以手動更新:\n"
+                    f"cd {updater.project_root}\n"
+                    f"git pull origin {branch}"
+                )
+
+    def _show_ota_update_dialog(self, updater, update_info):
+        """顯示 OTA 更新對話框"""
+        details = update_info.get('details')
+
+        # 使用原有的 UpdateDialog（如果存在）
+        try:
+            dialog = UpdateDialog(details, self)
+            if dialog.exec():
+                # 用戶確認更新
+                self.status_label.setText("⬇️ 正在下載更新...")
+                success = updater.perform_update(update_info, restart=True)
+
+                if not success:
+                    QMessageBox.warning(
+                        self,
+                        "更新失敗",
+                        "❌ 下載或安裝更新失敗，請稍後再試。"
+                    )
+        except Exception as e:
+            # 如果 UpdateDialog 不可用，使用簡單對話框
+            logger.warning(f"UpdateDialog 不可用: {e}")
+
+            message = (
+                f"🆕 發現新版本！\n\n"
+                f"當前版本: {update_info.get('current_version')}\n"
+                f"新版本: {update_info.get('new_version')}\n\n"
+                f"文件大小: {details.file_size / 1024 / 1024:.2f} MB\n\n"
+                f"更新說明:\n{details.changelog}\n\n"
+                f"是否立即下載並安裝？"
+            )
+
+            reply = QMessageBox.question(
+                self,
+                "OTA 更新可用",
+                message,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                self.status_label.setText("⬇️ 正在下載更新...")
+                success = updater.perform_update(update_info, restart=True)
+
+                if not success:
+                    QMessageBox.warning(
+                        self,
+                        "更新失敗",
+                        "❌ 下載或安裝更新失敗，請稍後再試。"
+                    )
 
     def show_about(self):
         """顯示關於"""

@@ -1,13 +1,32 @@
 """
 圖示管理模組 - 統一管理所有 SVG 圖示
+自動處理開發環境和打包環境的路徑差異
 """
 
+import sys
 from pathlib import Path
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtCore import QSize
 
+
+def _get_resources_dir() -> Path:
+    """
+    獲取 resources 目錄路徑（支援開發和打包環境）
+
+    開發環境：basler_pyqt6/resources/
+    打包環境：_MEIPASS/resources/
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包環境
+        base_path = Path(sys._MEIPASS)
+        return base_path / "resources"
+    else:
+        # 開發環境
+        return Path(__file__).parent
+
+
 # 圖示目錄路徑
-ICONS_DIR = Path(__file__).parent / "icons"
+ICONS_DIR = _get_resources_dir() / "icons"
 
 
 class IconManager:
@@ -25,7 +44,7 @@ class IconManager:
             size: 圖示大小（像素）
 
         Returns:
-            QIcon 物件
+            QIcon 物件（找不到圖示時返回空 QIcon）
         """
         cache_key = f"{name}_{size}"
 
@@ -37,7 +56,8 @@ class IconManager:
         icon_path = ICONS_DIR / f"{name}.svg"
 
         if not icon_path.exists():
-            print(f"⚠️ 圖示不存在: {icon_path}")
+            # 圖示不存在時，返回空 QIcon（不中斷程式）
+            # print(f"⚠️ 圖示不存在: {icon_path}")
             return QIcon()
 
         # 使用 QIcon 直接載入 SVG（PyQt6 會自動處理）
