@@ -18,7 +18,9 @@
       "Bash(ffmpeg:*)",
       "Bash($HOME/miniconda3/bin/python:*)",
       "Read(//home/ubuntu/miniconda3/envs/**)",
-      "Bash(~/miniconda3/envs/basler_vision/bin/python:*)"
+      "Bash(~/miniconda3/envs/basler_vision/bin/python:*)",
+      "Bash(bash -n:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   },
