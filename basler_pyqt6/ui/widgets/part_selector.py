@@ -113,17 +113,31 @@ class PartTypeCard(QFrame):
         self._update_style()
 
     def _load_part_image(self) -> QPixmap:
-        """載入零件圖片"""
+        """
+        載入零件圖片（支援開發和打包環境）
+
+        Returns:
+            QPixmap: 圖片物件，載入失敗返回 None
+        """
         if not self.part_image:
             return None
 
-        # 構建完整路徑
-        image_path = Path("basler_pyqt6") / self.part_image
+        # 獲取正確的資源路徑（支援開發和打包環境）
+        import sys
+        if getattr(sys, 'frozen', False):
+            # 打包環境：從 _MEIPASS 載入
+            base_path = Path(sys._MEIPASS)
+            image_path = base_path / self.part_image
+        else:
+            # 開發環境：從專案根目錄載入
+            # 當前文件位於 basler_pyqt6/ui/widgets/part_selector.py
+            project_root = Path(__file__).parent.parent.parent.parent
+            image_path = project_root / "basler_pyqt6" / self.part_image
 
         if image_path.exists():
             return QPixmap(str(image_path))
         else:
-            # 圖片不存在，返回 None 使用預設圖示
+            # 圖片不存在時優雅降級（不顯示圖片）
             return None
 
     def mousePressEvent(self, event):

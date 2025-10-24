@@ -15,7 +15,10 @@ eggs/
 .eggs/
 lib/
 lib64/
-parts/
+parts/  # Python setuptools 臨時目錄
+!basler_pyqt6/resources/parts/  # 但要追蹤資源目錄結構
+basler_pyqt6/resources/parts/*.jpg  # 忽略實際圖片檔案
+basler_pyqt6/resources/parts/*.png
 sdist/
 var/
 wheels/
