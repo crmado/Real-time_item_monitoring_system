@@ -117,3 +117,8 @@ class Icons:
     LIGHTNING = "lightning"
     VIDEO = "hangout_video"
     TRACK_CHANGES = "track_changes"
+    INFO = "info"
+
+    # 功能圖示
+    PACKAGE = "package"
+    RULER = "ruler"

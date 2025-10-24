@@ -186,7 +186,8 @@ class DetectionControlWidget(QWidget):
         group_layout.addWidget(options_container)
 
         # === 重置按鈕（工業級警告樣式）===
-        self.reset_btn = QPushButton("🔄 重置計數器")
+        self.reset_btn = QPushButton(" 重置計數器")
+        self.reset_btn.setIcon(get_icon(Icons.RESET, 20))
         self.reset_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -194,6 +195,7 @@ class DetectionControlWidget(QWidget):
                 color: white;
                 border: 2px solid #ef4444;
                 padding: 10px;
+                padding-left: 15px;
                 border-radius: 8px;
                 font-size: 11pt;
                 font-weight: bold;
@@ -213,7 +215,7 @@ class DetectionControlWidget(QWidget):
 
         # === 參數說明（收縮，背景資訊）===
         self.params_text = QLabel(
-            "📊 極小零件檢測 | 最小: 2px | 閾值: 3 | 學習率: 0.001"
+            "極小零件檢測 | 最小: 2px | 閾值: 3 | 學習率: 0.001"
         )
         self.params_text.setStyleSheet("""
             color: #4a5568;
@@ -279,7 +281,7 @@ class DetectionControlWidget(QWidget):
             """)
         else:
             self.params_text.setText(
-                "📊 極小零件檢測 | 最小: 2px | 閾值: 3 | 學習率: 0.001"
+                "極小零件檢測 | 最小: 2px | 閾值: 3 | 學習率: 0.001"
             )
             self.params_text.setStyleSheet("""
                 color: #4a5568;

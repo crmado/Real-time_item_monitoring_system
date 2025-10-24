@@ -210,7 +210,7 @@ class PartSelectorWidget(QWidget):
         title_layout.setContentsMargins(15, 10, 15, 5)
         title_layout.setSpacing(10)
 
-        title_label = QLabel("🔧 零件檢測種類選擇")
+        title_label = QLabel("零件檢測種類選擇")
         title_label.setStyleSheet("""
             QLabel {
                 color: #00d4ff;

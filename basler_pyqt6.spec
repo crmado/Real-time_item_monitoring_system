@@ -60,6 +60,10 @@ datas = [
     # 配置檔案（必要）
     ('basler_pyqt6/config/detection_params.json', 'config'),
 
+    # 資源文件（SVG 圖示、零件圖片目錄結構）
+    ('basler_pyqt6/resources/icons', 'resources/icons'),
+    ('basler_pyqt6/resources/parts', 'resources/parts'),
+
     # 測試資料目錄（用於無硬體測試）
     # ('basler_pyqt6/testData', 'testData'),
 

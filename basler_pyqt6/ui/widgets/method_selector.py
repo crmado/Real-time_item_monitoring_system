@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QFont
 
-from basler_pyqt6.resources.icons import get_icon, Icons
+from basler_pyqt6.resources.icons import get_icon, get_pixmap, Icons
 
 
 class MethodCard(QFrame):
@@ -19,12 +19,12 @@ class MethodCard(QFrame):
     clicked = pyqtSignal(str)  # 發射 method_id
 
     def __init__(self, method_id: str, method_name: str,
-                 method_description: str, icon: str = "🎯", parent=None):
+                 method_description: str, icon_name: str = Icons.CHART, parent=None):
         super().__init__(parent)
         self.method_id = method_id
         self.method_name = method_name
         self.method_description = method_description
-        self.icon = icon
+        self.icon_name = icon_name  # SVG 圖示名稱
         self.is_selected = False
 
         self.init_ui()
@@ -41,17 +41,17 @@ class MethodCard(QFrame):
         layout.setContentsMargins(15, 15, 15, 15)
 
         # === 圖示 ===
-        icon_label = QLabel(self.icon)
-        icon_label.setStyleSheet("""
+        self.icon_label = QLabel()
+        self.icon_label.setPixmap(get_pixmap(self.icon_name, 48))
+        self.icon_label.setStyleSheet("""
             QLabel {
-                font-size: 36pt;
                 background: transparent;
                 border: none;
             }
         """)
-        icon_label.setFixedSize(60, 60)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(icon_label)
+        self.icon_label.setFixedSize(60, 60)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.icon_label)
 
         # === 文字區域 ===
         text_container = QWidget()
@@ -230,12 +230,12 @@ class MethodSelectorWidget(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        # 方法圖示映射
+        # 方法圖示映射（使用專案 SVG 圖示）
         method_icons = {
-            "counting": "📊",
-            "defect_detection": "🔍",
-            "size_measurement": "📏",
-            "classification": "🏷️"
+            "counting": Icons.CHART,
+            "defect_detection": Icons.SEARCH,
+            "size_measurement": Icons.RULER,
+            "classification": Icons.CHECKMARK
         }
 
         # 創建方法卡片
@@ -243,9 +243,9 @@ class MethodSelectorWidget(QWidget):
             method_id = method_data.get("method_id", "unknown")
             method_name = method_data.get("method_name", "Unknown")
             method_desc = method_data.get("method_description", "")
-            icon = method_icons.get(method_id, "🎯")
+            icon_name = method_icons.get(method_id, Icons.CHART)
 
-            card = MethodCard(method_id, method_name, method_desc, icon)
+            card = MethodCard(method_id, method_name, method_desc, icon_name)
             card.clicked.connect(self._on_card_clicked)
 
             self.cards_layout.addWidget(card)

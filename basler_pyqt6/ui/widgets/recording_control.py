@@ -29,7 +29,7 @@ class RecordingControlWidget(QWidget):
         layout = QVBoxLayout(self)
 
         # 創建分組框
-        group_box = QGroupBox("🎥 錄影控制")
+        group_box = QGroupBox("錄影控制")
         group_layout = QVBoxLayout()
 
         # 錄影按鈕（使用圖示）

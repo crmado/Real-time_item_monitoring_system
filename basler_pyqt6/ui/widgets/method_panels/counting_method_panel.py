@@ -35,7 +35,7 @@ class CountingMethodPanel(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         # ========== 區塊 1: 包裝參數設定 ==========
-        params_group = QGroupBox("📦 定量包裝設定")
+        params_group = QGroupBox("定量包裝設定")
         params_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
@@ -106,7 +106,7 @@ class CountingMethodPanel(QWidget):
         threshold_layout.setContentsMargins(10, 5, 10, 10)
 
         # 閾值標題
-        threshold_title = QLabel("⚙️ 自動速度控制閾值（進階設定）")
+        threshold_title = QLabel("自動速度控制閾值（進階設定）")
         threshold_title.setStyleSheet("color: #9ca3af; font-size: 9pt; font-weight: bold;")
         threshold_layout.addWidget(threshold_title)
 
@@ -142,7 +142,7 @@ class CountingMethodPanel(QWidget):
         main_layout.addWidget(params_group)
 
         # ========== 區塊 2: 包裝進度顯示 ==========
-        status_group = QGroupBox("📊 包裝進度")
+        status_group = QGroupBox("包裝進度")
         status_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;

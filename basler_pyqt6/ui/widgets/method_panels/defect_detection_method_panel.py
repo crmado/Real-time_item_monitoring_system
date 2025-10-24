@@ -61,7 +61,7 @@ class DefectDetectionMethodPanel(QWidget):
         sensitivity_layout = QHBoxLayout(sensitivity_container)
         sensitivity_layout.setContentsMargins(0, 0, 0, 0)
 
-        sensitivity_label = QLabel("⚙️ 檢測靈敏度:")
+        sensitivity_label = QLabel("檢測靈敏度:")
         sensitivity_label.setStyleSheet("color: #e5e7eb; font-size: 10pt; font-weight: normal;")
         sensitivity_layout.addWidget(sensitivity_label)
 
@@ -111,7 +111,7 @@ class DefectDetectionMethodPanel(QWidget):
         main_layout.addWidget(params_group)
 
         # ========== 區塊 2: 檢測統計顯示 ==========
-        stats_group = QGroupBox("📊 品質統計")
+        stats_group = QGroupBox("品質統計")
         stats_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
