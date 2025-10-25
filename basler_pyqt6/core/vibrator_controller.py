@@ -325,6 +325,16 @@ class DualVibratorManager:
         logger.info(f"⏹️  雙震動機停止: [{self.vibrator1.name}] {'✅' if result1 else '❌'} | [{self.vibrator2.name}] {'✅' if result2 else '❌'}")
         return (result1, result2)
 
+    @property
+    def is_running(self) -> bool:
+        """
+        檢查震動機是否運行中（任一台運行即為 True）
+
+        Returns:
+            True 如果任一震動機在運行中
+        """
+        return self.vibrator1.is_running or self.vibrator2.is_running
+
     def get_status(self) -> dict:
         """
         獲取兩台震動機的狀態
@@ -334,7 +344,8 @@ class DualVibratorManager:
         """
         return {
             'vibrator1': self.vibrator1.get_status(),
-            'vibrator2': self.vibrator2.get_status()
+            'vibrator2': self.vibrator2.get_status(),
+            'is_running': self.is_running  # 添加整體運行狀態
         }
 
     def set_speed_independent(
