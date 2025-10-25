@@ -118,11 +118,18 @@ class CameraController:
             if hasattr(self.camera, 'PixelFormat'):
                 self.camera.PixelFormat.SetValue('Mono8')
 
+            # 設置曝光模式為手動（關閉自動曝光）
+            if hasattr(self.camera, 'ExposureAuto'):
+                self.camera.ExposureAuto.SetValue('Off')
+                logger.info("✅ 自動曝光已關閉，切換為手動模式")
+
             # 設置曝光時間
             if hasattr(self.camera, 'ExposureTime'):
                 self.camera.ExposureTime.SetValue(self.exposure_time)
+                logger.info(f"✅ 曝光時間設定為: {self.exposure_time}us")
             elif hasattr(self.camera, 'ExposureTimeAbs'):
                 self.camera.ExposureTimeAbs.SetValue(self.exposure_time)
+                logger.info(f"✅ 曝光時間設定為: {self.exposure_time}us (使用 ExposureTimeAbs)")
 
             # 優化性能設置
             if hasattr(self.camera, 'AcquisitionFrameRateEnable'):
@@ -231,10 +238,19 @@ class CameraController:
         """設置曝光時間"""
         try:
             if not self.is_connected:
+                logger.warning("⚠️ 相機未連接，無法設置曝光時間")
                 return False
 
             self.exposure_time = exposure_us
 
+            # 確保曝光模式為手動
+            if hasattr(self.camera, 'ExposureAuto'):
+                current_mode = self.camera.ExposureAuto.GetValue()
+                if current_mode != 'Off':
+                    self.camera.ExposureAuto.SetValue('Off')
+                    logger.info("✅ 自動曝光已關閉（切換為手動模式）")
+
+            # 設置曝光時間
             if hasattr(self.camera, 'ExposureTime'):
                 self.camera.ExposureTime.SetValue(exposure_us)
             elif hasattr(self.camera, 'ExposureTimeAbs'):
