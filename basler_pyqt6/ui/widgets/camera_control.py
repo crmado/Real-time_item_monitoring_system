@@ -101,6 +101,9 @@ class CameraControlWidget(QWidget):
         group_box.setLayout(group_layout)
         layout.addWidget(group_box)
 
+        # 添加彈性空間，防止 GroupBox 過度擴展
+        layout.addStretch()
+
     def update_camera_list(self, cameras):
         """更新相機列表"""
         self.camera_list.clear()
