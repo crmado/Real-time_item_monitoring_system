@@ -150,31 +150,40 @@ class MainWindowV2(QMainWindow):
         self.recording_control = RecordingControlWidget()
         self.system_monitor = SystemMonitorWidget()
 
+        # 為檢測監控添加獨立的滾動區域（包含預覽畫面和控制面板）
+        monitoring_scroll = QScrollArea()
+        monitoring_scroll.setWidgetResizable(True)
+        monitoring_scroll.setWidget(monitoring_tab)
+        monitoring_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        monitoring_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
         # ========== Tab 3: 調試工具（僅開發模式） ==========
         if DEBUG_MODE:
             self.debug_panel = DebugPanelWidget()
+
+            # 為調試工具添加獨立的滾動區域（因為內容較多）
+            debug_scroll = QScrollArea()
+            debug_scroll.setWidgetResizable(True)
+            debug_scroll.setWidget(self.debug_panel)
+            debug_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            debug_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
             # 稍後連接調試面板信號
             logger.info("🛠️ 開發模式已啟用 - 調試工具可用（包含問題回報錄製）")
 
         # 添加分頁到 TabWidget
         tab_widget.addTab(camera_settings_tab, "⚙️ 設定")
-        tab_widget.addTab(monitoring_tab, "📊 檢測監控")
+        tab_widget.addTab(monitoring_scroll, "📊 檢測監控")  # 使用包裝了滾動區域的版本
 
         if DEBUG_MODE:
-            tab_widget.addTab(self.debug_panel, "🛠️ 調試工具")
+            tab_widget.addTab(debug_scroll, "🛠️ 調試工具")  # 使用包裝了滾動區域的版本
 
         # 預設顯示「檢測監控」頁面
         tab_widget.setCurrentIndex(1)
 
-        # 包裝在滾動區域中
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(tab_widget)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-        # 添加到分割器
+        # 直接添加到分割器（不再包裝整個 TabWidget）
         splitter.addWidget(self.video_display)
-        splitter.addWidget(scroll_area)  # 使用滾動區域而非直接使用面板
+        splitter.addWidget(tab_widget)
 
         # 設置分割器比例：主畫面(大) : 右側控制面板
         splitter.setStretchFactor(0, 7)  # 主畫面占 70%
