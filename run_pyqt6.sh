@@ -107,7 +107,14 @@ if [ -f "basler_pyqt6/version.py" ]; then
 fi
 
 echo ""
-echo "🚀 正在啟動應用..."
+
+# 檢查是否啟用 DEBUG_MODE
+if [[ "$DEBUG_MODE" == "true" || "$DEBUG_MODE" == "1" || "$DEBUG_MODE" == "yes" ]]; then
+    echo -e "${YELLOW}🛠️  開發模式已啟用 (DEBUG_MODE=true)${NC}"
+else
+    echo "🚀 生產模式 (使用 DEBUG_MODE=true ./run_pyqt6.sh 啟用開發模式)"
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

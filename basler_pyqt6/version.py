@@ -3,6 +3,8 @@
 集中管理應用版本信息
 """
 
+import os
+
 __version__ = "2.0.5"
 __version_info__ = (2, 0, 5)
 
@@ -26,9 +28,11 @@ BUILD_DATE = "2025-10-23"
 BUILD_TYPE = "release"  # release / beta / alpha
 
 # 開發模式配置（通過環境變數控制）
-# 使用方式: export DEBUG_MODE=true && python basler_pyqt6/main_v2.py
-# DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() in ('true', '1', 'yes')
-DEBUG_MODE = True
+# 使用方式:
+#   macOS/Linux: export DEBUG_MODE=true && python basler_pyqt6/main_v2.py
+#   Windows: set DEBUG_MODE=true && python basler_pyqt6/main_v2.py
+# 生產環境預設關閉，開發時可通過環境變數啟用
+DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() in ('true', '1', 'yes')
 
 # 測試資料目錄
 TEST_DATA_DIR = "basler_pyqt6/testData/新工業相機收集資料"

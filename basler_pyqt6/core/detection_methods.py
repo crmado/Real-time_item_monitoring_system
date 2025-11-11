@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Tuple, Optional
 from enum import Enum
 import numpy as np
+import cv2
 
 
 class DetectionIntent(Enum):
@@ -346,26 +347,177 @@ class DefectDetectionMethod(DetectionMethodBase):
         """
         處理單幀影像（瑕疵檢測）
 
-        TODO: 實作瑕疵檢測演算法
+        使用混合方法檢測表面瑕疵：
+        1. 邊緣異常檢測（刮痕）
+        2. 灰度異常檢測（凹陷、變色）
+        3. 面積過濾（排除噪聲）
         """
         if not self.enabled:
             return frame, {"defects": [], "is_defective": False}
 
-        # 框架實作：返回空結果
         result_frame = frame.copy()
+        defects = []
+        defect_types_found = []
 
-        # TODO: 實作瑕疵檢測邏輯
-        # 1. 影像預處理
-        # 2. 特徵提取
-        # 3. 瑕疵判定
-        # 4. 結果標註
+        try:
+            # === 1. 影像預處理 ===
+            # 轉換為灰度圖
+            if len(frame.shape) == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = frame.copy()
 
+            # 高斯模糊降噪
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            # === 2. 邊緣異常檢測（刮痕檢測）===
+            # 使用 Canny 邊緣檢測
+            canny_low = self.config.get("canny_low", 50)
+            canny_high = self.config.get("canny_high", 150)
+            edges = cv2.Canny(blurred, canny_low, canny_high)
+
+            # 形態學閉運算連接斷裂的邊緣
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+            # === 3. 灰度異常檢測（凹陷、變色檢測）===
+            # 計算局部統計特徵
+            mean_val = np.mean(blurred)
+            std_val = np.std(blurred)
+
+            # 閾值化：檢測過亮或過暗區域
+            threshold_multiplier = 1.5 + (1.0 - self.defect_threshold)  # 靈敏度越高，閾值越低
+            lower_threshold = max(0, mean_val - threshold_multiplier * std_val)
+            upper_threshold = min(255, mean_val + threshold_multiplier * std_val)
+
+            # 異常區域遮罩（過亮或過暗）
+            mask_dark = blurred < lower_threshold
+            mask_bright = blurred > upper_threshold
+            anomaly_mask = (mask_dark | mask_bright).astype(np.uint8) * 255
+
+            # === 4. 結合邊緣和灰度異常 ===
+            combined_defects = cv2.bitwise_or(edges_closed, anomaly_mask)
+
+            # 形態學處理：去除小噪點
+            kernel_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            combined_defects = cv2.morphologyEx(combined_defects, cv2.MORPH_OPEN, kernel_clean)
+
+            # === 5. 瑕疵區域分析 ===
+            contours, _ = cv2.findContours(combined_defects, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            min_defect_area = self.config.get("min_defect_area", 10)  # 最小瑕疵面積
+            max_defect_area = self.config.get("max_defect_area", 5000)  # 最大瑕疵面積
+
+            for contour in contours:
+                area = cv2.contourArea(contour)
+
+                # 面積過濾
+                if area < min_defect_area or area > max_defect_area:
+                    continue
+
+                # 計算邊界框和特徵
+                x, y, w, h = cv2.boundingRect(contour)
+                aspect_ratio = float(w) / h if h > 0 else 0
+
+                # 判定瑕疵類型
+                defect_type = self._classify_defect(aspect_ratio, area, edges_closed[y:y+h, x:x+w])
+
+                # 儲存瑕疵資訊
+                defect_info = {
+                    "type": defect_type,
+                    "bbox": (x, y, w, h),
+                    "area": area,
+                    "confidence": min(1.0, area / 100.0)  # 簡單的信心度計算
+                }
+                defects.append(defect_info)
+                if defect_type not in defect_types_found:
+                    defect_types_found.append(defect_type)
+
+                # === 6. 結果標註 ===
+                # 根據瑕疵類型選擇顏色
+                color = self._get_defect_color(defect_type)
+
+                # 繪製邊界框
+                cv2.rectangle(result_frame, (x, y), (x + w, y + h), color, 2)
+
+                # 標註瑕疵類型
+                label = f"{defect_type}"
+                cv2.putText(result_frame, label, (x, y - 5),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+            # === 7. 更新統計 ===
+            self.total_inspected += 1
+            if len(defects) > 0:
+                self.defective_count += 1
+                self.defect_history.append({
+                    "timestamp": cv2.getTickCount(),
+                    "defects": defects
+                })
+
+                # 限制歷史記錄長度
+                if len(self.defect_history) > 1000:
+                    self.defect_history.pop(0)
+
+        except Exception as e:
+            # 錯誤處理：返回原始幀
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"瑕疵檢測錯誤: {e}")
+            return frame, {"defects": [], "is_defective": False, "error": str(e)}
+
+        # 返回結果
+        is_defective = len(defects) > 0
         return result_frame, {
-            "defects": [],
-            "is_defective": False,
-            "defect_types": [],
-            "confidence": 0.0
+            "defects": defects,
+            "is_defective": is_defective,
+            "defect_types": defect_types_found,
+            "defect_count": len(defects),
+            "total_inspected": self.total_inspected,
+            "defective_count": self.defective_count,
+            "pass_rate": (self.total_inspected - self.defective_count) / max(1, self.total_inspected) * 100
         }
+
+    def _classify_defect(self, aspect_ratio: float, area: float, edge_region: np.ndarray) -> str:
+        """
+        根據特徵分類瑕疵類型
+
+        Args:
+            aspect_ratio: 長寬比
+            area: 面積
+            edge_region: 邊緣區域
+
+        Returns:
+            瑕疵類型字串
+        """
+        # 刮痕：細長形狀（高長寬比）且邊緣明顯
+        if aspect_ratio > 3.0 or aspect_ratio < 0.33:
+            edge_density = np.sum(edge_region > 0) / max(1, edge_region.size)
+            if edge_density > 0.3:
+                return "scratch"  # 刮痕
+
+        # 凹陷：圓形或橢圓形（長寬比接近 1）
+        if 0.7 < aspect_ratio < 1.3:
+            return "dent"  # 凹陷
+
+        # 變色：不規則形狀
+        return "discoloration"  # 變色
+
+    def _get_defect_color(self, defect_type: str) -> tuple:
+        """
+        根據瑕疵類型返回標註顏色
+
+        Args:
+            defect_type: 瑕疵類型
+
+        Returns:
+            BGR 顏色元組
+        """
+        colors = {
+            "scratch": (0, 0, 255),        # 紅色
+            "dent": (0, 165, 255),         # 橙色
+            "discoloration": (0, 255, 255)  # 黃色
+        }
+        return colors.get(defect_type, (255, 0, 255))  # 預設紫紅色
 
     def enable(self):
         self.enabled = True

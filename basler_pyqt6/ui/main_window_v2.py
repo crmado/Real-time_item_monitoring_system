@@ -8,7 +8,7 @@ import cv2
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QStatusBar, QLabel, QFileDialog, QMessageBox, QScrollArea, QTabWidget, QPushButton
+    QSplitter, QStatusBar, QLabel, QFileDialog, QMessageBox, QScrollArea, QTabWidget
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
@@ -25,11 +25,8 @@ from basler_pyqt6.ui.dialogs.update_dialog import UpdateDialog
 from basler_pyqt6.core.source_manager import SourceManager, SourceType
 from basler_pyqt6.core.detection import DetectionController
 from basler_pyqt6.core.video_recorder import VideoRecorder
-from basler_pyqt6.core.smart_updater import get_smart_updater, UpdateMode
+from basler_pyqt6.core.smart_updater import get_smart_updater
 from basler_pyqt6.version import DEBUG_MODE
-
-# 導入圖示管理器
-from basler_pyqt6.resources.icons import get_icon, Icons
 
 logger = logging.getLogger(__name__)
 
@@ -204,10 +201,10 @@ class MainWindowV2(QMainWindow):
         # 連接信號
         self.connect_signals()
 
-        # 定時器
+        # UI 更新定時器（限制為 60 FPS，避免過度渲染）
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_display)
-        self.update_timer.start(33)  # 30 FPS 更新
+        self.update_timer.start(16)  # 60 FPS 更新（16.67ms ≈ 16ms）
 
         # 應用樣式
         self.apply_styles()
@@ -729,14 +726,26 @@ class MainWindowV2(QMainWindow):
     def on_clear_defect_stats(self):
         """清除瑕疵統計數據"""
         logger.info("🔄 清除瑕疵統計")
-        # TODO: 重置瑕疵檢測相關的統計數據
-        self.status_label.setText("瑕疵統計已清除")
+
+        # 重置檢測控制器的統計數據
+        if hasattr(self.detection_controller, 'current_method'):
+            method = self.detection_controller.current_method
+            if method and hasattr(method, 'reset'):
+                method.reset()
+                logger.info("✅ 瑕疵檢測統計已重置")
+
+        self.status_label.setText("📊 瑕疵統計已清除")
 
     def on_defect_sensitivity_changed(self, value: float):
         """瑕疵檢測靈敏度變更"""
         logger.info(f"⚙️  瑕疵檢測靈敏度變更: {value:.2f}")
-        # TODO: 更新瑕疵檢測參數
-        # self.detection_controller.set_defect_sensitivity(value)
+
+        # 更新檢測方法的靈敏度參數
+        if hasattr(self.detection_controller, 'current_method'):
+            method = self.detection_controller.current_method
+            if method and hasattr(method, 'defect_threshold'):
+                method.defect_threshold = value
+                logger.info(f"✅ 瑕疵檢測閾值已更新: {value:.2f}")
 
     # ==================== 零件類型和方法變更處理 ====================
 
@@ -828,22 +837,32 @@ class MainWindowV2(QMainWindow):
             # ===== 瑕疵檢測方法 =====
             logger.info(f"🔍 切換到瑕疵檢測模式: {method_name}")
 
-            # TODO: 實作瑕疵檢測參數更新
-            # TODO: 隱藏包裝控制面板
-            # TODO: 顯示瑕疵檢測控制面板
+            # 創建瑕疵檢測方法實例
+            from basler_pyqt6.core.detection_methods import DefectDetectionMethod
 
-            # 暫時顯示提示訊息
-            self.status_label.setText(f"⚠️ [{method_name}] 功能開發中")
-            logger.warning(f"⚠️ [{method_name}] 功能尚未實作")
+            defect_config = {
+                "defect_threshold": method_config.defect_threshold,
+                "defect_types": method_config.defect_types,
+                "canny_low": method_config.canny_low,
+                "canny_high": method_config.canny_high,
+                "min_defect_area": method_config.min_defect_area,
+                "max_defect_area": method_config.max_defect_area
+            }
 
-            QMessageBox.information(
-                self,
-                "功能開發中",
-                f"🔍 {method_name}\n\n"
-                "此功能正在開發中，敬請期待！\n\n"
-                "目前可用的檢測方法：\n"
-                "• 📊 定量計數 - 已完成"
-            )
+            defect_method = DefectDetectionMethod(defect_config)
+            defect_method.enable()
+
+            # 設置為當前檢測方法
+            self.detection_controller.current_method = defect_method
+            self.detection_controller.enabled = True
+
+            # 顯示狀態訊息
+            self.status_label.setText(f"✅ 已切換至 [{method_name}] 模式")
+            logger.info(f"✅ 已切換至 [{method_name}] 模式")
+            logger.info(f"   • 瑕疵閾值: {method_config.defect_threshold}")
+            logger.info(f"   • 檢測類型: {', '.join(method_config.defect_types)}")
+            logger.info(f"   • Canny 閾值: {method_config.canny_low} - {method_config.canny_high}")
+            logger.info(f"   • 面積範圍: {method_config.min_defect_area} - {method_config.max_defect_area} px")
 
         else:
             logger.warning(f"⚠️ 未知的檢測方法: {method_id}")
@@ -992,7 +1011,7 @@ class MainWindowV2(QMainWindow):
 
         # 執行檢測
         if self.detection_controller.enabled:
-            detected_frame, objects = self.detection_controller.process_frame(frame.copy())
+            detected_frame, _ = self.detection_controller.process_frame(frame.copy())
         else:
             detected_frame = frame
 
@@ -1219,28 +1238,60 @@ class MainWindowV2(QMainWindow):
                 new_w = int(w * self.perf_image_scale)
                 frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-            # 調試模式：灰度轉換計時
-            if DEBUG_MODE:
-                gray_start = time.perf_counter()
-
             # 2. 執行檢測（如果啟用）
             if DEBUG_MODE:
                 detect_start = time.perf_counter()
 
             if self.detection_controller.enabled:
                 detected_frame, objects = self.detection_controller.process_frame(frame)
-                count = len(objects)
-                crossing_count = self.detection_controller.get_count()
 
-                self.detection_label.setText(f"檢測: {count} | 穿越: {crossing_count}")
+                # 根據檢測方法類型處理結果
+                if hasattr(self.detection_controller, 'current_method'):
+                    method = self.detection_controller.current_method
 
-                # 🎯 更新包裝控制狀態
-                self.packaging_control.update_count(crossing_count)
-                pkg_status = self.detection_controller.get_packaging_status()
-                self.packaging_control.update_vibrator_status(
-                    pkg_status['vibrator1'],
-                    pkg_status['vibrator2']
-                )
+                    # 瑕疵檢測方法
+                    if method and hasattr(method, 'intent') and method.intent.value == 'defect_detection':
+                        # objects 是 Dict[str, Any]，包含瑕疵檢測結果
+                        defect_info = objects
+                        total_inspected = defect_info.get('total_inspected', 0)
+                        defective_count = defect_info.get('defective_count', 0)
+                        pass_count = total_inspected - defective_count
+
+                        # 統計各類型瑕疵數量
+                        defect_counts = {'scratch': 0, 'dent': 0, 'discoloration': 0}
+                        for defect in defect_info.get('defects', []):
+                            defect_type = defect.get('type', 'unknown')
+                            if defect_type in defect_counts:
+                                defect_counts[defect_type] += 1
+
+                        # 更新瑕疵檢測 UI
+                        self.packaging_control.update_defect_statistics(
+                            total_inspected, pass_count, defective_count, defect_counts
+                        )
+
+                        # 更新狀態標籤
+                        pass_rate = defect_info.get('pass_rate', 100.0)
+                        self.detection_label.setText(f"檢測: {total_inspected} | 合格率: {pass_rate:.1f}%")
+
+                    else:
+                        # 計數/包裝方法（原有邏輯）
+                        count = len(objects) if isinstance(objects, list) else 0
+                        crossing_count = self.detection_controller.get_count()
+
+                        self.detection_label.setText(f"檢測: {count} | 穿越: {crossing_count}")
+
+                        # 🎯 更新包裝控制狀態
+                        self.packaging_control.update_count(crossing_count)
+                        pkg_status = self.detection_controller.get_packaging_status()
+                        self.packaging_control.update_vibrator_status(
+                            pkg_status['vibrator1'],
+                            pkg_status['vibrator2']
+                        )
+                else:
+                    # 回退到原有邏輯（兼容舊版本）
+                    count = len(objects) if isinstance(objects, list) else 0
+                    crossing_count = self.detection_controller.get_count()
+                    self.detection_label.setText(f"檢測: {count} | 穿越: {crossing_count}")
 
                 # 如果圖像有縮放，檢測結果需要縮放回原始尺寸顯示
                 if DEBUG_MODE and self.perf_image_scale < 1.0:
