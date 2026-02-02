@@ -264,13 +264,32 @@ void VideoPlayer::release()
 {
     stopPlaying();
 
+    // 確保線程完全停止後再釋放資源
+    if (m_playThread) {
+        // 斷開所有信號連接，防止懸空指針
+        m_playThread->disconnect();
+        if (m_playWorker) {
+            m_playWorker->disconnect();
+        }
+
+        // 如果線程還在運行，強制等待
+        if (m_playThread->isRunning()) {
+            qWarning() << "[VideoPlayer] 線程仍在運行，強制等待...";
+            m_playThread->quit();
+            if (!m_playThread->wait(5000)) {
+                qWarning() << "[VideoPlayer] 線程等待超時，可能存在資源洩漏";
+            }
+        }
+    }
+
+    // 先清理 worker（因為它依賴 capture）
+    m_playWorker.reset();
+    m_playThread.reset();
+
     if (m_capture) {
         m_capture->release();
         m_capture.reset();
     }
-
-    m_playWorker.reset();
-    m_playThread.reset();
 
     m_videoPath.clear();
     m_totalFrames = 0;

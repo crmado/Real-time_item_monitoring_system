@@ -97,18 +97,37 @@ CameraController::CameraController(QObject* parent)
 CameraController::~CameraController()
 {
     // RAII：確保資源正確釋放
-    if (isGrabbing()) {
-        stopGrabbing();
-        // 等待抓取線程結束
+
+    // 先斷開所有信號連接，防止析構期間信號觸發
+    if (m_grabWorker) {
+        m_grabWorker->disconnect();
+    }
+    if (m_grabThread) {
+        m_grabThread->disconnect();
+    }
+
+    // 停止抓取
+    if (isGrabbing() || m_grabThread) {
+        if (m_grabWorker) {
+            m_grabWorker->stopGrabbing();
+        }
         if (m_grabThread && m_grabThread->isRunning()) {
             m_grabThread->quit();
-            m_grabThread->wait(3000);  // 最多等待 3 秒
+            if (!m_grabThread->wait(3000)) {
+                qWarning() << "[CameraController] 析構：線程等待超時";
+            }
         }
     }
 
-    if (isConnected()) {
-        disconnectCamera();
+    // 清理線程資源
+    m_grabWorker.reset();
+    m_grabThread.reset();
+
+    // 關閉相機
+    if (m_camera && m_camera->IsOpen()) {
+        m_camera->Close();
     }
+    m_camera.reset();
 
     qDebug() << "[CameraController] 資源已清理";
 }
@@ -286,21 +305,28 @@ void CameraController::disconnectCamera()
         // 先停止抓取（如果正在抓取）
         if (m_grabWorker) {
             m_grabWorker->stopGrabbing();
+            m_grabWorker->disconnect();  // 防止懸空指針
         }
 
-        if (m_grabThread && m_grabThread->isRunning()) {
-            m_grabThread->quit();
-            m_grabThread->wait(2000);
+        if (m_grabThread) {
+            m_grabThread->disconnect();  // 防止懸空指針
+            if (m_grabThread->isRunning()) {
+                m_grabThread->quit();
+                if (!m_grabThread->wait(3000)) {
+                    qWarning() << "[CameraController] 抓取線程等待超時";
+                }
+            }
         }
 
-        // 關閉相機
+        // 先清理線程和 worker
+        m_grabWorker.reset();
+        m_grabThread.reset();
+
+        // 再關閉相機
         if (m_camera && m_camera->IsOpen()) {
             m_camera->Close();
         }
-
         m_camera.reset();
-        m_grabWorker.reset();
-        m_grabThread.reset();
 
         setState(CameraState::Disconnected);
         emit disconnected();
