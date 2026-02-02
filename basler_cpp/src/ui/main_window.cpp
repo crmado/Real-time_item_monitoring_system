@@ -139,7 +139,7 @@ namespace basler
         m_mainSplitter->addWidget(m_videoDisplay);
 
         // ========== 右側：分頁控制面板 ==========
-        QTabWidget* tabWidget = new QTabWidget();
+        QTabWidget *tabWidget = new QTabWidget();
         tabWidget->setMinimumWidth(450);
         tabWidget->setMaximumWidth(550);
         tabWidget->setStyleSheet(R"(
@@ -167,8 +167,8 @@ namespace basler
         )");
 
         // ========== Tab 1: 相機設定 ==========
-        QWidget* cameraSettingsTab = new QWidget();
-        QVBoxLayout* cameraSettingsLayout = new QVBoxLayout(cameraSettingsTab);
+        QWidget *cameraSettingsTab = new QWidget();
+        QVBoxLayout *cameraSettingsLayout = new QVBoxLayout(cameraSettingsTab);
         cameraSettingsLayout->setSpacing(10);
         cameraSettingsLayout->setContentsMargins(8, 8, 8, 8);
 
@@ -181,20 +181,20 @@ namespace basler
         cameraSettingsLayout->addStretch();
 
         // 為設定頁面添加滾動區域
-        QScrollArea* settingsScroll = new QScrollArea();
+        QScrollArea *settingsScroll = new QScrollArea();
         settingsScroll->setWidgetResizable(true);
         settingsScroll->setWidget(cameraSettingsTab);
         settingsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
         // ========== Tab 2: 檢測監控 ==========
-        QWidget* monitoringTab = new QWidget();
-        QVBoxLayout* monitoringLayout = new QVBoxLayout(monitoringTab);
+        QWidget *monitoringTab = new QWidget();
+        QVBoxLayout *monitoringLayout = new QVBoxLayout(monitoringTab);
         monitoringLayout->setSpacing(10);
         monitoringLayout->setContentsMargins(8, 8, 8, 8);
 
         // 原始畫面預覽區域
-        QWidget* previewContainer = new QWidget();
+        QWidget *previewContainer = new QWidget();
         previewContainer->setStyleSheet(R"(
             QWidget {
                 background-color: #0a0e27;
@@ -202,11 +202,11 @@ namespace basler
                 border-radius: 8px;
             }
         )");
-        QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
+        QVBoxLayout *previewLayout = new QVBoxLayout(previewContainer);
         previewLayout->setContentsMargins(8, 8, 8, 8);
         previewLayout->setSpacing(5);
 
-        QLabel* previewLabel = new QLabel("📹 原始畫面");
+        QLabel *previewLabel = new QLabel("📹 原始畫面");
         previewLabel->setStyleSheet(R"(
             font-weight: bold;
             color: #00d4ff;
@@ -241,7 +241,7 @@ namespace basler
         monitoringLayout->addStretch();
 
         // 為檢測監控添加滾動區域
-        QScrollArea* monitoringScroll = new QScrollArea();
+        QScrollArea *monitoringScroll = new QScrollArea();
         monitoringScroll->setWidgetResizable(true);
         monitoringScroll->setWidget(monitoringTab);
         monitoringScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -249,8 +249,8 @@ namespace basler
 
         // ========== Tab 3: 調試工具 ==========
         m_debugPanel = new DebugPanelWidget();
-        
-        QScrollArea* debugScroll = new QScrollArea();
+
+        QScrollArea *debugScroll = new QScrollArea();
         debugScroll->setWidgetResizable(true);
         debugScroll->setWidget(m_debugPanel);
         debugScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -267,8 +267,8 @@ namespace basler
         m_mainSplitter->addWidget(tabWidget);
 
         // 設置分割比例：主畫面 : 右側控制面板
-        m_mainSplitter->setStretchFactor(0, 1);  // 主畫面可伸縮
-        m_mainSplitter->setStretchFactor(1, 0);  // 右側面板固定寬度
+        m_mainSplitter->setStretchFactor(0, 1); // 主畫面可伸縮
+        m_mainSplitter->setStretchFactor(1, 0); // 右側面板固定寬度
 
         // 設置分割器不可摺疊
         m_mainSplitter->setCollapsible(0, false);

@@ -20,7 +20,8 @@
       "Read(//home/ubuntu/miniconda3/envs/**)",
       "Bash(~/miniconda3/envs/basler_vision/bin/python:*)",
       "Bash(bash -n:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(/opt/homebrew/Cellar/cmake/3.31.5/bin/cmake --build:*)"
     ],
     "deny": []
   },
