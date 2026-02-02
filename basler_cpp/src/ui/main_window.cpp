@@ -12,6 +12,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QScrollArea>
+#include <QTabWidget>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
@@ -126,65 +127,152 @@ namespace basler
         setCentralWidget(centralWidget);
 
         QHBoxLayout *mainLayout = new QHBoxLayout(centralWidget);
-        mainLayout->setSpacing(8);
-        mainLayout->setContentsMargins(8, 8, 8, 8);
+        mainLayout->setSpacing(10);
+        mainLayout->setContentsMargins(10, 10, 10, 10);
 
         // 主分割器
         m_mainSplitter = new QSplitter(Qt::Horizontal);
 
-        // ========== 左側控制面板 ==========
-        m_leftPanel = new QWidget();
-        m_leftPanel->setFixedWidth(320);
+        // ========== 左側：主視頻顯示區（大） ==========
+        m_videoDisplay = new VideoDisplayWidget();
+        m_videoDisplay->setMinimumSize(600, 500);
+        m_mainSplitter->addWidget(m_videoDisplay);
 
-        QScrollArea *leftScrollArea = new QScrollArea();
-        leftScrollArea->setWidget(m_leftPanel);
-        leftScrollArea->setWidgetResizable(true);
-        leftScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        // ========== 右側：分頁控制面板 ==========
+        QTabWidget* tabWidget = new QTabWidget();
+        tabWidget->setMinimumWidth(450);
+        tabWidget->setMaximumWidth(550);
+        tabWidget->setStyleSheet(R"(
+            QTabWidget::pane {
+                border: 2px solid #1f3a5f;
+                border-radius: 6px;
+                background-color: #0a0e27;
+            }
+            QTabBar::tab {
+                background-color: #1a1f3d;
+                color: #e0e6f1;
+                padding: 8px 15px;
+                margin-right: 2px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                font-size: 10pt;
+            }
+            QTabBar::tab:selected {
+                background-color: #0d4a7a;
+                color: #00d4ff;
+            }
+            QTabBar::tab:hover {
+                background-color: #1e5a8e;
+            }
+        )");
 
-        QVBoxLayout *leftLayout = new QVBoxLayout(m_leftPanel);
-        leftLayout->setSpacing(8);
-        leftLayout->setContentsMargins(4, 4, 4, 4);
+        // ========== Tab 1: 相機設定 ==========
+        QWidget* cameraSettingsTab = new QWidget();
+        QVBoxLayout* cameraSettingsLayout = new QVBoxLayout(cameraSettingsTab);
+        cameraSettingsLayout->setSpacing(10);
+        cameraSettingsLayout->setContentsMargins(8, 8, 8, 8);
 
-        // 相機控制
         m_cameraControl = new CameraControlWidget();
-        leftLayout->addWidget(m_cameraControl);
+        cameraSettingsLayout->addWidget(m_cameraControl);
 
-        // 錄製控制
         m_recordingControl = new RecordingControlWidget();
-        leftLayout->addWidget(m_recordingControl);
+        cameraSettingsLayout->addWidget(m_recordingControl);
 
-        // 包裝/檢測控制
+        cameraSettingsLayout->addStretch();
+
+        // 為設定頁面添加滾動區域
+        QScrollArea* settingsScroll = new QScrollArea();
+        settingsScroll->setWidgetResizable(true);
+        settingsScroll->setWidget(cameraSettingsTab);
+        settingsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+        // ========== Tab 2: 檢測監控 ==========
+        QWidget* monitoringTab = new QWidget();
+        QVBoxLayout* monitoringLayout = new QVBoxLayout(monitoringTab);
+        monitoringLayout->setSpacing(10);
+        monitoringLayout->setContentsMargins(8, 8, 8, 8);
+
+        // 原始畫面預覽區域
+        QWidget* previewContainer = new QWidget();
+        previewContainer->setStyleSheet(R"(
+            QWidget {
+                background-color: #0a0e27;
+                border: 2px solid #1f3a5f;
+                border-radius: 8px;
+            }
+        )");
+        QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
+        previewLayout->setContentsMargins(8, 8, 8, 8);
+        previewLayout->setSpacing(5);
+
+        QLabel* previewLabel = new QLabel("📹 原始畫面");
+        previewLabel->setStyleSheet(R"(
+            font-weight: bold;
+            color: #00d4ff;
+            font-size: 11pt;
+            background-color: transparent;
+            border: none;
+        )");
+        previewLayout->addWidget(previewLabel);
+
+        // 小型預覽窗口 - 減小尺寸
+        m_cameraPreview = new VideoDisplayWidget();
+        m_cameraPreview->setFixedHeight(180);
+        m_cameraPreview->setStyleSheet(R"(
+            QWidget {
+                border: 1px solid #00d4ff;
+                border-radius: 4px;
+                background-color: #000000;
+            }
+        )");
+        previewLayout->addWidget(m_cameraPreview);
+
+        monitoringLayout->addWidget(previewContainer);
+
+        // 包裝控制
         m_packagingControl = new PackagingControlWidget();
-        leftLayout->addWidget(m_packagingControl, 1);
+        monitoringLayout->addWidget(m_packagingControl);
 
         // 系統監控
         m_systemMonitor = new SystemMonitorWidget();
-        leftLayout->addWidget(m_systemMonitor);
+        monitoringLayout->addWidget(m_systemMonitor);
 
-        leftLayout->addStretch();
+        monitoringLayout->addStretch();
 
-        m_mainSplitter->addWidget(leftScrollArea);
+        // 為檢測監控添加滾動區域
+        QScrollArea* monitoringScroll = new QScrollArea();
+        monitoringScroll->setWidgetResizable(true);
+        monitoringScroll->setWidget(monitoringTab);
+        monitoringScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        monitoringScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-        // ========== 右側區域 ==========
-        m_rightPanel = new QWidget();
-        QVBoxLayout *rightLayout = new QVBoxLayout(m_rightPanel);
-        rightLayout->setSpacing(8);
-        rightLayout->setContentsMargins(0, 0, 0, 0);
-
-        // 視頻顯示
-        m_videoDisplay = new VideoDisplayWidget();
-        rightLayout->addWidget(m_videoDisplay, 1);
-
-        // Debug 面板（可折疊）
+        // ========== Tab 3: 調試工具 ==========
         m_debugPanel = new DebugPanelWidget();
-        m_debugPanel->setMaximumHeight(250);
-        rightLayout->addWidget(m_debugPanel);
+        
+        QScrollArea* debugScroll = new QScrollArea();
+        debugScroll->setWidgetResizable(true);
+        debugScroll->setWidget(m_debugPanel);
+        debugScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        debugScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-        m_mainSplitter->addWidget(m_rightPanel);
+        // 添加分頁
+        tabWidget->addTab(settingsScroll, "⚙️ 設定");
+        tabWidget->addTab(monitoringScroll, "📊 監控");
+        tabWidget->addTab(debugScroll, "🛠️ 調試");
 
-        // 設置分割比例
-        m_mainSplitter->setStretchFactor(0, 0); // 左側固定寬度
-        m_mainSplitter->setStretchFactor(1, 1); // 右側填充
+        // 預設顯示「檢測監控」頁面
+        tabWidget->setCurrentIndex(1);
+
+        m_mainSplitter->addWidget(tabWidget);
+
+        // 設置分割比例：主畫面 : 右側控制面板
+        m_mainSplitter->setStretchFactor(0, 1);  // 主畫面可伸縮
+        m_mainSplitter->setStretchFactor(1, 0);  // 右側面板固定寬度
+
+        // 設置分割器不可摺疊
+        m_mainSplitter->setCollapsible(0, false);
+        m_mainSplitter->setCollapsible(1, false);
 
         mainLayout->addWidget(m_mainSplitter);
     }
@@ -568,7 +656,7 @@ namespace basler
             }
         }
 
-        // 顯示處理後的幀（如果有），否則顯示原始幀
+        // 顯示處理後的幀（如果有），否則顯示原始幀（主顯示區）
         if (m_isDetecting && !processed.empty())
         {
             m_videoDisplay->displayFrame(processed);
@@ -576,6 +664,12 @@ namespace basler
         else
         {
             m_videoDisplay->displayFrame(frame);
+        }
+
+        // 更新小型預覽窗口（始終顯示原始畫面）
+        if (m_cameraPreview && !frame.empty())
+        {
+            m_cameraPreview->displayFrame(frame);
         }
 
         // TODO: 偵錯圖像功能尚未實現

@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QLabel>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QMutex>
 #include <memory>
 
@@ -129,17 +130,17 @@ private:
 
     // ========== UI 組件 ==========
     QSplitter* m_mainSplitter;
+    QTabWidget* m_tabWidget;
 
-    // 左側控制面板
-    QWidget* m_leftPanel;
+    // 控制面板組件
     CameraControlWidget* m_cameraControl;
     RecordingControlWidget* m_recordingControl;
     PackagingControlWidget* m_packagingControl;
     SystemMonitorWidget* m_systemMonitor;
 
-    // 右側區域
-    QWidget* m_rightPanel;
+    // 視頻顯示
     VideoDisplayWidget* m_videoDisplay;
+    VideoDisplayWidget* m_cameraPreview;  // 小型預覽窗口
     DebugPanelWidget* m_debugPanel;
 
     // 狀態欄
