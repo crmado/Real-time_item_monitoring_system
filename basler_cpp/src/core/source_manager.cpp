@@ -1,5 +1,4 @@
 #include "core/source_manager.h"
-#include "core/camera_controller.h"
 #include "core/video_player.h"
 #include <QDebug>
 
@@ -9,6 +8,11 @@ SourceManager::SourceManager(QObject* parent)
     : QObject(parent)
 {
     qRegisterMetaType<SourceType>("SourceType");
+
+    // 默認創建相機控制器
+    m_cameraController = std::make_unique<CameraController>(this);
+    setupCameraConnections();
+
     qDebug() << "[SourceManager] 初始化完成";
 }
 
@@ -29,6 +33,11 @@ bool SourceManager::isActive() const
     }
 }
 
+bool SourceManager::isGrabbing() const
+{
+    return isActive();
+}
+
 double SourceManager::fps() const
 {
     switch (m_sourceType) {
@@ -41,17 +50,60 @@ double SourceManager::fps() const
     }
 }
 
-CameraController* SourceManager::useCamera()
+void SourceManager::setupCameraConnections()
 {
-    cleanupCurrentSource();
+    if (!m_cameraController) return;
 
-    m_cameraController = std::make_unique<CameraController>(this);
+    // 連接狀態信號
+    connect(m_cameraController.get(), &CameraController::connected,
+            this, &SourceManager::onCameraConnected);
+    connect(m_cameraController.get(), &CameraController::disconnected,
+            this, &SourceManager::onCameraDisconnected);
+    connect(m_cameraController.get(), &CameraController::grabbingStarted,
+            this, &SourceManager::onCameraGrabbingStarted);
+    connect(m_cameraController.get(), &CameraController::grabbingStopped,
+            this, &SourceManager::onCameraGrabbingStopped);
 
-    // 連接信號
+    // 連接幀和 FPS 信號
     connect(m_cameraController.get(), &CameraController::frameReady,
             this, &SourceManager::onCameraFrameReady);
     connect(m_cameraController.get(), &CameraController::fpsUpdated,
             this, &SourceManager::onCameraFpsUpdated);
+
+    // 連接錯誤信號
+    connect(m_cameraController.get(), &CameraController::connectionError,
+            this, &SourceManager::onCameraError);
+    connect(m_cameraController.get(), &CameraController::grabError,
+            this, &SourceManager::onCameraError);
+}
+
+void SourceManager::setupVideoConnections()
+{
+    if (!m_videoPlayer) return;
+
+    connect(m_videoPlayer.get(), &VideoPlayer::frameReady,
+            this, &SourceManager::onVideoFrameReady);
+    connect(m_videoPlayer.get(), &VideoPlayer::playbackFinished,
+            this, &SourceManager::onVideoPlaybackFinished);
+}
+
+CameraController* SourceManager::useCamera()
+{
+    if (m_sourceType == SourceType::Camera && m_cameraController) {
+        return m_cameraController.get();
+    }
+
+    // 清理視頻播放器
+    if (m_videoPlayer) {
+        m_videoPlayer->release();
+        m_videoPlayer.reset();
+    }
+
+    // 如果相機控制器不存在，創建新的
+    if (!m_cameraController) {
+        m_cameraController = std::make_unique<CameraController>(this);
+        setupCameraConnections();
+    }
 
     m_sourceType = SourceType::Camera;
     emit sourceTypeChanged(m_sourceType);
@@ -62,25 +114,78 @@ CameraController* SourceManager::useCamera()
 
 bool SourceManager::useVideo(const QString& videoPath)
 {
-    cleanupCurrentSource();
+    // 停止相機抓取
+    if (m_cameraController && m_cameraController->isGrabbing()) {
+        m_cameraController->stopGrabbing();
+    }
 
-    m_videoPlayer = std::make_unique<VideoPlayer>(this);
+    // 創建或重用視頻播放器
+    if (!m_videoPlayer) {
+        m_videoPlayer = std::make_unique<VideoPlayer>(this);
+        setupVideoConnections();
+    }
 
     if (m_videoPlayer->loadVideo(videoPath)) {
-        // 連接信號
-        connect(m_videoPlayer.get(), &VideoPlayer::frameReady,
-                this, &SourceManager::onVideoFrameReady);
-
         m_sourceType = SourceType::Video;
         emit sourceTypeChanged(m_sourceType);
 
         qDebug() << "[SourceManager] 切換到視頻模式:" << videoPath;
         return true;
     } else {
-        m_videoPlayer.reset();
-        m_sourceType = SourceType::None;
-        emit sourceError("無法載入視頻文件");
+        emit error("無法載入視頻文件");
         return false;
+    }
+}
+
+void SourceManager::connectCamera(int index)
+{
+    useCamera();
+    if (m_cameraController) {
+        m_cameraController->connectCamera(index);
+    }
+}
+
+void SourceManager::disconnectCamera()
+{
+    if (m_cameraController) {
+        m_cameraController->disconnectCamera();
+    }
+}
+
+void SourceManager::startGrabbing()
+{
+    switch (m_sourceType) {
+        case SourceType::Camera:
+            if (m_cameraController) {
+                m_cameraController->startGrabbing();
+            }
+            break;
+        case SourceType::Video:
+            if (m_videoPlayer) {
+                m_videoPlayer->play();
+            }
+            break;
+        default:
+            qWarning() << "[SourceManager] 無有效的輸入源";
+            break;
+    }
+}
+
+void SourceManager::stopGrabbing()
+{
+    switch (m_sourceType) {
+        case SourceType::Camera:
+            if (m_cameraController) {
+                m_cameraController->stopGrabbing();
+            }
+            break;
+        case SourceType::Video:
+            if (m_videoPlayer) {
+                m_videoPlayer->stop();
+            }
+            break;
+        default:
+            break;
     }
 }
 
@@ -99,8 +204,12 @@ void SourceManager::cleanup()
 void SourceManager::cleanupCurrentSource()
 {
     if (m_cameraController) {
-        m_cameraController->disconnect();
-        m_cameraController.reset();
+        if (m_cameraController->isGrabbing()) {
+            m_cameraController->stopGrabbing();
+        }
+        if (m_cameraController->isConnected()) {
+            m_cameraController->disconnectCamera();
+        }
     }
 
     if (m_videoPlayer) {
@@ -109,6 +218,33 @@ void SourceManager::cleanupCurrentSource()
     }
 
     m_sourceType = SourceType::None;
+}
+
+// ============================================================================
+// 相機信號處理
+// ============================================================================
+
+void SourceManager::onCameraConnected(const CameraInfo& info)
+{
+    m_sourceType = SourceType::Camera;
+    emit connected(info);
+    emit activeStateChanged(true);
+}
+
+void SourceManager::onCameraDisconnected()
+{
+    emit disconnected();
+    emit activeStateChanged(false);
+}
+
+void SourceManager::onCameraGrabbingStarted()
+{
+    emit grabbingStarted();
+}
+
+void SourceManager::onCameraGrabbingStopped()
+{
+    emit grabbingStopped();
 }
 
 void SourceManager::onCameraFrameReady(const cv::Mat& frame)
@@ -120,6 +256,20 @@ void SourceManager::onCameraFrameReady(const cv::Mat& frame)
     emit frameReady(frame);
 }
 
+void SourceManager::onCameraFpsUpdated(double fps)
+{
+    emit fpsUpdated(fps);
+}
+
+void SourceManager::onCameraError(const QString& errorMsg)
+{
+    emit error(errorMsg);
+}
+
+// ============================================================================
+// 視頻信號處理
+// ============================================================================
+
 void SourceManager::onVideoFrameReady(const cv::Mat& frame)
 {
     {
@@ -129,9 +279,10 @@ void SourceManager::onVideoFrameReady(const cv::Mat& frame)
     emit frameReady(frame);
 }
 
-void SourceManager::onCameraFpsUpdated(double fps)
+void SourceManager::onVideoPlaybackFinished()
 {
-    emit fpsUpdated(fps);
+    emit grabbingStopped();
+    qDebug() << "[SourceManager] 視頻播放完成";
 }
 
 } // namespace basler

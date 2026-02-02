@@ -58,6 +58,7 @@ set(CORE_SOURCES
     src/core/video_recorder.cpp
     src/core/source_manager.cpp
     src/core/detection_controller.cpp
+    src/core/vibrator_controller.cpp
 )
 
 set(CORE_HEADERS

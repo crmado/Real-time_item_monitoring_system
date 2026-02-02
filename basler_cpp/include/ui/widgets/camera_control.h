@@ -4,17 +4,14 @@
 #include <QWidget>
 #include <QGroupBox>
 #include <QPushButton>
-#include <QListWidget>
+#include <QComboBox>
 #include <QLabel>
 #include <QSlider>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <vector>
+#include <QStringList>
 
 namespace basler {
-
-// 前向聲明
-struct CameraInfo;
 
 /**
  * @brief 相機控制組件
@@ -30,49 +27,49 @@ public:
 
 public slots:
     /**
-     * @brief 更新相機列表
-     * @param cameras 相機信息列表
+     * @brief 設置相機列表（字串版本）
+     * @param cameras 相機名稱列表
      */
-    void updateCameraList(const std::vector<CameraInfo>& cameras);
-
-    /**
-     * @brief 設置抓取狀態
-     * @param grabbing 是否正在抓取
-     */
-    void setGrabbingState(bool grabbing);
-
-    /**
-     * @brief 設置為視頻模式
-     * @param isVideo 是否為視頻模式
-     */
-    void setVideoMode(bool isVideo);
+    void setCameraList(const QStringList& cameras);
 
     /**
      * @brief 設置連接狀態
      * @param connected 是否已連接
      */
-    void setConnectedState(bool connected);
+    void setConnected(bool connected);
+
+    /**
+     * @brief 設置抓取狀態
+     * @param grabbing 是否正在抓取
+     */
+    void setGrabbing(bool grabbing);
+
+    /**
+     * @brief 設置為視頻模式（禁用相機相關控制）
+     * @param isVideo 是否為視頻模式
+     */
+    void setVideoMode(bool isVideo);
 
 signals:
-    void detectClicked();
-    void connectClicked(int cameraIndex);
-    void disconnectClicked();
-    void startClicked();
-    void stopClicked();
+    // 用戶操作信號
+    void detectRequested();
+    void connectRequested();
+    void disconnectRequested();
+    void startGrabRequested();
+    void stopGrabRequested();
     void exposureChanged(double exposureUs);
 
 private slots:
-    void onCameraSelected(QListWidgetItem* item);
-    void onConnectClicked();
     void onExposureChanged(int value);
 
 private:
     void initUi();
+    void updateButtonStates();
 
     // UI 組件
     QGroupBox* m_groupBox;
     QPushButton* m_detectBtn;
-    QListWidget* m_cameraList;
+    QComboBox* m_cameraCombo;
     QPushButton* m_connectBtn;
     QPushButton* m_disconnectBtn;
     QPushButton* m_startBtn;
@@ -81,7 +78,9 @@ private:
     QLabel* m_exposureLabel;
 
     // 狀態
-    int m_selectedCameraIndex = -1;
+    bool m_isConnected = false;
+    bool m_isGrabbing = false;
+    bool m_isVideoMode = false;
 };
 
 } // namespace basler

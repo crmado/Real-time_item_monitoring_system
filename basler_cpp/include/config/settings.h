@@ -48,10 +48,20 @@ struct DetectionConfig {
     int openingIterations = 0;
     int connectivity = 4;
 
+    // 通用形態學參數（UI 面板使用）
+    int morphKernelSize = 3;
+    int morphIterations = 1;
+
     // ROI 檢測區域參數
     bool roiEnabled = true;
+    int roiX = 0;
+    int roiY = 0;
+    int roiWidth = 640;
     int roiHeight = 150;
     double roiPositionRatio = 0.10;
+
+    // 瑕疵檢測參數
+    double defectSensitivity = 0.5;
 
     // 高速模式參數
     bool ultraHighSpeedMode = false;
@@ -75,6 +85,10 @@ struct GateConfig {
     int gateTriggerRadius = 20;
     int gateHistoryFrames = 8;
 
+    // 直接位置參數（UI 面板使用）
+    int yPosition = 240;      // 虛擬閘門 Y 位置
+    int triggerRadius = 20;   // 觸發半徑
+
     QJsonObject toJson() const;
     static GateConfig fromJson(const QJsonObject& json);
 };
@@ -90,6 +104,9 @@ struct PackagingConfig {
     double speedFullThreshold = 0.85;
     double speedMediumThreshold = 0.93;
     double speedSlowThreshold = 0.97;
+
+    // UI 速度閾值（簡化版）
+    int speedThreshold = 85;
 
     // 震動機速度設定（百分比）
     int vibratorSpeedFull = 100;
@@ -279,6 +296,9 @@ private:
 inline AppConfig& getConfig() {
     return AppConfig::instance();
 }
+
+// 別名：Settings = AppConfig（相容性）
+using Settings = AppConfig;
 
 } // namespace basler
 

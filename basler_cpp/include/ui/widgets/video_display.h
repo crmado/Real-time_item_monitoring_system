@@ -43,6 +43,11 @@ public slots:
     void updateFrame(const cv::Mat& frame);
 
     /**
+     * @brief 顯示幀（別名）
+     */
+    void displayFrame(const cv::Mat& frame) { updateFrame(frame); }
+
+    /**
      * @brief 清除顯示
      */
     void clear();
@@ -52,6 +57,11 @@ public slots:
      * @param message 消息文本
      */
     void showMessage(const QString& message);
+
+    /**
+     * @brief 顯示佔位符（別名）
+     */
+    void showPlaceholder(const QString& message) { showMessage(message); }
 
 signals:
     void clicked(const QPoint& pos);  // 點擊事件（圖像座標）

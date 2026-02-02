@@ -4,9 +4,25 @@
 #include <QMainWindow>
 #include <QTimer>
 #include <QLabel>
+#include <QSplitter>
+#include <QMutex>
 #include <memory>
 
 #include "core/camera_controller.h"
+#include "core/source_manager.h"
+#include "core/detection_controller.h"
+#include "core/video_recorder.h"
+#include "core/vibrator_controller.h"
+
+// 前向聲明 Widget
+namespace basler {
+    class VideoDisplayWidget;
+    class CameraControlWidget;
+    class RecordingControlWidget;
+    class PackagingControlWidget;
+    class DebugPanelWidget;
+    class SystemMonitorWidget;
+}
 
 namespace basler {
 
@@ -17,6 +33,7 @@ namespace basler {
  * 1. 所有相機操作都是異步的，通過信號通知完成
  * 2. UI 永遠不會被阻塞
  * 3. 狀態更新通過信號槽自動同步
+ * 4. 使用 C++ RAII 確保資源正確釋放
  */
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -29,14 +46,14 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private slots:
-    // 相機控制
+    // ========== 相機控制 ==========
     void onDetectCameras();
     void onConnectCamera();
     void onDisconnectCamera();
     void onStartGrabbing();
     void onStopGrabbing();
 
-    // 相機事件響應
+    // ========== 相機事件響應 ==========
     void onCameraConnected(const CameraInfo& info);
     void onCameraDisconnected();
     void onGrabbingStarted();
@@ -44,31 +61,105 @@ private slots:
     void onCameraError(const QString& error);
     void onCameraStateChanged(CameraState state);
 
-    // 顯示更新
+    // ========== 幀處理 ==========
     void onFrameReady(const cv::Mat& frame);
     void onFpsUpdated(double fps);
     void updateDisplay();
+
+    // ========== 錄製控制 ==========
+    void onStartRecording();
+    void onStopRecording();
+    void onRecordingStarted();
+    void onRecordingStopped();
+    void onRecordingError(const QString& error);
+
+    // ========== 包裝/檢測控制 ==========
+    void onStartPackaging();
+    void onPausePackaging();
+    void onResetCount();
+    void onTargetCountChanged(int count);
+    void onThresholdChanged(int threshold);
+    void onPartTypeChanged(const QString& partId);
+    void onDetectionMethodChanged(const QString& methodId);
+
+    // ========== 瑕疵檢測 ==========
+    void onStartDefectDetection();
+    void onStopDefectDetection();
+    void onClearDefectStats();
+    void onDefectSensitivityChanged(double sensitivity);
+
+    // ========== 檢測結果更新 ==========
+    void onCountUpdated(int current, int target);
+    void onVibratorSpeedChanged(VibratorSpeed speed);
+    void onPackagingCompleted();
+    void onDefectStatsUpdated(double passRate, int passCount, int failCount);
+
+    // ========== Debug 參數 ==========
+    void onRoiChanged(int x, int y, int width, int height);
+    void onBgParamsChanged(int history, double varThreshold, double learningRate);
+    void onEdgeParamsChanged(int lowThreshold, int highThreshold);
+    void onMorphParamsChanged(int kernelSize, int iterations);
+    void onAreaParamsChanged(int minArea, int maxArea);
+    void onGateParamsChanged(int yPosition, int triggerRadius);
+
+    // ========== 選單動作 ==========
+    void onLoadVideo();
+    void onSaveConfig();
+    void onLoadConfig();
 
 private:
     void setupUi();
     void setupMenuBar();
     void setupStatusBar();
-    void connectSignals();
+    void connectCameraSignals();
+    void connectRecordingSignals();
+    void connectPackagingSignals();
+    void connectDetectionSignals();
+    void connectDebugSignals();
 
-    // 核心控制器
-    std::unique_ptr<CameraController> m_cameraController;
+    void processFrame(const cv::Mat& frame);
+    void updateButtonStates();
 
-    // UI 組件（待實現）
-    QLabel* m_videoDisplay;
+    // ========== 核心控制器 ==========
+    std::unique_ptr<SourceManager> m_sourceManager;
+    std::unique_ptr<DetectionController> m_detectionController;
+    std::unique_ptr<VideoRecorder> m_videoRecorder;
+    std::unique_ptr<DualVibratorManager> m_vibratorManager;
+
+    // ========== UI 組件 ==========
+    QSplitter* m_mainSplitter;
+
+    // 左側控制面板
+    QWidget* m_leftPanel;
+    CameraControlWidget* m_cameraControl;
+    RecordingControlWidget* m_recordingControl;
+    PackagingControlWidget* m_packagingControl;
+    SystemMonitorWidget* m_systemMonitor;
+
+    // 右側區域
+    QWidget* m_rightPanel;
+    VideoDisplayWidget* m_videoDisplay;
+    DebugPanelWidget* m_debugPanel;
+
+    // 狀態欄
     QLabel* m_statusLabel;
     QLabel* m_fpsLabel;
+    QLabel* m_detectionLabel;
+    QLabel* m_recordingLabel;
 
-    // 更新定時器
+    // ========== 更新定時器 ==========
     QTimer* m_updateTimer;
 
-    // 最新幀
+    // ========== 幀緩衝 ==========
     cv::Mat m_latestFrame;
+    cv::Mat m_processedFrame;
     QMutex m_frameMutex;
+
+    // ========== 運行狀態 ==========
+    bool m_isDetecting = false;
+    bool m_isRecording = false;
+    bool m_isPackaging = false;
+    QString m_currentMethodId;
 };
 
 } // namespace basler

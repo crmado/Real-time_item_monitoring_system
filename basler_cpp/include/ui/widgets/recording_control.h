@@ -5,6 +5,7 @@
 #include <QGroupBox>
 #include <QPushButton>
 #include <QLabel>
+#include <QLineEdit>
 #include <QTimer>
 #include <QElapsedTimer>
 
@@ -13,7 +14,7 @@ namespace basler {
 /**
  * @brief 錄影控制組件
  *
- * 提供開始/停止錄影功能和錄影狀態顯示
+ * 提供開始/停止錄影功能、路徑選擇和錄影狀態顯示
  */
 class RecordingControlWidget : public QWidget {
     Q_OBJECT
@@ -22,12 +23,17 @@ public:
     explicit RecordingControlWidget(QWidget* parent = nullptr);
     ~RecordingControlWidget() = default;
 
+    /**
+     * @brief 獲取輸出路徑
+     */
+    QString outputPath() const;
+
 public slots:
     /**
      * @brief 設置錄影狀態
      * @param recording 是否正在錄影
      */
-    void setRecordingState(bool recording);
+    void setRecording(bool recording);
 
     /**
      * @brief 更新錄影統計
@@ -43,12 +49,14 @@ public slots:
     void setEnabled(bool enabled);
 
 signals:
-    void startRecording();
-    void stopRecording();
+    void startRecordingRequested();
+    void stopRecordingRequested();
+    void outputPathChanged(const QString& path);
 
 private slots:
     void onStartClicked();
     void onStopClicked();
+    void onBrowseClicked();
     void updateTimer();
 
 private:
@@ -56,6 +64,8 @@ private:
 
     // UI 組件
     QGroupBox* m_groupBox;
+    QLineEdit* m_pathEdit;
+    QPushButton* m_browseBtn;
     QPushButton* m_startBtn;
     QPushButton* m_stopBtn;
     QLabel* m_statusLabel;

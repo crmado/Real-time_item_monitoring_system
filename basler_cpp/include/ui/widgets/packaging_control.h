@@ -71,7 +71,7 @@ signals:
     void pausePackagingRequested();
     void resetCountRequested();
     void targetCountChanged(int count);
-    void thresholdChanged(double full, double medium, double slow);
+    void thresholdChanged(int threshold);  // 簡化版閾值信號
 
     // 瑕疵檢測方法信號
     void startDefectDetectionRequested();
