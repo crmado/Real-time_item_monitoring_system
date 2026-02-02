@@ -1,0 +1,215 @@
+#include "ui/widgets/method_panels/counting_method_panel.h"
+#include "config/settings.h"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
+
+namespace basler {
+
+CountingMethodPanel::CountingMethodPanel(QWidget* parent)
+    : QWidget(parent)
+{
+    initUi();
+
+    // 從配置載入預設值
+    const auto& config = getConfig();
+    m_targetCount = config.packaging().targetCount;
+    m_targetCountSpin->setValue(m_targetCount);
+}
+
+void CountingMethodPanel::initUi()
+{
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+    // ===== 目標設定 =====
+    m_targetGroup = new QGroupBox(tr("🎯 目標設定"));
+    QHBoxLayout* targetLayout = new QHBoxLayout();
+
+    targetLayout->addWidget(new QLabel(tr("目標數量:")));
+    m_targetCountSpin = new QSpinBox();
+    m_targetCountSpin->setRange(1, 9999);
+    m_targetCountSpin->setValue(150);
+    m_targetCountSpin->setSuffix(tr(" 顆"));
+    connect(m_targetCountSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &CountingMethodPanel::onTargetCountChanged);
+    targetLayout->addWidget(m_targetCountSpin);
+    targetLayout->addStretch();
+
+    m_targetGroup->setLayout(targetLayout);
+    mainLayout->addWidget(m_targetGroup);
+
+    // ===== 進度顯示 =====
+    m_progressGroup = new QGroupBox(tr("📊 進度"));
+    QVBoxLayout* progressLayout = new QVBoxLayout();
+
+    // 大字體計數顯示
+    m_countLabel = new QLabel("0");
+    m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff00;");
+    m_countLabel->setAlignment(Qt::AlignCenter);
+    progressLayout->addWidget(m_countLabel);
+
+    // 目標標籤
+    m_targetLabel = new QLabel(tr("/ 150 顆"));
+    m_targetLabel->setStyleSheet("font-size: 18px; color: #888;");
+    m_targetLabel->setAlignment(Qt::AlignCenter);
+    progressLayout->addWidget(m_targetLabel);
+
+    // 進度條
+    m_progressBar = new QProgressBar();
+    m_progressBar->setRange(0, 100);
+    m_progressBar->setValue(0);
+    m_progressBar->setTextVisible(true);
+    m_progressBar->setFormat("%v%");
+    progressLayout->addWidget(m_progressBar);
+
+    m_progressGroup->setLayout(progressLayout);
+    mainLayout->addWidget(m_progressGroup);
+
+    // ===== 震動機狀態 =====
+    m_vibratorGroup = new QGroupBox(tr("⚡ 震動機狀態"));
+    QGridLayout* vibratorLayout = new QGridLayout();
+
+    vibratorLayout->addWidget(new QLabel(tr("震動機 A:")), 0, 0);
+    m_vibrator1StatusLabel = new QLabel(tr("停止"));
+    m_vibrator1StatusLabel->setStyleSheet("color: #888;");
+    vibratorLayout->addWidget(m_vibrator1StatusLabel, 0, 1);
+
+    vibratorLayout->addWidget(new QLabel(tr("震動機 B:")), 1, 0);
+    m_vibrator2StatusLabel = new QLabel(tr("停止"));
+    m_vibrator2StatusLabel->setStyleSheet("color: #888;");
+    vibratorLayout->addWidget(m_vibrator2StatusLabel, 1, 1);
+
+    vibratorLayout->addWidget(new QLabel(tr("當前速度:")), 2, 0);
+    m_speedLabel = new QLabel(tr("0%"));
+    m_speedLabel->setStyleSheet("font-weight: bold;");
+    vibratorLayout->addWidget(m_speedLabel, 2, 1);
+
+    m_vibratorGroup->setLayout(vibratorLayout);
+    mainLayout->addWidget(m_vibratorGroup);
+
+    // ===== 速度閾值調整 =====
+    m_thresholdGroup = new QGroupBox(tr("⚙️ 速度閾值"));
+    QGridLayout* thresholdLayout = new QGridLayout();
+
+    thresholdLayout->addWidget(new QLabel(tr("全速閾值:")), 0, 0);
+    m_fullThresholdSpin = new QDoubleSpinBox();
+    m_fullThresholdSpin->setRange(0.0, 1.0);
+    m_fullThresholdSpin->setSingleStep(0.01);
+    m_fullThresholdSpin->setValue(0.85);
+    m_fullThresholdSpin->setDecimals(2);
+    connect(m_fullThresholdSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &CountingMethodPanel::onFullThresholdChanged);
+    thresholdLayout->addWidget(m_fullThresholdSpin, 0, 1);
+
+    thresholdLayout->addWidget(new QLabel(tr("中速閾值:")), 1, 0);
+    m_mediumThresholdSpin = new QDoubleSpinBox();
+    m_mediumThresholdSpin->setRange(0.0, 1.0);
+    m_mediumThresholdSpin->setSingleStep(0.01);
+    m_mediumThresholdSpin->setValue(0.93);
+    m_mediumThresholdSpin->setDecimals(2);
+    connect(m_mediumThresholdSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &CountingMethodPanel::onMediumThresholdChanged);
+    thresholdLayout->addWidget(m_mediumThresholdSpin, 1, 1);
+
+    thresholdLayout->addWidget(new QLabel(tr("慢速閾值:")), 2, 0);
+    m_slowThresholdSpin = new QDoubleSpinBox();
+    m_slowThresholdSpin->setRange(0.0, 1.0);
+    m_slowThresholdSpin->setSingleStep(0.01);
+    m_slowThresholdSpin->setValue(0.97);
+    m_slowThresholdSpin->setDecimals(2);
+    connect(m_slowThresholdSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &CountingMethodPanel::onSlowThresholdChanged);
+    thresholdLayout->addWidget(m_slowThresholdSpin, 2, 1);
+
+    m_thresholdGroup->setLayout(thresholdLayout);
+    mainLayout->addWidget(m_thresholdGroup);
+
+    // ===== 控制按鈕 =====
+    QHBoxLayout* btnLayout = new QHBoxLayout();
+
+    m_startBtn = new QPushButton(tr("▶ 開始包裝"));
+    m_startBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 10px; }");
+    connect(m_startBtn, &QPushButton::clicked, this, &CountingMethodPanel::startPackagingRequested);
+    btnLayout->addWidget(m_startBtn);
+
+    m_pauseBtn = new QPushButton(tr("⏸ 暫停"));
+    m_pauseBtn->setEnabled(false);
+    connect(m_pauseBtn, &QPushButton::clicked, this, &CountingMethodPanel::pausePackagingRequested);
+    btnLayout->addWidget(m_pauseBtn);
+
+    m_resetBtn = new QPushButton(tr("🔄 重置"));
+    connect(m_resetBtn, &QPushButton::clicked, this, &CountingMethodPanel::resetCountRequested);
+    btnLayout->addWidget(m_resetBtn);
+
+    mainLayout->addLayout(btnLayout);
+    mainLayout->addStretch();
+}
+
+void CountingMethodPanel::updateCount(int current, int target)
+{
+    m_currentCount = current;
+    m_targetCount = target;
+
+    m_countLabel->setText(QString::number(current));
+    m_targetLabel->setText(tr("/ %1 顆").arg(target));
+
+    int progress = (target > 0) ? (current * 100 / target) : 0;
+    m_progressBar->setValue(progress);
+
+    // 根據進度改變顏色
+    if (progress >= 100) {
+        m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff00;");
+    } else if (progress >= 90) {
+        m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #ffff00;");
+    } else {
+        m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #ffffff;");
+    }
+}
+
+void CountingMethodPanel::updateVibratorStatus(bool vibrator1Running, bool vibrator2Running, int speedPercent)
+{
+    m_vibrator1StatusLabel->setText(vibrator1Running ? tr("運行中") : tr("停止"));
+    m_vibrator1StatusLabel->setStyleSheet(vibrator1Running ? "color: #00ff00;" : "color: #888;");
+
+    m_vibrator2StatusLabel->setText(vibrator2Running ? tr("運行中") : tr("停止"));
+    m_vibrator2StatusLabel->setStyleSheet(vibrator2Running ? "color: #00ff00;" : "color: #888;");
+
+    m_speedLabel->setText(tr("%1%").arg(speedPercent));
+}
+
+void CountingMethodPanel::setPackagingState(bool running)
+{
+    m_isRunning = running;
+    m_startBtn->setEnabled(!running);
+    m_pauseBtn->setEnabled(running);
+}
+
+void CountingMethodPanel::showPackagingCompleted()
+{
+    m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff00;");
+    setPackagingState(false);
+}
+
+void CountingMethodPanel::onTargetCountChanged(int value)
+{
+    m_targetCount = value;
+    m_targetLabel->setText(tr("/ %1 顆").arg(value));
+    emit targetCountChanged(value);
+}
+
+void CountingMethodPanel::onFullThresholdChanged(double value)
+{
+    emit thresholdChanged(value, m_mediumThresholdSpin->value(), m_slowThresholdSpin->value());
+}
+
+void CountingMethodPanel::onMediumThresholdChanged(double value)
+{
+    emit thresholdChanged(m_fullThresholdSpin->value(), value, m_slowThresholdSpin->value());
+}
+
+void CountingMethodPanel::onSlowThresholdChanged(double value)
+{
+    emit thresholdChanged(m_fullThresholdSpin->value(), m_mediumThresholdSpin->value(), value);
+}
+
+} // namespace basler

@@ -98,15 +98,16 @@ set(UI_HEADERS
 # ============================================================================
 
 set(WIDGET_SOURCES
-    # 待實現
-    # src/ui/widgets/video_display.cpp
-    # src/ui/widgets/camera_control.cpp
-    # src/ui/widgets/recording_control.cpp
-    # src/ui/widgets/packaging_control.cpp
-    # src/ui/widgets/debug_panel.cpp
-    # src/ui/widgets/part_selector.cpp
-    # src/ui/widgets/method_selector.cpp
-    # src/ui/widgets/system_monitor.cpp
+    src/ui/widgets/video_display.cpp
+    src/ui/widgets/camera_control.cpp
+    src/ui/widgets/recording_control.cpp
+    src/ui/widgets/packaging_control.cpp
+    src/ui/widgets/debug_panel.cpp
+    src/ui/widgets/part_selector.cpp
+    src/ui/widgets/method_selector.cpp
+    src/ui/widgets/system_monitor.cpp
+    src/ui/widgets/method_panels/counting_method_panel.cpp
+    src/ui/widgets/method_panels/defect_detection_method_panel.cpp
 )
 
 set(WIDGET_HEADERS
