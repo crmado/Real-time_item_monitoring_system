@@ -37,7 +37,11 @@ find_package(OpenCV REQUIRED COMPONENTS
 if(APPLE)
     set(PYLON_ROOT "/Library/Frameworks")
     find_library(PYLON_LIBRARY pylon PATHS ${PYLON_ROOT})
-    set(PYLON_INCLUDE_DIRS "${PYLON_ROOT}/pylon.framework/Headers")
+    # macOS Pylon SDK 需要包含 Headers 和 GenICam 目錄
+    set(PYLON_INCLUDE_DIRS
+        "${PYLON_ROOT}/pylon.framework/Headers"
+        "${PYLON_ROOT}/pylon.framework/Headers/GenICam"
+    )
 elseif(UNIX)
     set(PYLON_ROOT "/opt/pylon" CACHE PATH "Pylon SDK root directory")
     set(PYLON_INCLUDE_DIRS "${PYLON_ROOT}/include")

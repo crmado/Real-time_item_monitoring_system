@@ -4,6 +4,7 @@
 #include <QGridLayout>
 #include <QFormLayout>
 #include <QPainter>
+#include <opencv2/imgproc.hpp>
 
 namespace basler {
 

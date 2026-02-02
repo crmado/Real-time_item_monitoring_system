@@ -162,7 +162,7 @@ void SourceManager::startGrabbing()
             break;
         case SourceType::Video:
             if (m_videoPlayer) {
-                m_videoPlayer->play();
+                m_videoPlayer->startPlaying();
             }
             break;
         default:
@@ -181,7 +181,7 @@ void SourceManager::stopGrabbing()
             break;
         case SourceType::Video:
             if (m_videoPlayer) {
-                m_videoPlayer->stop();
+                m_videoPlayer->stopPlaying();
             }
             break;
         default:

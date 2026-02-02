@@ -1,5 +1,6 @@
 #include "config/settings.h"
 #include <QDebug>
+#include <QJsonArray>
 #include <QCoreApplication>
 
 namespace basler {

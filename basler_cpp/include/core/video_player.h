@@ -160,6 +160,6 @@ private:
 
 } // namespace basler
 
-Q_DECLARE_METATYPE(cv::Mat)
+// Q_DECLARE_METATYPE(cv::Mat) 已在 camera_controller.h 中定義
 
 #endif // VIDEO_PLAYER_H

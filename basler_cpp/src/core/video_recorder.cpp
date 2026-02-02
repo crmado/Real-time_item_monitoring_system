@@ -1,5 +1,6 @@
 #include "core/video_recorder.h"
 #include <QDebug>
+#include <QSize>
 
 namespace basler {
 
