@@ -178,6 +178,22 @@ jobs:
           # 設置環境變量供 Inno Setup 使用
           $env:APP_VERSION="${{ steps.version.outputs.VERSION }}"
 
+          # 運行 windeployqt 部署 Qt 依賴到 build/Release 目錄
+          $QT_BIN = "$env:Qt6_DIR/../../../bin"
+          Write-Host "Qt bin 路徑: $QT_BIN"
+          & "$QT_BIN/windeployqt.exe" --release --no-translations "basler_cpp/build/Release/BaslerVisionSystem.exe"
+
+          # 複製 OpenCV DLLs
+          $OPENCV_BIN = "C:/tools/opencv/build/x64/vc16/bin"
+          if (Test-Path $OPENCV_BIN) {
+            Write-Host "複製 OpenCV DLLs from $OPENCV_BIN"
+            Copy-Item "$OPENCV_BIN/opencv_world4*.dll" "basler_cpp/build/Release/" -ErrorAction SilentlyContinue
+          }
+
+          # 列出 build/Release 目錄內容以確認
+          Write-Host "=== build/Release 目錄內容 ==="
+          Get-ChildItem "basler_cpp/build/Release" -Recurse | Select-Object FullName
+
           # 創建發布目錄結構
           mkdir -p release_output/BaslerVisionSystem
 

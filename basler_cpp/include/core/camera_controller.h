@@ -16,37 +16,40 @@
 #endif
 #include <opencv2/core.hpp>
 
-namespace basler {
+namespace basler
+{
 
-/**
- * @brief 相機資訊結構
- */
-struct CameraInfo {
-    int index;
-    QString model;
-    QString serial;
-    QString friendlyName;
-    bool isTargetModel;  // acA640-300gm
-};
+    /**
+     * @brief 相機資訊結構
+     */
+    struct CameraInfo
+    {
+        int index;
+        QString model;
+        QString serial;
+        QString friendlyName;
+        bool isTargetModel; // acA640-300gm
+    };
 
-/**
- * @brief 相機狀態枚舉
- *
- * 使用狀態機避免非法狀態轉換，這是 C++ 版本的關鍵改進：
- * - 明確的狀態定義
- * - 原子操作保證線程安全
- * - 狀態轉換有嚴格檢查
- */
-enum class CameraState {
-    Disconnected,   // 未連接
-    Connecting,     // 連接中（過渡狀態）
-    Connected,      // 已連接但未抓取
-    StartingGrab,   // 啟動抓取中（過渡狀態）
-    Grabbing,       // 抓取中
-    StoppingGrab,   // 停止抓取中（過渡狀態）
-    Disconnecting,  // 斷開連接中（過渡狀態）
-    Error           // 錯誤狀態
-};
+    /**
+     * @brief 相機狀態枚舉
+     *
+     * 使用狀態機避免非法狀態轉換，這是 C++ 版本的關鍵改進：
+     * - 明確的狀態定義
+     * - 原子操作保證線程安全
+     * - 狀態轉換有嚴格檢查
+     */
+    enum class CameraState
+    {
+        Disconnected,  // 未連接
+        Connecting,    // 連接中（過渡狀態）
+        Connected,     // 已連接但未抓取
+        StartingGrab,  // 啟動抓取中（過渡狀態）
+        Grabbing,      // 抓取中
+        StoppingGrab,  // 停止抓取中（過渡狀態）
+        Disconnecting, // 斷開連接中（過渡狀態）
+        Error          // 錯誤狀態
+    };
 
 /**
  * @brief 圖像抓取工作線程
@@ -55,177 +58,180 @@ enum class CameraState {
  * 使用 Qt 信號槽機制安全地將數據傳回主線程。
  */
 #ifndef NO_PYLON_SDK
-class GrabWorker : public QObject {
-    Q_OBJECT
+    class GrabWorker : public QObject
+    {
+        Q_OBJECT
 
-public:
-    explicit GrabWorker(Pylon::CInstantCamera* camera, QObject* parent = nullptr);
-    ~GrabWorker();
+    public:
+        explicit GrabWorker(Pylon::CInstantCamera *camera, QObject *parent = nullptr);
+        ~GrabWorker();
 
-public slots:
-    void startGrabbing();
-    void stopGrabbing();
+    public slots:
+        void startGrabbing();
+        void stopGrabbing();
 
-signals:
-    void frameGrabbed(const cv::Mat& frame, qint64 timestamp);
-    void grabError(const QString& error);
-    void grabStopped();
+    signals:
+        void frameGrabbed(const cv::Mat &frame, qint64 timestamp);
+        void grabError(const QString &error);
+        void grabStopped();
 
-private:
-    Pylon::CInstantCamera* m_camera;
-    std::atomic<bool> m_running{false};
-    QMutex m_mutex;
-};
+    private:
+        Pylon::CInstantCamera *m_camera;
+        std::atomic<bool> m_running{false};
+        QMutex m_mutex;
+    };
 #else
-// Stub GrabWorker for builds without Pylon SDK
-class GrabWorker : public QObject {
-    Q_OBJECT
+    // Stub GrabWorker for builds without Pylon SDK
+    class GrabWorker : public QObject
+    {
+        Q_OBJECT
 
-public:
-    explicit GrabWorker(void* camera = nullptr, QObject* parent = nullptr) : QObject(parent) { Q_UNUSED(camera); }
-    ~GrabWorker() = default;
+    public:
+        explicit GrabWorker(void *camera = nullptr, QObject *parent = nullptr) : QObject(parent) { Q_UNUSED(camera); }
+        ~GrabWorker() = default;
 
-public slots:
-    void startGrabbing() {}
-    void stopGrabbing() {}
+    public slots:
+        void startGrabbing() {}
+        void stopGrabbing() {}
 
-signals:
-    void frameGrabbed(const cv::Mat& frame, qint64 timestamp);
-    void grabError(const QString& error);
-    void grabStopped();
+    signals:
+        void frameGrabbed(const cv::Mat &frame, qint64 timestamp);
+        void grabError(const QString &error);
+        void grabStopped();
 
-private:
-    std::atomic<bool> m_running{false};
-    QMutex m_mutex;
-};
+    private:
+        std::atomic<bool> m_running{false};
+        QMutex m_mutex;
+    };
 #endif
 
-/**
- * @brief Basler 相機控制器
- *
- * 核心設計理念（相比 Python 版本的改進）：
- * 1. 狀態機管理 - 所有操作都檢查當前狀態，避免非法操作
- * 2. 異步操作 - 連接/斷開/啟動/停止都不阻塞 UI
- * 3. 信號驅動 - 操作完成通過信號通知，不需要輪詢
- * 4. RAII 資源管理 - 自動清理，無資源洩漏
- */
-class CameraController : public QObject {
-    Q_OBJECT
-    Q_PROPERTY(CameraState state READ state NOTIFY stateChanged)
-    Q_PROPERTY(double fps READ fps NOTIFY fpsUpdated)
-
-public:
-    explicit CameraController(QObject* parent = nullptr);
-    ~CameraController();
-
-    // 禁止複製
-    CameraController(const CameraController&) = delete;
-    CameraController& operator=(const CameraController&) = delete;
-
-    // ===== 狀態查詢 =====
-    CameraState state() const { return m_state.load(); }
-    bool isConnected() const;
-    bool isGrabbing() const;
-    double fps() const { return m_currentFps; }
-    qint64 totalFrames() const { return m_totalFrames; }
-
-    // ===== 相機操作（全部異步，不阻塞 UI）=====
-    QList<CameraInfo> detectCameras();
-
-public slots:
     /**
-     * @brief 異步連接相機
-     * @param cameraIndex 相機索引
+     * @brief Basler 相機控制器
      *
-     * 操作完成後發出 connected() 或 connectionError() 信號
+     * 核心設計理念（相比 Python 版本的改進）：
+     * 1. 狀態機管理 - 所有操作都檢查當前狀態，避免非法操作
+     * 2. 異步操作 - 連接/斷開/啟動/停止都不阻塞 UI
+     * 3. 信號驅動 - 操作完成通過信號通知，不需要輪詢
+     * 4. RAII 資源管理 - 自動清理，無資源洩漏
      */
-    void connectCamera(int cameraIndex = 0);
+    class CameraController : public QObject
+    {
+        Q_OBJECT
+        Q_PROPERTY(CameraState state READ state NOTIFY stateChanged)
+        Q_PROPERTY(double fps READ fps NOTIFY fpsUpdated)
 
-    /**
-     * @brief 異步斷開相機
-     *
-     * 操作完成後發出 disconnected() 信號
-     */
-    void disconnectCamera();
+    public:
+        explicit CameraController(QObject *parent = nullptr);
+        ~CameraController();
 
-    /**
-     * @brief 異步開始抓取
-     *
-     * 操作完成後發出 grabbingStarted() 或 grabError() 信號
-     */
-    void startGrabbing();
+        // 禁止複製
+        CameraController(const CameraController &) = delete;
+        CameraController &operator=(const CameraController &) = delete;
 
-    /**
-     * @brief 異步停止抓取
-     *
-     * 操作完成後發出 grabbingStopped() 信號
-     */
-    void stopGrabbing();
+        // ===== 狀態查詢 =====
+        CameraState state() const { return m_state.load(); }
+        bool isConnected() const;
+        bool isGrabbing() const;
+        double fps() const { return m_currentFps; }
+        qint64 totalFrames() const { return m_totalFrames; }
 
-    /**
-     * @brief 設置曝光時間
-     * @param exposureUs 曝光時間（微秒）
-     */
-    void setExposure(double exposureUs);
+        // ===== 相機操作（全部異步，不阻塞 UI）=====
+        QList<CameraInfo> detectCameras();
 
-signals:
-    // ===== 狀態信號 =====
-    void stateChanged(CameraState newState);
+    public slots:
+        /**
+         * @brief 異步連接相機
+         * @param cameraIndex 相機索引
+         *
+         * 操作完成後發出 connected() 或 connectionError() 信號
+         */
+        void connectCamera(int cameraIndex = 0);
 
-    // ===== 操作完成信號 =====
-    void connected(const CameraInfo& info);
-    void disconnected();
-    void grabbingStarted();
-    void grabbingStopped();
+        /**
+         * @brief 異步斷開相機
+         *
+         * 操作完成後發出 disconnected() 信號
+         */
+        void disconnectCamera();
 
-    // ===== 數據信號 =====
-    void frameReady(const cv::Mat& frame);      // 新幀可用
-    void fpsUpdated(double fps);                 // FPS 更新
+        /**
+         * @brief 異步開始抓取
+         *
+         * 操作完成後發出 grabbingStarted() 或 grabError() 信號
+         */
+        void startGrabbing();
 
-    // ===== 錯誤信號 =====
-    void connectionError(const QString& error);
-    void grabError(const QString& error);
+        /**
+         * @brief 異步停止抓取
+         *
+         * 操作完成後發出 grabbingStopped() 信號
+         */
+        void stopGrabbing();
 
-private slots:
-    void onFrameGrabbed(const cv::Mat& frame, qint64 timestamp);
-    void onGrabError(const QString& error);
-    void onGrabStopped();
+        /**
+         * @brief 設置曝光時間
+         * @param exposureUs 曝光時間（微秒）
+         */
+        void setExposure(double exposureUs);
 
-private:
-    // 狀態轉換輔助
-    bool transitionTo(CameraState newState);
-    void setState(CameraState newState);
+    signals:
+        // ===== 狀態信號 =====
+        void stateChanged(CameraState newState);
 
-    // 相機配置
-    void configureCamera();
+        // ===== 操作完成信號 =====
+        void connected(const CameraInfo &info);
+        void disconnected();
+        void grabbingStarted();
+        void grabbingStopped();
 
-    // 資源
+        // ===== 數據信號 =====
+        void frameReady(const cv::Mat &frame); // 新幀可用
+        void fpsUpdated(double fps);           // FPS 更新
+
+        // ===== 錯誤信號 =====
+        void connectionError(const QString &error);
+        void grabError(const QString &error);
+
+    private slots:
+        void onFrameGrabbed(const cv::Mat &frame, qint64 timestamp);
+        void onGrabError(const QString &error);
+        void onGrabStopped();
+
+    private:
+        // 狀態轉換輔助
+        bool transitionTo(CameraState newState);
+        void setState(CameraState newState);
+
+        // 相機配置
+        void configureCamera();
+
+        // 資源
 #ifndef NO_PYLON_SDK
-    std::unique_ptr<Pylon::CInstantCamera> m_camera;
+        std::unique_ptr<Pylon::CInstantCamera> m_camera;
 #else
-    void* m_camera = nullptr;  // Stub for builds without Pylon
+        void *m_camera = nullptr; // Stub for builds without Pylon
 #endif
-    std::unique_ptr<QThread> m_grabThread;
-    std::unique_ptr<GrabWorker> m_grabWorker;
+        std::unique_ptr<QThread> m_grabThread;
+        std::unique_ptr<GrabWorker> m_grabWorker;
 
-    // 狀態（原子操作保證線程安全）
-    std::atomic<CameraState> m_state{CameraState::Disconnected};
+        // 狀態（原子操作保證線程安全）
+        std::atomic<CameraState> m_state{CameraState::Disconnected};
 
-    // 性能統計
-    std::atomic<qint64> m_totalFrames{0};
-    std::atomic<double> m_currentFps{0.0};
-    std::deque<qint64> m_frameTimes;
-    QMutex m_statsMutex;
+        // 性能統計
+        std::atomic<qint64> m_totalFrames{0};
+        std::atomic<double> m_currentFps{0.0};
+        std::deque<qint64> m_frameTimes;
+        QMutex m_statsMutex;
 
-    // 配置
-    double m_targetFps = 350.0;
-    double m_exposureTime = 1000.0;  // 微秒
+        // 配置
+        double m_targetFps = 350.0;
+        double m_exposureTime = 1000.0; // 微秒
 
 #ifndef NO_PYLON_SDK
-    // Pylon 初始化（全局單例）
-    static Pylon::PylonAutoInitTerm s_pylonInit;
+        // Pylon 初始化（全局單例）
+        static Pylon::PylonAutoInitTerm s_pylonInit;
 #endif
-};
+    };
 
 } // namespace basler
 
