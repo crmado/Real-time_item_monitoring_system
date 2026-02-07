@@ -178,11 +178,60 @@ jobs:
           # 設置環境變量供 Inno Setup 使用
           $env:APP_VERSION="${{ steps.version.outputs.VERSION }}"
 
-          # 運行 windeployqt 部署 Qt 依賴到 build/Release 目錄
-          # Qt6_DIR = D:\a\...\Qt\6.6.2\msvc2019_64，windeployqt 在其 bin 子目錄
-          $QT_BIN = "$env:Qt6_DIR\bin"
+          # 調試：顯示 Qt 相關環境變數
+          Write-Host "=== Qt 環境變數 ==="
+          Write-Host "Qt6_DIR: $env:Qt6_DIR"
+          Write-Host "QT_ROOT_DIR: $env:QT_ROOT_DIR"
+
+          # 確定 windeployqt 位置
+          # install-qt-action 設置 Qt6_DIR 為 cmake 目錄，需要找到 bin 目錄
+          $QT_ROOT = Split-Path -Parent $env:Qt6_DIR
+          $QT_BIN = Join-Path $QT_ROOT "bin"
+          
+          # 如果上面的路徑不對，嘗試直接使用 Qt6_DIR 的 bin 子目錄
+          if (-not (Test-Path "$QT_BIN\windeployqt.exe")) {
+            $QT_BIN = "$env:Qt6_DIR\bin"
+          }
+          
+          # 如果還是找不到，嘗試從 Qt6_DIR 上溯
+          if (-not (Test-Path "$QT_BIN\windeployqt.exe")) {
+            # Qt6_DIR 可能是 .../msvc2019_64/lib/cmake/Qt6
+            $QT_BIN = (Get-Item $env:Qt6_DIR).Parent.Parent.Parent.FullName + "\bin"
+          }
+
           Write-Host "Qt bin 路徑: $QT_BIN"
-          & "$QT_BIN\windeployqt.exe" --release --no-translations "basler_cpp\build\Release\BaslerVisionSystem.exe"
+          Write-Host "windeployqt 存在: $(Test-Path "$QT_BIN\windeployqt.exe")"
+
+          # 列出 Qt bin 目錄內容
+          if (Test-Path $QT_BIN) {
+            Write-Host "=== Qt bin 目錄內容 ==="
+            Get-ChildItem $QT_BIN -Filter "*.exe" | Select-Object Name
+          }
+
+          # 運行 windeployqt
+          $WINDEPLOYQT = Join-Path $QT_BIN "windeployqt.exe"
+          if (Test-Path $WINDEPLOYQT) {
+            Write-Host "執行 windeployqt..."
+            & $WINDEPLOYQT --release --no-translations "basler_cpp\build\Release\BaslerVisionSystem.exe"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::warning::windeployqt 返回非零狀態碼: $LASTEXITCODE"
+            }
+          } else {
+            Write-Host "::error::找不到 windeployqt.exe，手動複製 Qt DLLs"
+            # 手動複製 Qt DLLs
+            $QT_DLL_DIR = Join-Path (Split-Path $QT_BIN) "bin"
+            if (Test-Path $QT_DLL_DIR) {
+              Copy-Item "$QT_DLL_DIR\Qt6Core.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              Copy-Item "$QT_DLL_DIR\Qt6Gui.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              Copy-Item "$QT_DLL_DIR\Qt6Widgets.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              Copy-Item "$QT_DLL_DIR\Qt6Multimedia.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              Copy-Item "$QT_DLL_DIR\Qt6MultimediaWidgets.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              Copy-Item "$QT_DLL_DIR\Qt6Network.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              # 複製 platforms 插件
+              New-Item -ItemType Directory -Force -Path "basler_cpp\build\Release\platforms" | Out-Null
+              Copy-Item "$QT_DLL_DIR\..\plugins\platforms\qwindows.dll" "basler_cpp\build\Release\platforms\" -ErrorAction SilentlyContinue
+            }
+          }
 
           # 複製 OpenCV DLLs
           $OPENCV_BIN = "C:\tools\opencv\build\x64\vc16\bin"
@@ -191,9 +240,19 @@ jobs:
             Copy-Item "$OPENCV_BIN\opencv_world4*.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
           }
 
-          # 列出 build/Release 目錄內容以確認
+          # 列出 build/Release 目錄內容以確認 DLLs 是否存在
           Write-Host "=== build/Release 目錄內容 ==="
-          Get-ChildItem "basler_cpp\build\Release" -Recurse | Select-Object FullName
+          Get-ChildItem "basler_cpp\build\Release" | Select-Object Name
+
+          # 驗證必要的 DLLs 存在
+          $REQUIRED_DLLS = @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll")
+          foreach ($dll in $REQUIRED_DLLS) {
+            if (Test-Path "basler_cpp\build\Release\$dll") {
+              Write-Host "✓ $dll 存在"
+            } else {
+              Write-Host "::error::✗ $dll 缺失！"
+            }
+          }
 
           # 創建發布目錄結構
           New-Item -ItemType Directory -Force -Path "release_output\BaslerVisionSystem" | Out-Null

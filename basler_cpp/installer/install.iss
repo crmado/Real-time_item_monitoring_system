@@ -88,10 +88,21 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 Source: "..\build\Release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 ; ============================================================================
-; Qt6 依賴庫 (由 windeployqt 生成)
+; Qt6 依賴庫 (由 windeployqt 生成) - 關鍵 DLLs 不可跳過
 ; ============================================================================
+Source: "..\build\Release\Qt6Core.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\Release\Qt6Gui.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\Release\Qt6Widgets.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\Release\Qt6Multimedia.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\build\Release\Qt6MultimediaWidgets.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\build\Release\Qt6Network.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\build\Release\Qt6OpenGL.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\build\Release\Qt6OpenGLWidgets.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\build\Release\Qt6Svg.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; 其他可選 DLLs
 Source: "..\build\Release\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\build\Release\platforms\*"; DestDir: "{app}\platforms"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+; Qt 插件目錄
+Source: "..\build\Release\platforms\*"; DestDir: "{app}\platforms"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\build\Release\styles\*"; DestDir: "{app}\styles"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "..\build\Release\imageformats\*"; DestDir: "{app}\imageformats"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "..\build\Release\multimedia\*"; DestDir: "{app}\multimedia"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
