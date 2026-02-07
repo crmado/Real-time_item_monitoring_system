@@ -3,6 +3,8 @@
 #include <QDateTime>
 #include <QtConcurrent>
 
+#ifndef NO_PYLON_SDK
+
 namespace basler {
 
 // Pylon 全局初始化（RAII 模式）
@@ -531,3 +533,103 @@ void CameraController::configureCamera()
 }
 
 } // namespace basler
+
+#else // NO_PYLON_SDK - Stub implementations for CI builds
+
+namespace basler {
+
+// ============================================================================
+// Stub CameraController (for builds without Pylon SDK)
+// ============================================================================
+
+CameraController::CameraController(QObject* parent)
+    : QObject(parent)
+{
+    qRegisterMetaType<CameraState>("CameraState");
+    qRegisterMetaType<CameraInfo>("CameraInfo");
+    qRegisterMetaType<cv::Mat>("cv::Mat");
+    qDebug() << "[CameraController] 初始化完成 (NO_PYLON_SDK stub)";
+}
+
+CameraController::~CameraController()
+{
+    qDebug() << "[CameraController] 資源已清理 (NO_PYLON_SDK stub)";
+}
+
+bool CameraController::isConnected() const { return false; }
+bool CameraController::isGrabbing() const { return false; }
+
+void CameraController::setState(CameraState newState)
+{
+    CameraState oldState = m_state.exchange(newState);
+    if (oldState != newState) {
+        emit stateChanged(newState);
+    }
+}
+
+bool CameraController::transitionTo(CameraState newState)
+{
+    setState(newState);
+    return true;
+}
+
+QList<CameraInfo> CameraController::detectCameras()
+{
+    qWarning() << "[CameraController] Pylon SDK not available - no cameras detected";
+    return QList<CameraInfo>();
+}
+
+void CameraController::connectCamera(int cameraIndex)
+{
+    Q_UNUSED(cameraIndex);
+    qWarning() << "[CameraController] Pylon SDK not available - cannot connect";
+    emit connectionError("Pylon SDK not available (NO_PYLON_SDK build)");
+}
+
+void CameraController::disconnectCamera()
+{
+    setState(CameraState::Disconnected);
+    emit disconnected();
+}
+
+void CameraController::startGrabbing()
+{
+    qWarning() << "[CameraController] Pylon SDK not available - cannot grab";
+    emit grabError("Pylon SDK not available (NO_PYLON_SDK build)");
+}
+
+void CameraController::stopGrabbing()
+{
+    emit grabbingStopped();
+}
+
+void CameraController::setExposure(double exposureUs)
+{
+    Q_UNUSED(exposureUs);
+    qWarning() << "[CameraController] Pylon SDK not available - cannot set exposure";
+}
+
+void CameraController::onFrameGrabbed(const cv::Mat& frame, qint64 timestamp)
+{
+    Q_UNUSED(frame);
+    Q_UNUSED(timestamp);
+}
+
+void CameraController::onGrabError(const QString& error)
+{
+    emit grabError(error);
+}
+
+void CameraController::onGrabStopped()
+{
+    emit grabbingStopped();
+}
+
+void CameraController::configureCamera()
+{
+    qWarning() << "[CameraController] Pylon SDK not available - cannot configure";
+}
+
+} // namespace basler
+
+#endif // NO_PYLON_SDK

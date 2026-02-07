@@ -11,7 +11,9 @@
 #include <memory>
 #include <deque>
 
+#ifndef NO_PYLON_SDK
 #include <pylon/PylonIncludes.h>
+#endif
 #include <opencv2/core.hpp>
 
 namespace basler {
@@ -52,6 +54,7 @@ enum class CameraState {
  * 獨立於主線程運行，避免 UI 阻塞。
  * 使用 Qt 信號槽機制安全地將數據傳回主線程。
  */
+#ifndef NO_PYLON_SDK
 class GrabWorker : public QObject {
     Q_OBJECT
 
@@ -73,6 +76,29 @@ private:
     std::atomic<bool> m_running{false};
     QMutex m_mutex;
 };
+#else
+// Stub GrabWorker for builds without Pylon SDK
+class GrabWorker : public QObject {
+    Q_OBJECT
+
+public:
+    explicit GrabWorker(void* camera = nullptr, QObject* parent = nullptr) : QObject(parent) { Q_UNUSED(camera); }
+    ~GrabWorker() = default;
+
+public slots:
+    void startGrabbing() {}
+    void stopGrabbing() {}
+
+signals:
+    void frameGrabbed(const cv::Mat& frame, qint64 timestamp);
+    void grabError(const QString& error);
+    void grabStopped();
+
+private:
+    std::atomic<bool> m_running{false};
+    QMutex m_mutex;
+};
+#endif
 
 /**
  * @brief Basler 相機控制器
@@ -174,7 +200,11 @@ private:
     void configureCamera();
 
     // 資源
+#ifndef NO_PYLON_SDK
     std::unique_ptr<Pylon::CInstantCamera> m_camera;
+#else
+    void* m_camera = nullptr;  // Stub for builds without Pylon
+#endif
     std::unique_ptr<QThread> m_grabThread;
     std::unique_ptr<GrabWorker> m_grabWorker;
 
@@ -191,8 +221,10 @@ private:
     double m_targetFps = 350.0;
     double m_exposureTime = 1000.0;  // 微秒
 
+#ifndef NO_PYLON_SDK
     // Pylon 初始化（全局單例）
     static Pylon::PylonAutoInitTerm s_pylonInit;
+#endif
 };
 
 } // namespace basler
