@@ -71,14 +71,11 @@ PrivilegesRequiredOverridesAllowed=dialog
 SetupLogging=yes
 
 [Languages]
+; 注意：中文語言文件需要額外安裝，CI 環境僅使用英文
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
-Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"
 
 [Messages]
 english.BeveledLabel=Basler Vision System (C++ Edition)
-chinesesimplified.BeveledLabel=Basler 視覺系統 (C++ 版本)
-chinesetraditional.BeveledLabel=Basler 視覺系統 (C++ 版本)
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
