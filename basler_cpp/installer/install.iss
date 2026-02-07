@@ -106,12 +106,12 @@ Source: "..\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubd
 ; ============================================================================
 ; 配置文件
 ; ============================================================================
-Source: "..\config\*"; DestDir: "{app}\config"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: DirExists(ExpandConstant('..\config'))
+Source: "..\config\*"; DestDir: "{app}\config"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 ; ============================================================================
 ; Visual C++ Runtime (如需要)
 ; ============================================================================
-Source: "vcredist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: FileExists(ExpandConstant('{src}\vcredist\vc_redist.x64.exe'))
+Source: "vcredist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
 
 ; ============================================================================
 ; 文檔
@@ -223,17 +223,9 @@ begin
   end;
 end;
 
-// 檢查目錄是否存在
-function DirExists(const Name: String): Boolean;
-begin
-  Result := DirExists(ExpandConstant(Name));
-end;
-
-// 檢查文件是否存在
-function FileExists(const Name: String): Boolean;
-begin
-  Result := FileExists(ExpandConstant(Name));
-end;
+// 注意：移除了自定義的 DirExists 和 FileExists 函數
+// 因為它們會導致無限遞迴錯誤
+// 現在使用 skipifsourcedoesntexist flag 代替 Check 函數
 
 // 安裝後的處理
 procedure CurPageChanged(CurPageID: Integer);
