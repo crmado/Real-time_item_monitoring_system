@@ -177,6 +177,7 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.industrial.basler-vision"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/resources/macos/Info.plist"
     )
 endif()
 
@@ -196,7 +197,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 
 # ============================================================================
-# 複製配置文件
+# 複製配置文件和資源
 # ============================================================================
 
 # 複製配置目錄
@@ -204,6 +205,32 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
     "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config"
 )
+
+# 複製 assets 資源目錄
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets"
+        COMMENT "Copying assets to build directory"
+    )
+endif()
+
+# 複製 recordings 目錄結構
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/recordings"
+)
+
+# ============================================================================
+# 可選：跳過 Pylon SDK（用於無相機的 CI 環境）
+# ============================================================================
+
+option(SKIP_PYLON "Skip Pylon SDK for CI builds" OFF)
+if(SKIP_PYLON)
+    message(STATUS "Pylon SDK is disabled (SKIP_PYLON=ON)")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE NO_PYLON_SDK)
+endif()
 
 # ============================================================================
 # 輸出配置信息

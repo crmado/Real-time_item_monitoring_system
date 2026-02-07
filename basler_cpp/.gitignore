@@ -1,0 +1,73 @@
+# ============================================================================
+# Basler Vision System (C++) - Git Ignore Rules
+# ============================================================================
+
+# Build 目錄
+build/
+cmake-build-*/
+out/
+
+# CMake 生成檔案
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Qt 自動生成
+*_autogen/
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+.qt/
+
+# 編譯產物
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.app/
+
+# IDE
+.vscode/
+.idea/
+*.user
+*.creator
+*.creator.user*
+*.pro.user*
+*.qbs.user*
+
+# macOS
+.DS_Store
+*.dSYM/
+
+# Windows
+*.pdb
+*.ilk
+*.exp
+*.idb
+Thumbs.db
+Desktop.ini
+
+# 日誌和錄影
+logs/
+*.log
+recordings/*.mp4
+recordings/*.avi
+
+# 臨時檔案
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# 套件管理
+vcpkg_installed/
+conan/

@@ -26,6 +26,18 @@ wheels/
 .installed.cfg
 *.egg
 
+# C++ Build
+basler_cpp/build/
+cmake-build-*/
+*_autogen/
+*.o
+*.obj
+*.a
+*.lib
+*.dylib
+*.dll
+*.exe
+
 # PyQt6
 *.ui~
 *.qmlc
