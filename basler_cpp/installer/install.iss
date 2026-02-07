@@ -40,8 +40,12 @@ DisableProgramGroupPage=yes
 ; 輸出配置
 OutputDir=..\..\releases
 OutputBaseFilename=BaslerVisionSystem_v{#MyAppVersion}_Setup
-SetupIconFile=..\assets\icon.ico
+SetupIconFile=..\assets\setup_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
+
+; 安裝精靈圖片
+WizardImageFile=..\assets\wizard_image.bmp
+WizardSmallImageFile=..\assets\wizard_small.bmp
 
 ; 壓縮配置
 Compression=lzma2/ultra64

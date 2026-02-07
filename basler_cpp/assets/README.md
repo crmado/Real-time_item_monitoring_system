@@ -1,24 +1,24 @@
 # Assets 資源目錄
 
-此目錄包含 Basler Vision System (C++ 版本) 的所有靜態資源。
+此目錄包含 Basler Vision System (C++ 版本) 的靜態資源。
 
 ## 目錄結構
 
 ```
 assets/
-├── icons/                # 應用程式圖標
-│   ├── app_icon.png      # 應用程式主圖標 (256x256)
-│   ├── app_icon_48.png   # 工具欄圖標 (48x48)
-│   └── app_icon_32.png   # 小圖標 (32x32)
-├── images/               # 圖片資源
-│   ├── logo.png          # 應用程式 Logo
-│   └── splash.png        # 啟動畫面
-├── styles/               # 樣式資源
-│   └── dark_theme.qss    # 深色主題樣式表
-├── icon.ico              # Windows 安裝程式圖標
-├── icon.icns             # macOS 應用程式圖標
-└── README.md             # 本文件
+├── setup_icon.ico      # Windows 安裝程式圖標
+├── wizard_image.bmp    # 安裝精靈側邊圖片 (164x314)
+├── wizard_small.bmp    # 安裝精靈標題圖片 (55x58)
+└── README.md           # 本文件
 ```
+
+## 檔案說明
+
+| 檔案 | 用途 | 尺寸 |
+|------|------|------|
+| `setup_icon.ico` | Windows 安裝程式圖標 | 多尺寸 (16-256px) |
+| `wizard_image.bmp` | Inno Setup 側邊橫幅 | 164 x 314 px |
+| `wizard_small.bmp` | Inno Setup 標題圖片 | 55 x 58 px |
 
 ## 圖標要求
 
