@@ -183,127 +183,154 @@ jobs:
           Write-Host "Qt6_DIR: $env:Qt6_DIR"
           Write-Host "QT_ROOT_DIR: $env:QT_ROOT_DIR"
 
-          # 確定 windeployqt 位置
-          # install-qt-action 設置 Qt6_DIR 為 cmake 目錄，需要找到 bin 目錄
-          $QT_ROOT = Split-Path -Parent $env:Qt6_DIR
-          $QT_BIN = Join-Path $QT_ROOT "bin"
+          # 確定 Qt 根目錄 (install-qt-action 設置)
+          # Qt6_DIR 可能是: C:/Qt/6.6.2/msvc2019_64/lib/cmake/Qt6
+          $QT_CMAKE_DIR = $env:Qt6_DIR
           
-          # 如果上面的路徑不對，嘗試直接使用 Qt6_DIR 的 bin 子目錄
-          if (-not (Test-Path "$QT_BIN\windeployqt.exe")) {
-            $QT_BIN = "$env:Qt6_DIR\bin"
-          }
+          # 找到 Qt 安裝根目錄 (msvc2019_64 目錄)
+          $QT_INSTALL_ROOT = (Get-Item $QT_CMAKE_DIR).Parent.Parent.Parent.FullName
+          $QT_BIN = Join-Path $QT_INSTALL_ROOT "bin"
           
-          # 如果還是找不到，嘗試從 Qt6_DIR 上溯
-          if (-not (Test-Path "$QT_BIN\windeployqt.exe")) {
-            # Qt6_DIR 可能是 .../msvc2019_64/lib/cmake/Qt6
-            $QT_BIN = (Get-Item $env:Qt6_DIR).Parent.Parent.Parent.FullName + "\bin"
-          }
-
+          Write-Host "Qt 安裝根目錄: $QT_INSTALL_ROOT"
           Write-Host "Qt bin 路徑: $QT_BIN"
-          Write-Host "windeployqt 存在: $(Test-Path "$QT_BIN\windeployqt.exe")"
 
-          # 列出 Qt bin 目錄內容
-          if (Test-Path $QT_BIN) {
-            Write-Host "=== Qt bin 目錄內容 ==="
-            Get-ChildItem $QT_BIN -Filter "*.exe" | Select-Object Name
+          # 驗證 windeployqt 存在
+          $WINDEPLOYQT = Join-Path $QT_BIN "windeployqt.exe"
+          if (-not (Test-Path $WINDEPLOYQT)) {
+            Write-Host "::error::找不到 windeployqt.exe at $WINDEPLOYQT"
+            # 嘗試其他路徑
+            $WINDEPLOYQT = Join-Path $env:Qt6_DIR "..\..\..\bin\windeployqt.exe"
           }
+          
+          Write-Host "windeployqt 路徑: $WINDEPLOYQT"
+          Write-Host "windeployqt 存在: $(Test-Path $WINDEPLOYQT)"
 
           # 運行 windeployqt
-          $WINDEPLOYQT = Join-Path $QT_BIN "windeployqt.exe"
           if (Test-Path $WINDEPLOYQT) {
-            Write-Host "執行 windeployqt..."
-            & $WINDEPLOYQT --release --no-translations "basler_cpp\build\Release\BaslerVisionSystem.exe"
+            Write-Host "=== 執行 windeployqt ==="
+            & $WINDEPLOYQT --release --no-translations --verbose 2 "basler_cpp\build\Release\BaslerVisionSystem.exe"
             if ($LASTEXITCODE -ne 0) {
               Write-Host "::warning::windeployqt 返回非零狀態碼: $LASTEXITCODE"
             }
           } else {
             Write-Host "::error::找不到 windeployqt.exe，手動複製 Qt DLLs"
             # 手動複製 Qt DLLs
-            $QT_DLL_DIR = Join-Path (Split-Path $QT_BIN) "bin"
+            $QT_DLL_DIR = Join-Path $QT_INSTALL_ROOT "bin"
             if (Test-Path $QT_DLL_DIR) {
-              Copy-Item "$QT_DLL_DIR\Qt6Core.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
-              Copy-Item "$QT_DLL_DIR\Qt6Gui.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
-              Copy-Item "$QT_DLL_DIR\Qt6Widgets.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
-              Copy-Item "$QT_DLL_DIR\Qt6Multimedia.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
-              Copy-Item "$QT_DLL_DIR\Qt6MultimediaWidgets.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
-              Copy-Item "$QT_DLL_DIR\Qt6Network.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
+              Copy-Item "$QT_DLL_DIR\Qt6Core.dll" "basler_cpp\build\Release\" -Force
+              Copy-Item "$QT_DLL_DIR\Qt6Gui.dll" "basler_cpp\build\Release\" -Force
+              Copy-Item "$QT_DLL_DIR\Qt6Widgets.dll" "basler_cpp\build\Release\" -Force
+              Copy-Item "$QT_DLL_DIR\Qt6Network.dll" "basler_cpp\build\Release\" -Force
               # 複製 platforms 插件
               New-Item -ItemType Directory -Force -Path "basler_cpp\build\Release\platforms" | Out-Null
-              Copy-Item "$QT_DLL_DIR\..\plugins\platforms\qwindows.dll" "basler_cpp\build\Release\platforms\" -ErrorAction SilentlyContinue
+              Copy-Item (Join-Path $QT_INSTALL_ROOT "plugins\platforms\qwindows.dll") "basler_cpp\build\Release\platforms\" -Force
+              # 複製 styles 插件
+              New-Item -ItemType Directory -Force -Path "basler_cpp\build\Release\styles" | Out-Null
+              Copy-Item (Join-Path $QT_INSTALL_ROOT "plugins\styles\*") "basler_cpp\build\Release\styles\" -Force -ErrorAction SilentlyContinue
             }
           }
 
           # 複製 OpenCV DLLs
           $OPENCV_BIN = "C:\tools\opencv\build\x64\vc16\bin"
           if (Test-Path $OPENCV_BIN) {
-            Write-Host "複製 OpenCV DLLs from $OPENCV_BIN"
-            Copy-Item "$OPENCV_BIN\opencv_world4*.dll" "basler_cpp\build\Release\" -ErrorAction SilentlyContinue
-          }
-
-          # 列出 build/Release 目錄內容以確認 DLLs 是否存在
-          Write-Host "=== build/Release 目錄內容 ==="
-          Get-ChildItem "basler_cpp\build\Release" | Select-Object Name
-
-          # 驗證必要的 DLLs 存在
-          $REQUIRED_DLLS = @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll")
-          foreach ($dll in $REQUIRED_DLLS) {
-            if (Test-Path "basler_cpp\build\Release\$dll") {
-              Write-Host "✓ $dll 存在"
-            } else {
-              Write-Host "::error::✗ $dll 缺失！"
+            Write-Host "=== 複製 OpenCV DLLs ==="
+            Get-ChildItem "$OPENCV_BIN\opencv_world4*.dll" | ForEach-Object {
+              Write-Host "  複製: $($_.Name)"
+              Copy-Item $_.FullName "basler_cpp\build\Release\" -Force
             }
           }
 
-          # 創建發布目錄結構
-          New-Item -ItemType Directory -Force -Path "release_output\BaslerVisionSystem" | Out-Null
+          # 下載 Visual C++ Redistributable
+          Write-Host "=== 下載 VC++ Redistributable ==="
+          $VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+          $VC_REDIST_PATH = "basler_cpp\installer\vcredist\vc_redist.x64.exe"
+          New-Item -ItemType Directory -Force -Path "basler_cpp\installer\vcredist" | Out-Null
+          Invoke-WebRequest -Uri $VC_REDIST_URL -OutFile $VC_REDIST_PATH -UseBasicParsing
+          Write-Host "VC++ Redistributable 下載完成: $(Test-Path $VC_REDIST_PATH)"
 
-          # 複製執行文件
-          Copy-Item "basler_cpp\build\Release\BaslerVisionSystem.exe" "release_output\BaslerVisionSystem\"
-
-          # 複製 assets
-          if (Test-Path "basler_cpp\assets") {
-            Copy-Item -Recurse "basler_cpp\assets" "release_output\BaslerVisionSystem\assets"
+          # 列出 build/Release 目錄內容
+          Write-Host "=== build/Release 目錄內完整內容 ==="
+          Get-ChildItem "basler_cpp\build\Release" -Recurse | ForEach-Object {
+            $rel = $_.FullName.Substring((Get-Location).Path.Length + 1)
+            $size = if ($_.PSIsContainer) { "[DIR]" } else { "{0:N0} KB" -f ($_.Length/1KB) }
+            Write-Host "  $rel - $size"
           }
 
-          # 複製配置文件
-          New-Item -ItemType Directory -Force -Path "release_output\BaslerVisionSystem\config" | Out-Null
-
-          # 安裝 Inno Setup
-          choco install innosetup -y
-
-          # 確保 releases 目錄存在 (install.iss OutputDir 的輸出目標)
-          New-Item -ItemType Directory -Force -Path "releases" | Out-Null
-
-          # 編譯安裝程序
-          Write-Host "📦 編譯 Inno Setup 安裝程序..."
-          iscc basler_cpp/installer/install.iss
-          
-          # 檢查編譯結果
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::Inno Setup 編譯失敗！"
+          # 驗證必要的文件存在
+          Write-Host "=== 驗證必要文件 ==="
+          $REQUIRED_FILES = @(
+            "basler_cpp\build\Release\BaslerVisionSystem.exe",
+            "basler_cpp\build\Release\Qt6Core.dll",
+            "basler_cpp\build\Release\Qt6Gui.dll",
+            "basler_cpp\build\Release\Qt6Widgets.dll",
+            "basler_cpp\build\Release\platforms\qwindows.dll"
+          )
+          $missing = $false
+          foreach ($file in $REQUIRED_FILES) {
+            if (Test-Path $file) {
+              Write-Host "✓ $file"
+            } else {
+              Write-Host "::error::✗ $file 缺失！"
+              $missing = $true
+            }
+          }
+          if ($missing) {
+            Write-Host "::error::必要文件缺失，無法繼續！"
             exit 1
           }
 
-          # 列出 releases 目錄內容 (install.iss OutputDir=..\..\releases)
-          Write-Host "📋 releases 目錄內容:"
-          if (Test-Path "releases") {
-            Get-ChildItem -Path "releases" | ForEach-Object { Write-Host "  $($_.Name)" }
-          } else {
-            Write-Host "::warning::releases 目錄不存在"
+          # 創建發布目錄結構
+          New-Item -ItemType Directory -Force -Path "release_output" | Out-Null
+
+          # 安裝 Inno Setup
+          Write-Host "=== 安裝 Inno Setup ==="
+          choco install innosetup -y
+
+          # 確保 releases 目錄存在
+          New-Item -ItemType Directory -Force -Path "releases" | Out-Null
+
+          # 切換到 installer 目錄並編譯 (確保相對路徑正確)
+          Write-Host "=== 編譯 Inno Setup 安裝程序 ==="
+          Push-Location "basler_cpp\installer"
+          iscc install.iss
+          $iscc_result = $LASTEXITCODE
+          Pop-Location
+          
+          if ($iscc_result -ne 0) {
+            Write-Host "::error::Inno Setup 編譯失敗！退出碼: $iscc_result"
+            exit 1
           }
 
-          # 複製安裝程序到 release_output (正確路徑：項目根目錄的 releases/)
-          Write-Host "📦 複製安裝程序到 release_output..."
-          Get-ChildItem -Path "releases" -Filter "*.exe" 2>$null | ForEach-Object {
-            Write-Host "→ 複製: $($_.Name)"
+          # 列出 releases 目錄內容
+          Write-Host "=== releases 目錄內容 ==="
+          if (Test-Path "releases") {
+            Get-ChildItem -Path "releases" -Filter "*.exe" | ForEach-Object {
+              Write-Host "  $($_.Name) - $([math]::Round($_.Length/1MB, 2)) MB"
+            }
+          } else {
+            Write-Host "::error::releases 目錄不存在"
+            exit 1
+          }
+
+          # 複製安裝程序到 release_output
+          Write-Host "=== 複製安裝程序到 release_output ==="
+          Get-ChildItem -Path "releases" -Filter "*.exe" | ForEach-Object {
+            Write-Host "→ 複製: $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
             Copy-Item $_.FullName -Destination "release_output\"
           }
           
-          # 列出 release_output 最終內容
-          Write-Host "📋 release_output 目錄最終內容:"
-          Get-ChildItem -Path "release_output" -Recurse | ForEach-Object {
-            $size = if ($_.PSIsContainer) { "[DIR]" } else { "{0:N0} KB" -f ($_.Length/1KB) }
-            Write-Host "  $($_.FullName) - $size"
+          # 最終驗證
+          Write-Host "=== 最終驗證 ==="
+          $installers = Get-ChildItem -Path "release_output" -Filter "*Setup*.exe"
+          if ($installers.Count -eq 0) {
+            Write-Host "::error::未找到安裝程序！"
+            exit 1
+          }
+          foreach ($installer in $installers) {
+            Write-Host "✓ 安裝程序: $($installer.Name) - $([math]::Round($installer.Length/1MB, 2)) MB"
+            if ($installer.Length -lt 5MB) {
+              Write-Host "::warning::安裝程序大小異常小 (< 5MB)，可能缺少 DLLs"
+            }
           }
         shell: pwsh
 
