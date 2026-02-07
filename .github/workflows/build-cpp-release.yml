@@ -273,6 +273,17 @@ jobs:
 
           # 編譯安裝程序
           iscc basler_cpp/installer/install.iss
+
+          # 複製安裝程序到 release_output
+          Write-Host "📦 複製安裝程序到 release_output..."
+          Get-ChildItem -Path "basler_cpp\installer\releases" -Filter "*.exe" | ForEach-Object {
+            Write-Host "→ 複製: $($_.Name)"
+            Copy-Item $_.FullName -Destination "release_output\"
+          }
+          
+          # 列出 release_output 內容
+          Write-Host "📋 release_output 目錄內容:"
+          Get-ChildItem -Path "release_output" -Recurse | Select-Object FullName
         shell: pwsh
 
       - name: 🎁 打包 macOS DMG
