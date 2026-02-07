@@ -339,12 +339,18 @@ jobs:
 
           # 複製 assets 到 app bundle
           if [ -d "basler_cpp/assets" ]; then
+            mkdir -p "basler_cpp/build/${APP_NAME}.app/Contents/Resources/"
             cp -R basler_cpp/assets "basler_cpp/build/${APP_NAME}.app/Contents/Resources/"
           fi
 
           # 部署 Qt 依賴
-          brew install qt@6
           $(brew --prefix qt@6)/bin/macdeployqt "basler_cpp/build/${APP_NAME}.app"
+
+          # Ad-hoc code signing（防止 macOS Gatekeeper 顯示「檔案已損壞」錯誤）
+          echo "=== Ad-hoc Code Signing ==="
+          codesign --force --deep --sign - "basler_cpp/build/${APP_NAME}.app"
+          echo "簽名驗證:"
+          codesign --verify --verbose "basler_cpp/build/${APP_NAME}.app" || true
 
           # 創建 DMG
           brew install create-dmg
@@ -355,7 +361,17 @@ jobs:
             --icon-size 100 \
             --app-drop-link 600 185 \
             "release_output/${DMG_NAME}" \
-            "basler_cpp/build/${APP_NAME}.app" || true
+            "basler_cpp/build/${APP_NAME}.app"
+
+          # 驗證 DMG 生成（create-dmg 可能因缺少圖標等非關鍵原因失敗）
+          if [ ! -f "release_output/${DMG_NAME}" ]; then
+            echo "::warning::create-dmg 失敗，使用 hdiutil 建立基本 DMG"
+            hdiutil create -volname "Basler Vision System" \
+              -srcfolder "basler_cpp/build/${APP_NAME}.app" \
+              -ov -format UDZO \
+              "release_output/${DMG_NAME}"
+          fi
+          echo "✓ DMG: $(ls -lh "release_output/${DMG_NAME}")"
 
       - name: 🎁 打包 Linux AppImage
         if: matrix.platform == 'linux'
@@ -364,50 +380,66 @@ jobs:
           APP_NAME="BaslerVisionSystem"
           APPIMAGE_NAME="BaslerVisionSystem_v${VERSION}_Linux.AppImage"
 
-          # 安裝 linuxdeploy
-          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          # 安裝 linuxdeploy（使用 extract-and-run 因為 GitHub Actions 沒有 FUSE）
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-*.AppImage
 
           # 創建 AppDir 結構
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/bin AppDir/usr/lib
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           # 複製執行文件
-          cp basler_cpp/build/${APP_NAME} AppDir/usr/bin/
+          cp "basler_cpp/build/${APP_NAME}" AppDir/usr/bin/
 
           # 複製 assets
           if [ -d "basler_cpp/assets" ]; then
             cp -R basler_cpp/assets AppDir/usr/share/
           fi
 
-          # 創建 .desktop 文件
-          cat > AppDir/usr/share/applications/${APP_NAME}.desktop <<EOF
-          [Desktop Entry]
-          Type=Application
-          Name=Basler Vision System
-          Comment=工業視覺檢測系統 (C++ 版本)
-          Exec=${APP_NAME}
-          Icon=${APP_NAME}
-          Categories=Utility;Development;
-          Terminal=false
-          EOF
+          # 創建 .desktop 文件（用 printf 避免 heredoc 破壞 YAML 縮排）
+          printf '%s\n' \
+            "[Desktop Entry]" \
+            "Type=Application" \
+            "Name=Basler Vision System" \
+            "Comment=Industrial Vision Detection System" \
+            "Exec=BaslerVisionSystem" \
+            "Icon=BaslerVisionSystem" \
+            "Categories=Utility;Development;" \
+            "Terminal=false" \
+            > "AppDir/usr/share/applications/${APP_NAME}.desktop"
+          cp "AppDir/usr/share/applications/${APP_NAME}.desktop" AppDir/
 
-          # 創建簡易圖標 (如果沒有的話)
-          if [ ! -f "basler_cpp/assets/icon.png" ]; then
-            convert -size 256x256 xc:blue AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png || \
-            touch AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png
+          # 創建簡易圖標（用 ImageMagick 或建立佔位 PNG）
+          if [ -f "basler_cpp/assets/icon.png" ]; then
+            cp basler_cpp/assets/icon.png "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
           else
-            cp basler_cpp/assets/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png
+            convert -size 256x256 xc:steelblue -gravity center -fill white -pointsize 40 -annotate 0 "BVS" \
+              "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || \
+            python3 -c "
+          import struct,zlib,sys;w=h=256;r,g,b=70,130,180
+          raw=b''.join(b'\x00'+bytes([r,g,b])*w for _ in range(h))
+          c=lambda t,d:struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
+          sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n'+c(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+c(b'IDAT',zlib.compress(raw))+c(b'IEND',b''))
+          " > "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
           fi
+          cp "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" AppDir/ 2>/dev/null || true
 
-          # 生成 AppImage
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage || true
+          # 生成 AppImage（APPIMAGE_EXTRACT_AND_RUN=1 繞過 FUSE 限制）
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE="$(which qmake6 2>/dev/null || which qmake 2>/dev/null || echo "")"
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --desktop-file "AppDir/usr/share/applications/${APP_NAME}.desktop" \
+            --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" \
+            --output appimage
 
           # 移動到輸出目錄
-          mv *.AppImage release_output/${APPIMAGE_NAME} || true
+          mv BaslerVisionSystem-*.AppImage "release_output/${APPIMAGE_NAME}" 2>/dev/null || \
+            mv *.AppImage "release_output/${APPIMAGE_NAME}"
+          echo "✓ AppImage: $(ls -lh "release_output/${APPIMAGE_NAME}")"
 
       - name: 📤 上傳工件
         uses: actions/upload-artifact@v4
