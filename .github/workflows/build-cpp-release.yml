@@ -37,7 +37,7 @@ env:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build ${{ matrix.artifact_name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -49,6 +49,7 @@ jobs:
             artifact_name: BaslerVisionSystem-Windows
             cmake_generator: "Visual Studio 17 2022"
             qt_arch: win64_msvc2019_64
+            arch: x86_64
 
           # macOS 打包
           - os: macos-latest
@@ -56,13 +57,23 @@ jobs:
             artifact_name: BaslerVisionSystem-macOS
             cmake_generator: "Unix Makefiles"
             qt_arch: clang_64
+            arch: universal
 
-          # Linux 打包
+          # Linux x86_64 打包
           - os: ubuntu-22.04
             platform: linux
-            artifact_name: BaslerVisionSystem-Linux
+            artifact_name: BaslerVisionSystem-Linux-x86_64
             cmake_generator: "Unix Makefiles"
             qt_arch: gcc_64
+            arch: x86_64
+
+          # Linux ARM64 打包（使用 GitHub 原生 ARM runner）
+          - os: ubuntu-24.04-arm
+            platform: linux
+            artifact_name: BaslerVisionSystem-Linux-arm64
+            cmake_generator: "Unix Makefiles"
+            qt_arch: linux_gcc_arm64
+            arch: aarch64
 
     steps:
       - name: 📥 檢出代碼
@@ -70,8 +81,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🔧 安裝 Qt (Windows/Linux)
-        if: matrix.platform != 'macos'
+      - name: 🔧 安裝 Qt (Windows / Linux x86_64)
+        if: matrix.platform == 'windows' || (matrix.platform == 'linux' && matrix.arch == 'x86_64')
         uses: jurplel/install-qt-action@v3
         with:
           version: ${{ env.QT_VERSION }}
@@ -85,6 +96,23 @@ jobs:
           brew install qt@6
           echo "Qt6_DIR=$(brew --prefix qt@6)/lib/cmake/Qt6" >> $GITHUB_ENV
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> $GITHUB_ENV
+
+      - name: 🔧 安裝 Qt (Linux ARM64 - 從 apt 安裝)
+        if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-multimedia-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev
+          # 設定 Qt6 CMake 路徑
+          QT6_CMAKE_DIR=$(find /usr/lib -path "*/cmake/Qt6/Qt6Config.cmake" -printf "%h" -quit 2>/dev/null)
+          if [ -n "$QT6_CMAKE_DIR" ]; then
+            echo "Qt6_DIR=${QT6_CMAKE_DIR}" >> $GITHUB_ENV
+            echo "找到 Qt6: ${QT6_CMAKE_DIR}"
+          fi
 
       - name: 📦 安裝 OpenCV (Windows)
         if: matrix.platform == 'windows'
@@ -107,7 +135,8 @@ jobs:
             libxcb-cursor0 \
             libxkbcommon-x11-0 \
             libgl1-mesa-dev \
-            libglu1-mesa-dev
+            libglu1-mesa-dev \
+            libfuse2
 
       - name: 📦 安裝 Pylon SDK (Windows)
         if: matrix.platform == 'windows'
@@ -373,16 +402,19 @@ jobs:
           fi
           echo "✓ DMG: $(ls -lh "release_output/${DMG_NAME}")"
 
-      - name: 🎁 打包 Linux AppImage
+      - name: 🎁 打包 Linux AppImage (${{ matrix.arch }})
         if: matrix.platform == 'linux'
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
+          ARCH="${{ matrix.arch }}"
           APP_NAME="BaslerVisionSystem"
-          APPIMAGE_NAME="BaslerVisionSystem_v${VERSION}_Linux.AppImage"
+          APPIMAGE_NAME="BaslerVisionSystem_v${VERSION}_Linux-${ARCH}.AppImage"
 
-          # 安裝 linuxdeploy（使用 extract-and-run 因為 GitHub Actions 沒有 FUSE）
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          echo "=== 構建 ${ARCH} AppImage ==="
+
+          # 下載對應架構的 linuxdeploy
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage"
+          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${ARCH}.AppImage"
           chmod +x linuxdeploy-*.AppImage
 
           # 創建 AppDir 結構
@@ -429,7 +461,7 @@ jobs:
           # 生成 AppImage（APPIMAGE_EXTRACT_AND_RUN=1 繞過 FUSE 限制）
           export APPIMAGE_EXTRACT_AND_RUN=1
           export QMAKE="$(which qmake6 2>/dev/null || which qmake 2>/dev/null || echo "")"
-          ./linuxdeploy-x86_64.AppImage \
+          "./linuxdeploy-${ARCH}.AppImage" \
             --appdir AppDir \
             --plugin qt \
             --desktop-file "AppDir/usr/share/applications/${APP_NAME}.desktop" \
@@ -437,12 +469,11 @@ jobs:
             --output appimage
 
           # 移動到輸出目錄（appimagetool 根據 .desktop Name 欄位命名，
-          # "Basler Vision System" → "Basler_Vision_System-x86_64.AppImage"，
           # 需排除 linuxdeploy 工具本身的 AppImage）
           GENERATED=$(find . -maxdepth 1 -name "*.AppImage" ! -name "linuxdeploy*" -print -quit)
           if [ -n "$GENERATED" ]; then
             mv "$GENERATED" "release_output/${APPIMAGE_NAME}"
-            echo "✓ AppImage: $(ls -lh "release_output/${APPIMAGE_NAME}")"
+            echo "✓ AppImage (${ARCH}): $(ls -lh "release_output/${APPIMAGE_NAME}")"
           else
             echo "::error::找不到生成的 AppImage 文件！"
             ls -la *.AppImage 2>/dev/null || echo "目錄中沒有任何 .AppImage 文件"
@@ -500,12 +531,14 @@ jobs:
             ### 📦 安裝包
             - **Windows**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Setup.exe`
             - **macOS**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_macOS.dmg`
-            - **Linux**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux.AppImage`
+            - **Linux x86_64**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-x86_64.AppImage`
+            - **Linux ARM64**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-aarch64.AppImage`
 
             ### 📋 系統需求
             - **Windows**: Windows 10/11 (64-bit)
             - **macOS**: macOS 11.0 (Big Sur) 或更高
-            - **Linux**: Ubuntu 20.04+ 或相容發行版
+            - **Linux x86_64**: Ubuntu 20.04+ 或相容發行版
+            - **Linux ARM64**: Ubuntu 22.04+ (aarch64)、Raspberry Pi OS 64-bit
 
             ### 📦 依賴
             - Qt 6.6+
