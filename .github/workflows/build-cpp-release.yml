@@ -436,10 +436,18 @@ jobs:
             --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" \
             --output appimage
 
-          # 移動到輸出目錄
-          mv BaslerVisionSystem-*.AppImage "release_output/${APPIMAGE_NAME}" 2>/dev/null || \
-            mv *.AppImage "release_output/${APPIMAGE_NAME}"
-          echo "✓ AppImage: $(ls -lh "release_output/${APPIMAGE_NAME}")"
+          # 移動到輸出目錄（appimagetool 根據 .desktop Name 欄位命名，
+          # "Basler Vision System" → "Basler_Vision_System-x86_64.AppImage"，
+          # 需排除 linuxdeploy 工具本身的 AppImage）
+          GENERATED=$(find . -maxdepth 1 -name "*.AppImage" ! -name "linuxdeploy*" -print -quit)
+          if [ -n "$GENERATED" ]; then
+            mv "$GENERATED" "release_output/${APPIMAGE_NAME}"
+            echo "✓ AppImage: $(ls -lh "release_output/${APPIMAGE_NAME}")"
+          else
+            echo "::error::找不到生成的 AppImage 文件！"
+            ls -la *.AppImage 2>/dev/null || echo "目錄中沒有任何 .AppImage 文件"
+            exit 1
+          fi
 
       - name: 📤 上傳工件
         uses: actions/upload-artifact@v4
