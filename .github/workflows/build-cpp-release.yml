@@ -184,13 +184,11 @@ jobs:
           Write-Host "QT_ROOT_DIR: $env:QT_ROOT_DIR"
 
           # 確定 Qt 根目錄 (install-qt-action 設置)
-          # Qt6_DIR 可能是: C:/Qt/6.6.2/msvc2019_64/lib/cmake/Qt6
-          $QT_CMAKE_DIR = $env:Qt6_DIR
-          
-          # 找到 Qt 安裝根目錄 (msvc2019_64 目錄)
-          $QT_INSTALL_ROOT = (Get-Item $QT_CMAKE_DIR).Parent.Parent.Parent.FullName
+          # Qt6_DIR 是: D:/a/.../Qt/6.6.2/msvc2019_64 (msvc2019_64 目錄)
+          # 注意: jurplel/install-qt-action 設置的 Qt6_DIR 直接指向 msvc2019_64 目錄
+          $QT_INSTALL_ROOT = $env:Qt6_DIR
           $QT_BIN = Join-Path $QT_INSTALL_ROOT "bin"
-          
+
           Write-Host "Qt 安裝根目錄: $QT_INSTALL_ROOT"
           Write-Host "Qt bin 路徑: $QT_BIN"
 
@@ -198,10 +196,8 @@ jobs:
           $WINDEPLOYQT = Join-Path $QT_BIN "windeployqt.exe"
           if (-not (Test-Path $WINDEPLOYQT)) {
             Write-Host "::error::找不到 windeployqt.exe at $WINDEPLOYQT"
-            # 嘗試其他路徑
-            $WINDEPLOYQT = Join-Path $env:Qt6_DIR "..\..\..\bin\windeployqt.exe"
           }
-          
+
           Write-Host "windeployqt 路徑: $WINDEPLOYQT"
           Write-Host "windeployqt 存在: $(Test-Path $WINDEPLOYQT)"
 
@@ -295,7 +291,7 @@ jobs:
           iscc install.iss
           $iscc_result = $LASTEXITCODE
           Pop-Location
-          
+
           if ($iscc_result -ne 0) {
             Write-Host "::error::Inno Setup 編譯失敗！退出碼: $iscc_result"
             exit 1
@@ -318,7 +314,7 @@ jobs:
             Write-Host "→ 複製: $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
             Copy-Item $_.FullName -Destination "release_output\"
           }
-          
+
           # 最終驗證
           Write-Host "=== 最終驗證 ==="
           $installers = Get-ChildItem -Path "release_output" -Filter "*Setup*.exe"
