@@ -271,19 +271,40 @@ jobs:
           # 安裝 Inno Setup
           choco install innosetup -y
 
-          # 編譯安裝程序
-          iscc basler_cpp/installer/install.iss
+          # 確保 releases 目錄存在 (install.iss OutputDir 的輸出目標)
+          New-Item -ItemType Directory -Force -Path "releases" | Out-Null
 
-          # 複製安裝程序到 release_output
+          # 編譯安裝程序
+          Write-Host "📦 編譯 Inno Setup 安裝程序..."
+          iscc basler_cpp/installer/install.iss
+          
+          # 檢查編譯結果
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Inno Setup 編譯失敗！"
+            exit 1
+          }
+
+          # 列出 releases 目錄內容 (install.iss OutputDir=..\..\releases)
+          Write-Host "📋 releases 目錄內容:"
+          if (Test-Path "releases") {
+            Get-ChildItem -Path "releases" | ForEach-Object { Write-Host "  $($_.Name)" }
+          } else {
+            Write-Host "::warning::releases 目錄不存在"
+          }
+
+          # 複製安裝程序到 release_output (正確路徑：項目根目錄的 releases/)
           Write-Host "📦 複製安裝程序到 release_output..."
-          Get-ChildItem -Path "basler_cpp\installer\releases" -Filter "*.exe" | ForEach-Object {
+          Get-ChildItem -Path "releases" -Filter "*.exe" 2>$null | ForEach-Object {
             Write-Host "→ 複製: $($_.Name)"
             Copy-Item $_.FullName -Destination "release_output\"
           }
           
-          # 列出 release_output 內容
-          Write-Host "📋 release_output 目錄內容:"
-          Get-ChildItem -Path "release_output" -Recurse | Select-Object FullName
+          # 列出 release_output 最終內容
+          Write-Host "📋 release_output 目錄最終內容:"
+          Get-ChildItem -Path "release_output" -Recurse | ForEach-Object {
+            $size = if ($_.PSIsContainer) { "[DIR]" } else { "{0:N0} KB" -f ($_.Length/1KB) }
+            Write-Host "  $($_.FullName) - $size"
+          }
         shell: pwsh
 
       - name: 🎁 打包 macOS DMG
