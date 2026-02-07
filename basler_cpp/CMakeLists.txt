@@ -147,8 +147,12 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${OpenCV_INCLUDE_DIRS}
-    ${PYLON_INCLUDE_DIRS}
 )
+
+# 條件性添加 Pylon 包含目錄
+if(NOT SKIP_PYLON AND PYLON_INCLUDE_DIRS)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${PYLON_INCLUDE_DIRS})
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Core
@@ -158,8 +162,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::MultimediaWidgets
     Qt6::Concurrent
     ${OpenCV_LIBS}
-    ${PYLON_LIBRARY}
 )
+
+# 條件性連結 Pylon 庫
+if(NOT SKIP_PYLON AND PYLON_LIBRARY)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${PYLON_LIBRARY})
+endif()
 
 # ============================================================================
 # 安裝
