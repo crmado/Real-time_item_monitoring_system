@@ -19,6 +19,11 @@ on:
     push:
         tags:
             - "cpp-v*.*.*"
+        branches:
+            - feature/cpp-rewrite
+        paths:
+            - "basler_cpp/**"
+            - ".github/workflows/build-cpp-release.yml"
 
     # Pull Request 時進行測試打包（不上傳）
     pull_request:
