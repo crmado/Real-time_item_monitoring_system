@@ -11,15 +11,18 @@ set(CMAKE_AUTOUIC ON)
 # 依賴查找
 # ============================================================================
 
-# Qt6
-find_package(Qt6 REQUIRED COMPONENTS
-    Core
-    Gui
-    Widgets
-    Multimedia
-    MultimediaWidgets
-    Concurrent
-)
+# Try Qt6 first, fallback to Qt5
+find_package(Qt6 QUIET COMPONENTS Core Gui Widgets Multimedia MultimediaWidgets Concurrent)
+
+if(NOT Qt6_FOUND)
+    message(STATUS "Qt6 not found, trying Qt5...")
+    find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Multimedia MultimediaWidgets Concurrent)
+    set(QT_VERSION_MAJOR 5)
+else()
+    set(QT_VERSION_MAJOR 6)
+endif()
+
+message(STATUS "Using Qt${QT_VERSION_MAJOR}")
 
 # OpenCV
 find_package(OpenCV REQUIRED COMPONENTS
@@ -47,9 +50,13 @@ elseif(UNIX)
     set(PYLON_INCLUDE_DIRS "${PYLON_ROOT}/include")
     find_library(PYLON_LIBRARY pylonbase PATHS "${PYLON_ROOT}/lib")
 elseif(WIN32)
-    set(PYLON_ROOT "C:/Program Files/Basler/pylon 7/Development" CACHE PATH "Pylon SDK root directory")
+    set(PYLON_ROOT "C:/Program Files/Basler/pylon 8/Development" CACHE PATH "Pylon SDK root directory")
     set(PYLON_INCLUDE_DIRS "${PYLON_ROOT}/include")
-    find_library(PYLON_LIBRARY PylonBase_v7_4 PATHS "${PYLON_ROOT}/lib/x64")
+    find_library(PYLON_BASE PylonBase_v9 PATHS "${PYLON_ROOT}/lib/x64")
+    find_library(PYLON_UTILITY PylonUtility_v9 PATHS "${PYLON_ROOT}/lib/x64")
+    find_library(PYLON_GCBASE GCBase_MD_VC141_v3_1_Basler_pylon PATHS "${PYLON_ROOT}/lib/x64")
+    find_library(PYLON_GENAPI GenApi_MD_VC141_v3_1_Basler_pylon PATHS "${PYLON_ROOT}/lib/x64")
+    set(PYLON_LIBRARY ${PYLON_BASE} ${PYLON_UTILITY} ${PYLON_GCBASE} ${PYLON_GENAPI})
 endif()
 
 # ============================================================================
@@ -154,15 +161,27 @@ if(NOT SKIP_PYLON AND PYLON_INCLUDE_DIRS)
     target_include_directories(${PROJECT_NAME} PRIVATE ${PYLON_INCLUDE_DIRS})
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Multimedia
-    Qt6::MultimediaWidgets
-    Qt6::Concurrent
-    ${OpenCV_LIBS}
-)
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Multimedia
+        Qt6::MultimediaWidgets
+        Qt6::Concurrent
+        ${OpenCV_LIBS}
+    )
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        Qt5::Multimedia
+        Qt5::MultimediaWidgets
+        Qt5::Concurrent
+        ${OpenCV_LIBS}
+    )
+endif()
 
 # 條件性連結 Pylon 庫
 if(NOT SKIP_PYLON AND PYLON_LIBRARY)
@@ -194,7 +213,7 @@ endif()
 # ============================================================================
 
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /utf-8)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
 endif()

@@ -50,8 +50,9 @@ namespace basler
         void closeEvent(QCloseEvent *event) override;
 
     private slots:
-        // ========== 相機控制 ==========
+        // ========== Camera Control ==========
         void onDetectCameras();
+        void onDetectCamerasWithRetry();  // Smart scan with auto-retry
         void onConnectCamera();
         void onDisconnectCamera();
         void onStartGrabbing();

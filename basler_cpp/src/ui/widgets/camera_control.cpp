@@ -17,10 +17,23 @@ void CameraControlWidget::initUi()
     m_groupBox = new QGroupBox(tr("📷 相機控制"));
     QVBoxLayout* groupLayout = new QVBoxLayout();
 
-    // 偵測按鈕
-    m_detectBtn = new QPushButton(tr("🔍 偵測相機"));
+    // Detection buttons layout
+    QHBoxLayout* detectLayout = new QHBoxLayout();
+
+    // Quick detect button (single scan)
+    m_detectBtn = new QPushButton(tr("Quick Scan"));
+    m_detectBtn->setToolTip(tr("Single scan - fast but may miss cameras that are booting"));
     connect(m_detectBtn, &QPushButton::clicked, this, &CameraControlWidget::detectRequested);
-    groupLayout->addWidget(m_detectBtn);
+    detectLayout->addWidget(m_detectBtn);
+
+    // Auto-retry detect button (recommended)
+    m_autoDetectBtn = new QPushButton(tr("🔍 Auto-Detect (Recommended)"));
+    m_autoDetectBtn->setToolTip(tr("Smart scan with 3 auto-retries - finds cameras that need time to boot"));
+    m_autoDetectBtn->setStyleSheet("font-weight: bold;");
+    connect(m_autoDetectBtn, &QPushButton::clicked, this, &CameraControlWidget::detectWithRetryRequested);
+    detectLayout->addWidget(m_autoDetectBtn);
+
+    groupLayout->addLayout(detectLayout);
 
     // 相機選擇（ComboBox）
     m_cameraCombo = new QComboBox();

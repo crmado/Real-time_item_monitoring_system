@@ -17,6 +17,8 @@
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QDebug>
+#include <QTimer>
+#include <QtConcurrent>
 #include <opencv2/imgproc.hpp>
 
 namespace basler
@@ -336,9 +338,11 @@ namespace basler
 
     void MainWindow::connectCameraSignals()
     {
-        // 從 UI 到 SourceManager
+        // From UI to SourceManager
         connect(m_cameraControl, &CameraControlWidget::detectRequested,
                 this, &MainWindow::onDetectCameras);
+        connect(m_cameraControl, &CameraControlWidget::detectWithRetryRequested,
+                this, &MainWindow::onDetectCamerasWithRetry);
         connect(m_cameraControl, &CameraControlWidget::connectRequested,
                 this, &MainWindow::onConnectCamera);
         connect(m_cameraControl, &CameraControlWidget::disconnectRequested,
@@ -348,21 +352,21 @@ namespace basler
         connect(m_cameraControl, &CameraControlWidget::stopGrabRequested,
                 this, &MainWindow::onStopGrabbing);
 
-        // 從 SourceManager 到 MainWindow
+        // 從 SourceManager 到 MainWindow（使用 Qt::QueuedConnection 確保線程安全）
         connect(m_sourceManager.get(), &SourceManager::connected,
-                this, &MainWindow::onCameraConnected);
+                this, &MainWindow::onCameraConnected, Qt::QueuedConnection);
         connect(m_sourceManager.get(), &SourceManager::disconnected,
-                this, &MainWindow::onCameraDisconnected);
+                this, &MainWindow::onCameraDisconnected, Qt::QueuedConnection);
         connect(m_sourceManager.get(), &SourceManager::grabbingStarted,
-                this, &MainWindow::onGrabbingStarted);
+                this, &MainWindow::onGrabbingStarted, Qt::QueuedConnection);
         connect(m_sourceManager.get(), &SourceManager::grabbingStopped,
-                this, &MainWindow::onGrabbingStopped);
+                this, &MainWindow::onGrabbingStopped, Qt::QueuedConnection);
         connect(m_sourceManager.get(), &SourceManager::frameReady,
-                this, &MainWindow::onFrameReady);
+                this, &MainWindow::onFrameReady, Qt::QueuedConnection);
         connect(m_sourceManager.get(), &SourceManager::fpsUpdated,
-                this, &MainWindow::onFpsUpdated);
+                this, &MainWindow::onFpsUpdated, Qt::QueuedConnection);
         connect(m_sourceManager.get(), &SourceManager::error,
-                this, &MainWindow::onCameraError);
+                this, &MainWindow::onCameraError, Qt::QueuedConnection);
     }
 
     void MainWindow::connectRecordingSignals()
@@ -521,17 +525,17 @@ namespace basler
 
     void MainWindow::onDetectCameras()
     {
-        m_statusLabel->setText("偵測相機中...");
+        m_statusLabel->setText("Detecting cameras (quick scan)...");
         auto cameras = m_sourceManager->cameraController()->detectCameras();
 
         if (cameras.isEmpty())
         {
-            m_statusLabel->setText("未發現相機");
+            m_statusLabel->setText("No cameras found");
             m_cameraControl->setCameraList({});
         }
         else
         {
-            m_statusLabel->setText(QString("發現 %1 台相機").arg(cameras.size()));
+            m_statusLabel->setText(QString("Found %1 camera(s)").arg(cameras.size()));
             QStringList cameraNames;
             for (const auto &cam : cameras)
             {
@@ -539,6 +543,35 @@ namespace basler
             }
             m_cameraControl->setCameraList(cameraNames);
         }
+    }
+
+    void MainWindow::onDetectCamerasWithRetry()
+    {
+        m_statusLabel->setText("Auto-detecting cameras (smart scan with retry)...");
+
+        // Run in background to avoid UI blocking
+        QtConcurrent::run([this]()
+                          {
+            auto cameras = m_sourceManager->cameraController()->detectCamerasWithRetry(3, 2000);
+
+            // Update UI in main thread
+            QMetaObject::invokeMethod(this, [this, cameras]() {
+                if (cameras.isEmpty())
+                {
+                    m_statusLabel->setText("No cameras found after 3 attempts. Check connections and power.");
+                    m_cameraControl->setCameraList({});
+                }
+                else
+                {
+                    m_statusLabel->setText(QString("Successfully found %1 camera(s)").arg(cameras.size()));
+                    QStringList cameraNames;
+                    for (const auto &cam : cameras)
+                    {
+                        cameraNames.append(QString("%1 (%2)").arg(cam.model).arg(cam.serial));
+                    }
+                    m_cameraControl->setCameraList(cameraNames);
+                }
+            }, Qt::QueuedConnection); });
     }
 
     void MainWindow::onConnectCamera()
@@ -568,6 +601,10 @@ namespace basler
         m_statusLabel->setText(QString("已連接: %1").arg(info.model));
         m_cameraControl->setConnected(true);
         qDebug() << "[MainWindow] 相機已連接:" << info.model;
+
+        // 連接成功後自動開始抓取
+        QTimer::singleShot(100, this, [this]()
+                           { m_sourceManager->startGrabbing(); });
     }
 
     void MainWindow::onCameraDisconnected()
@@ -607,20 +644,27 @@ namespace basler
 
     void MainWindow::onFrameReady(const cv::Mat &frame)
     {
-        QMutexLocker locker(&m_frameMutex);
-        m_latestFrame = frame.clone();
-
-        // 處理幀（檢測、錄製）
-        if (m_isDetecting)
+        static int frameCount = 0;
+        frameCount++;
+        if (frameCount == 1 || frameCount % 100 == 0)
         {
-            processFrame(frame);
+            qDebug() << "[MainWindow::onFrameReady] 收到幀 #" << frameCount
+                     << ", 尺寸:" << frame.cols << "x" << frame.rows;
         }
 
-        // 錄製
+        // 只更新幀數據，不在這裡做耗時處理
+        {
+            QMutexLocker locker(&m_frameMutex);
+            m_latestFrame = frame.clone();
+        }
+
+        // 錄製（快速操作）
         if (m_isRecording)
         {
             m_videoRecorder->writeFrame(frame);
         }
+
+        // 注意：檢測處理已移到 updateDisplay() 中，與 UI 更新同步
     }
 
     void MainWindow::processFrame(const cv::Mat &frame)
@@ -650,6 +694,13 @@ namespace basler
             if (m_latestFrame.empty())
                 return;
             frame = m_latestFrame.clone();
+        }
+
+        // 如果正在檢測，在 UI 線程處理（60fps 頻率）
+        if (m_isDetecting && !frame.empty())
+        {
+            processFrame(frame);
+            QMutexLocker locker(&m_frameMutex);
             if (!m_processedFrame.empty())
             {
                 processed = m_processedFrame.clone();

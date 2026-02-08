@@ -51,8 +51,9 @@ public slots:
     void setVideoMode(bool isVideo);
 
 signals:
-    // 用戶操作信號
+    // User operation signals
     void detectRequested();
+    void detectWithRetryRequested();  // New: auto-retry detection
     void connectRequested();
     void disconnectRequested();
     void startGrabRequested();
@@ -66,9 +67,10 @@ private:
     void initUi();
     void updateButtonStates();
 
-    // UI 組件
+    // UI Components
     QGroupBox* m_groupBox;
     QPushButton* m_detectBtn;
+    QPushButton* m_autoDetectBtn;  // New: auto-retry detect button
     QComboBox* m_cameraCombo;
     QPushButton* m_connectBtn;
     QPushButton* m_disconnectBtn;

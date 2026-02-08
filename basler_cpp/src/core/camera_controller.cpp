@@ -37,28 +37,64 @@ namespace basler
 
         try
         {
+            // 增加接收緩衝區（防止 GigE 緩衝區不足）
+            m_camera->MaxNumBuffer = 10;
+
             // 配置抓取策略：只保留最新幀，丟棄中間幀
             m_camera->StartGrabbing(Pylon::GrabStrategy_LatestImageOnly);
 
             Pylon::CGrabResultPtr grabResult;
+            int frameCount = 0;
+            int errorCount = 0;
 
             while (m_running.load() && m_camera->IsGrabbing())
             {
-                // 100ms 超時，允許快速響應停止請求
-                if (m_camera->RetrieveResult(100, grabResult, Pylon::TimeoutHandling_Return))
+                // 500ms 超時（給 GigE 更多緩衝時間）
+                if (m_camera->RetrieveResult(500, grabResult, Pylon::TimeoutHandling_Return))
                 {
                     if (grabResult->GrabSucceeded())
                     {
-                        // 直接使用 OpenCV Mat（零拷貝包裝）
+                        errorCount = 0; // 重置錯誤計數
+
+                        // 根據像素格式決定 Mat 類型
+                        int cvType = CV_8UC1;
+                        Pylon::EPixelType pixelType = grabResult->GetPixelType();
+                        if (Pylon::IsBGR(pixelType) || Pylon::IsRGB(pixelType))
+                        {
+                            cvType = CV_8UC3;
+                        }
+
                         cv::Mat frame(
                             grabResult->GetHeight(),
                             grabResult->GetWidth(),
-                            CV_8UC1,
+                            cvType,
                             grabResult->GetBuffer());
 
                         // 深拷貝一份發送（因為 grabResult 會被復用）
                         qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
-                        emit frameGrabbed(frame.clone(), timestamp);
+                        cv::Mat frameCopy = frame.clone();
+                        emit frameGrabbed(frameCopy, timestamp);
+
+                        frameCount++;
+                        if (frameCount == 1 || frameCount % 100 == 0)
+                        {
+                            qDebug() << "[GrabWorker] 已抓取" << frameCount << "幀, 尺寸:"
+                                     << frameCopy.cols << "x" << frameCopy.rows;
+                        }
+                    }
+                    else
+                    {
+                        errorCount++;
+                        if (errorCount <= 5)
+                        {
+                            qWarning() << "[GrabWorker] 抓取失敗 (" << errorCount << "):"
+                                       << grabResult->GetErrorDescription();
+                        }
+                        // 連續錯誤過多時，給系統一點緩衝時間
+                        if (errorCount > 10)
+                        {
+                            QThread::msleep(50);
+                        }
                     }
                 }
                 // 沒有 sleep - 全速運行
@@ -207,6 +243,8 @@ namespace basler
             break;
         case CameraState::Disconnecting:
             valid = (current == CameraState::Connected ||
+                     current == CameraState::StoppingGrab ||
+                     current == CameraState::Grabbing ||
                      current == CameraState::Error);
             break;
         case CameraState::Disconnected:
@@ -256,13 +294,48 @@ namespace basler
                 info.isTargetModel = info.model.contains("acA640-300gm");
 
                 cameras.append(info);
-                qDebug() << "[CameraController] 發現相機:" << info.model;
+                qDebug() << "[CameraController] Found camera:" << info.model;
             }
         }
         catch (const Pylon::GenericException &e)
         {
-            qWarning() << "[CameraController] 檢測相機失敗:" << e.GetDescription();
+            qWarning() << "[CameraController] Camera detection failed:" << e.GetDescription();
         }
+
+        return cameras;
+    }
+
+    QList<CameraInfo> CameraController::detectCamerasWithRetry(int maxRetries, int delayMs)
+    {
+        QList<CameraInfo> cameras;
+
+        qDebug() << "[CameraController] Scanning for cameras with auto-retry (max" << maxRetries << "attempts)";
+
+        for (int attempt = 1; attempt <= maxRetries; ++attempt)
+        {
+            qDebug() << "[CameraController] Attempt" << attempt << "/" << maxRetries << "- Scanning...";
+
+            cameras = detectCameras();
+
+            if (!cameras.empty())
+            {
+                qDebug() << "[CameraController] Successfully found" << cameras.size() << "camera(s) on attempt" << attempt;
+                return cameras;
+            }
+
+            if (attempt < maxRetries)
+            {
+                qDebug() << "[CameraController] No cameras found, waiting" << delayMs << "ms before retry...";
+                QThread::msleep(delayMs);
+            }
+        }
+
+        qWarning() << "[CameraController] No cameras detected after" << maxRetries << "attempts";
+        qWarning() << "[CameraController] Possible causes:";
+        qWarning() << "  1. Camera power is off or booting (GigE cameras need 5-10 seconds)";
+        qWarning() << "  2. Network cable not connected properly";
+        qWarning() << "  3. Windows Firewall blocking GigE Vision protocol (UDP broadcast)";
+        qWarning() << "  4. Network adapter driver issues";
 
         return cameras;
     }
@@ -272,8 +345,16 @@ namespace basler
         // 使用 QtConcurrent 在背景線程執行，不阻塞 UI
         QtConcurrent::run([this, cameraIndex]()
                           {
-        if (!transitionTo(CameraState::Connecting)) {
-            emit connectionError("無法從當前狀態連接相機");
+        // 使用 QMetaObject::invokeMethod 確保狀態轉換在主線程執行
+        bool transitionOk = false;
+        QMetaObject::invokeMethod(this, [this, &transitionOk]() {
+            transitionOk = transitionTo(CameraState::Connecting);
+        }, Qt::BlockingQueuedConnection);
+        
+        if (!transitionOk) {
+            QMetaObject::invokeMethod(this, [this]() {
+                emit connectionError("無法從當前狀態連接相機");
+            }, Qt::QueuedConnection);
             return;
         }
 
@@ -303,18 +384,26 @@ namespace basler
             info.model = QString::fromStdString(devices[cameraIndex].GetModelName().c_str());
             info.serial = QString::fromStdString(devices[cameraIndex].GetSerialNumber().c_str());
 
-            setState(CameraState::Connected);
-            emit connected(info);
-
-            qDebug() << "[CameraController] 相機連接成功:" << info.model;
+            // 使用 QMetaObject::invokeMethod 確保狀態更新和信號發射在主線程
+            QMetaObject::invokeMethod(this, [this, info]() {
+                setState(CameraState::Connected);
+                emit connected(info);
+                qDebug() << "[CameraController] 相機連接成功:" << info.model;
+            }, Qt::QueuedConnection);
         }
         catch (const Pylon::GenericException& e) {
-            setState(CameraState::Error);
-            emit connectionError(QString::fromStdString(e.GetDescription()));
+            QString errorMsg = QString::fromStdString(e.GetDescription());
+            QMetaObject::invokeMethod(this, [this, errorMsg]() {
+                setState(CameraState::Error);
+                emit connectionError(errorMsg);
+            }, Qt::QueuedConnection);
         }
         catch (const std::exception& e) {
-            setState(CameraState::Error);
-            emit connectionError(QString::fromStdString(e.what()));
+            QString errorMsg = QString::fromStdString(e.what());
+            QMetaObject::invokeMethod(this, [this, errorMsg]() {
+                setState(CameraState::Error);
+                emit connectionError(errorMsg);
+            }, Qt::QueuedConnection);
         } });
     }
 
@@ -322,18 +411,31 @@ namespace basler
     {
         QtConcurrent::run([this]()
                           {
-        if (!transitionTo(CameraState::Disconnecting)) {
+        // 使用 QMetaObject::invokeMethod 確保狀態轉換在主線程執行
+        bool transitionOk = false;
+        QMetaObject::invokeMethod(this, [this, &transitionOk]() {
+            transitionOk = transitionTo(CameraState::Disconnecting);
+        }, Qt::BlockingQueuedConnection);
+        
+        if (!transitionOk) {
             return;
         }
 
         // 先停止抓取（如果正在抓取）
         if (m_grabWorker) {
             m_grabWorker->stopGrabbing();
-            m_grabWorker->disconnect();  // 防止懸空指針
+            // 在主線程斷開信號連接
+            QMetaObject::invokeMethod(this, [this]() {
+                if (m_grabWorker) m_grabWorker->disconnect();
+            }, Qt::BlockingQueuedConnection);
         }
 
         if (m_grabThread) {
-            m_grabThread->disconnect();  // 防止懸空指針
+            // 在主線程斷開信號連接
+            QMetaObject::invokeMethod(this, [this]() {
+                if (m_grabThread) m_grabThread->disconnect();
+            }, Qt::BlockingQueuedConnection);
+            
             if (m_grabThread->isRunning()) {
                 m_grabThread->quit();
                 if (!m_grabThread->wait(3000)) {
@@ -342,9 +444,11 @@ namespace basler
             }
         }
 
-        // 先清理線程和 worker
-        m_grabWorker.reset();
-        m_grabThread.reset();
+        // 先清理線程和 worker（在主線程執行）
+        QMetaObject::invokeMethod(this, [this]() {
+            m_grabWorker.reset();
+            m_grabThread.reset();
+        }, Qt::BlockingQueuedConnection);
 
         // 再關閉相機
         if (m_camera && m_camera->IsOpen()) {
@@ -352,10 +456,12 @@ namespace basler
         }
         m_camera.reset();
 
-        setState(CameraState::Disconnected);
-        emit disconnected();
-
-        qDebug() << "[CameraController] 相機已斷開"; });
+        // 使用 QMetaObject::invokeMethod 確保狀態更新和信號發射在主線程
+        QMetaObject::invokeMethod(this, [this]() {
+            setState(CameraState::Disconnected);
+            emit disconnected();
+            qDebug() << "[CameraController] 相機已斷開";
+        }, Qt::QueuedConnection); });
     }
 
     void CameraController::startGrabbing()
@@ -371,15 +477,19 @@ namespace basler
         m_grabWorker = std::make_unique<GrabWorker>(m_camera.get());
         m_grabWorker->moveToThread(m_grabThread.get());
 
-        // 連接信號（跨線程，Qt 自動使用 QueuedConnection）
+        // 連接信號（明確使用 Qt::QueuedConnection 確保跨線程安全）
         connect(m_grabThread.get(), &QThread::started,
-                m_grabWorker.get(), &GrabWorker::startGrabbing);
+                m_grabWorker.get(), &GrabWorker::startGrabbing,
+                Qt::QueuedConnection);
         connect(m_grabWorker.get(), &GrabWorker::frameGrabbed,
-                this, &CameraController::onFrameGrabbed);
+                this, &CameraController::onFrameGrabbed,
+                Qt::QueuedConnection);
         connect(m_grabWorker.get(), &GrabWorker::grabError,
-                this, &CameraController::onGrabError);
+                this, &CameraController::onGrabError,
+                Qt::QueuedConnection);
         connect(m_grabWorker.get(), &GrabWorker::grabStopped,
-                this, &CameraController::onGrabStopped);
+                this, &CameraController::onGrabStopped,
+                Qt::QueuedConnection);
 
         // 重置統計
         m_totalFrames.store(0);
@@ -452,6 +562,13 @@ namespace basler
 
     void CameraController::onFrameGrabbed(const cv::Mat &frame, qint64 timestamp)
     {
+        static int grabCount = 0;
+        grabCount++;
+        if (grabCount == 1 || grabCount % 100 == 0)
+        {
+            qDebug() << "[CameraController::onFrameGrabbed] 收到 #" << grabCount;
+        }
+
         // 更新統計
         m_totalFrames.fetch_add(1);
 
@@ -519,13 +636,49 @@ namespace basler
         {
             GenApi::INodeMap &nodemap = m_camera->GetNodeMap();
 
-            // 設置圖像格式
+            // ========== 圖像解析度設置（與 Python 版本一致）==========
+            // 使用低解析度，減少 GigE 傳輸負擔
             GenApi::CIntegerPtr width(nodemap.GetNode("Width"));
             GenApi::CIntegerPtr height(nodemap.GetNode("Height"));
-            if (width.IsValid())
+            if (width.IsValid() && height.IsValid())
+            {
                 width->SetValue(640);
-            if (height.IsValid())
                 height->SetValue(480);
+                qDebug() << "[CameraController] 解析度設置: 640x480";
+            }
+
+            // ========== GigE 傳輸優化 ==========
+            // 先嘗試自動發現最佳封包大小（使用 Pylon 的 GigE 功能）
+            GenApi::CIntegerPtr packetSize(nodemap.GetNode("GevSCPSPacketSize"));
+            if (packetSize.IsValid())
+            {
+                // 嘗試使用 1500 標準 MTU (大多數網卡都支援)
+                // 如果網卡支援 Jumbo frames，可以增加到 8000-9000
+                int64_t targetPacketSize = 1500;
+
+                // 檢查範圍
+                int64_t minSize = packetSize->GetMin();
+                int64_t maxSize = packetSize->GetMax();
+                qDebug() << "[CameraController] Packet Size 範圍:" << minSize << "-" << maxSize;
+
+                // 使用較小的安全值
+                if (targetPacketSize < minSize)
+                    targetPacketSize = minSize;
+                if (targetPacketSize > maxSize)
+                    targetPacketSize = maxSize;
+
+                packetSize->SetValue(targetPacketSize);
+                qDebug() << "[CameraController] GevSCPSPacketSize:" << packetSize->GetValue();
+            }
+
+            // Inter-Packet Delay (增大延遲確保穩定傳輸)
+            GenApi::CIntegerPtr interPacketDelay(nodemap.GetNode("GevSCPD"));
+            if (interPacketDelay.IsValid())
+            {
+                // 增加到 5000 ticks 以確保穩定傳輸
+                interPacketDelay->SetValue(5000);
+                qDebug() << "[CameraController] GevSCPD:" << interPacketDelay->GetValue();
+            }
 
             // 設置像素格式為 Mono8
             GenApi::CEnumerationPtr pixelFormat(nodemap.GetNode("PixelFormat"));
@@ -534,21 +687,20 @@ namespace basler
                 pixelFormat->FromString("Mono8");
             }
 
-            // 關閉自動曝光
+            // ========== 曝光設置 ==========
             GenApi::CEnumerationPtr exposureAuto(nodemap.GetNode("ExposureAuto"));
             if (exposureAuto.IsValid())
             {
                 exposureAuto->FromString("Off");
             }
 
-            // 設置曝光時間
             GenApi::CFloatPtr exposureTime(nodemap.GetNode("ExposureTime"));
             if (exposureTime.IsValid())
             {
                 exposureTime->SetValue(m_exposureTime);
             }
 
-            // 啟用幀率控制
+            // ========== 幀率控制 ==========
             GenApi::CBooleanPtr fpsEnable(nodemap.GetNode("AcquisitionFrameRateEnable"));
             if (fpsEnable.IsValid())
             {
@@ -559,13 +711,6 @@ namespace basler
             if (fps.IsValid())
             {
                 fps->SetValue(m_targetFps);
-            }
-
-            // GigE 優化：設置最大封包大小
-            GenApi::CIntegerPtr packetSize(nodemap.GetNode("GevSCPSPacketSize"));
-            if (packetSize.IsValid())
-            {
-                packetSize->SetValue(9000); // Jumbo frames
             }
 
             qDebug() << "[CameraController] 相機配置完成";

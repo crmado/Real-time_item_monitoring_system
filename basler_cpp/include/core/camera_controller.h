@@ -136,7 +136,22 @@ namespace basler
         qint64 totalFrames() const { return m_totalFrames; }
 
         // ===== 相機操作（全部異步，不阻塞 UI）=====
+        /**
+         * @brief Detect cameras (single scan)
+         * @return List of detected cameras
+         */
         QList<CameraInfo> detectCameras();
+
+        /**
+         * @brief Detect cameras with auto-retry
+         * @param maxRetries Maximum number of retry attempts (default: 3)
+         * @param delayMs Delay between retries in milliseconds (default: 2000)
+         * @return List of detected cameras
+         *
+         * This method automatically retries scanning for cameras,
+         * which is useful because GigE cameras need 5-10 seconds to boot up.
+         */
+        QList<CameraInfo> detectCamerasWithRetry(int maxRetries = 3, int delayMs = 2000);
 
     public slots:
         /**
@@ -223,8 +238,8 @@ namespace basler
         std::deque<qint64> m_frameTimes;
         QMutex m_statsMutex;
 
-        // 配置
-        double m_targetFps = 350.0;
+        // 配置 (先使用 60fps 確保穩定)
+        double m_targetFps = 60.0;
         double m_exposureTime = 1000.0; // 微秒
 
 #ifndef NO_PYLON_SDK
