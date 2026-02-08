@@ -21,7 +21,15 @@
       "Bash(~/miniconda3/envs/basler_vision/bin/python:*)",
       "Bash(bash -n:*)",
       "Bash(git add:*)",
-      "Bash(/opt/homebrew/Cellar/cmake/3.31.5/bin/cmake --build:*)"
+      "Bash(/opt/homebrew/Cellar/cmake/3.31.5/bin/cmake --build:*)",
+      "Bash(cmake --build:*)",
+      "Bash(dir \"C:\\\\Program Files\\\\Basler\\\\pylon 8\\\\Development\\\\lib\\\\x64\")",
+      "Bash(findstr:*)",
+      "Bash(./test_camera.exe)",
+      "Bash(ipconfig:*)",
+      "Bash(ping:*)",
+      "Bash(arp:*)",
+      "Bash(./test_camera_auto.exe)"
     ],
     "deny": []
   },
