@@ -117,3 +117,8 @@ basler_mvc/recordings/1000顆/output_*.mp4
 basler_mvc/recordings/1000顆/colorConversion_*.mp4
 sftp.json
 temp_*.json
+
+# Build outputs
+basler_cpp/build_release/
+basler_cpp/pylon_test/
+nul
