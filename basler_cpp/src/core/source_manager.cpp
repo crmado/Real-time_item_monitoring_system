@@ -181,6 +181,7 @@ namespace basler
             if (m_videoPlayer)
             {
                 m_videoPlayer->startPlaying();
+                emit grabbingStarted(); // 通知 UI 視頻播放已開始
             }
             break;
         default:

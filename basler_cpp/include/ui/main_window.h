@@ -83,7 +83,7 @@ namespace basler
         void onPausePackaging();
         void onResetCount();
         void onTargetCountChanged(int count);
-        void onThresholdChanged(int threshold);
+        void onThresholdChanged(double full, double medium, double slow);
         void onPartTypeChanged(const QString &partId);
         void onDetectionMethodChanged(const QString &methodId);
 

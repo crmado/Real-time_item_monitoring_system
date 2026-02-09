@@ -22,11 +22,25 @@ namespace basler
         m_minAspectRatio = det.minAspectRatio;
         m_maxAspectRatio = det.maxAspectRatio;
         m_minExtent = det.minExtent;
+        m_maxSolidity = det.maxSolidity;
         m_bgHistory = det.bgHistory;
         m_bgVarThreshold = det.bgVarThreshold;
         m_detectShadows = det.detectShadows;
         m_bgLearningRate = det.bgLearningRate;
         m_connectivity = det.connectivity;
+
+        // 邊緣檢測參數
+        m_gaussianBlurKernelSize = det.gaussianBlurKernelSize;
+        m_cannyLowThreshold = det.cannyLowThreshold;
+        m_cannyHighThreshold = det.cannyHighThreshold;
+        m_binaryThreshold = det.binaryThreshold;
+
+        // 形態學參數
+        m_dilateKernelSize = det.dilateKernelSize;
+        m_dilateIterations = det.dilateIterations;
+        m_closeKernelSize = det.closeKernelSize;
+        m_openingKernelSize = det.openingKernelSize;
+        m_openingIterations = det.openingIterations;
 
         // ROI 參數
         m_roiEnabled = det.roiEnabled;
@@ -214,9 +228,10 @@ namespace basler
         cv::Mat fgMask;
         m_bgSubtractor->apply(processRegion, fgMask, m_currentLearningRate);
 
-        // 2. 高斯模糊減少噪聲
+        // 2. 高斯模糊減少噪聲（使用配置參數，預設 1x1 等同跳過，保留小零件細節）
         cv::Mat blurred;
-        cv::GaussianBlur(processRegion, blurred, cv::Size(1, 1), 0);
+        int blurSize = m_gaussianBlurKernelSize | 1;  // 確保為奇數
+        cv::GaussianBlur(processRegion, blurred, cv::Size(blurSize, blurSize), 0);
 
         // 3. 增強前景遮罩濾波
         cv::Mat fgMedian;
@@ -237,9 +252,9 @@ namespace basler
         cv::Mat fgCleaned;
         cv::morphologyEx(fgStep2, fgCleaned, cv::MORPH_OPEN, finalKernel, cv::Point(-1, -1), 1);
 
-        // 4. Canny 邊緣檢測
+        // 4. Canny 邊緣檢測 - 使用敏感邊緣（Python: canny_low//2, canny_high//2）
         cv::Mat sensitiveEdges;
-        cv::Canny(blurred, sensitiveEdges, 1, 4);
+        cv::Canny(blurred, sensitiveEdges, m_cannyLowThreshold / 2, m_cannyHighThreshold / 2);
 
         // 5. 自適應閾值檢測
         cv::Mat grayRoi;
@@ -272,7 +287,32 @@ namespace basler
         cv::Mat combined;
         cv::bitwise_or(tempCombined, adaptiveThreshClean, combined);
 
-        return combined;
+        // 8. 後聯合形態學處理（參考 Python basler_mvc，預設跳過，可由 UI 調整啟用）
+        cv::Mat postProcessed = combined;
+
+        // 開運算（如果 kernel > 1 且 iterations > 0）
+        if (m_openingKernelSize > 1 && m_openingIterations > 0) {
+            cv::Mat openKernel = cv::getStructuringElement(
+                cv::MORPH_ELLIPSE, cv::Size(m_openingKernelSize, m_openingKernelSize));
+            cv::morphologyEx(postProcessed, postProcessed, cv::MORPH_OPEN,
+                             openKernel, cv::Point(-1, -1), m_openingIterations);
+        }
+
+        // 膨脹（如果 kernel > 1 且 iterations > 0）
+        if (m_dilateKernelSize > 1 && m_dilateIterations > 0) {
+            cv::Mat dilateKernel = cv::Mat::ones(m_dilateKernelSize, m_dilateKernelSize, CV_8U);
+            cv::dilate(postProcessed, postProcessed, dilateKernel,
+                       cv::Point(-1, -1), m_dilateIterations);
+        }
+
+        // 閉合（如果 kernel > 1）
+        if (m_closeKernelSize > 1) {
+            cv::Mat closeK = cv::getStructuringElement(
+                cv::MORPH_ELLIPSE, cv::Size(m_closeKernelSize, m_closeKernelSize));
+            cv::morphologyEx(postProcessed, postProcessed, cv::MORPH_CLOSE, closeK);
+        }
+
+        return postProcessed;
     }
 
     cv::Mat DetectionController::ultraHighSpeedProcessing(const cv::Mat &processRegion)
@@ -297,10 +337,17 @@ namespace basler
             return objects;
         }
 
+        // 小零件增強預處理：2x2 微膨脹使極小零件更容易被檢測（參考 Python basler_mvc）
+        cv::Mat enhanced = processed;
+        if (!m_ultraHighSpeedMode) {
+            cv::Mat tinyKernel = cv::Mat::ones(2, 2, CV_8U);
+            cv::dilate(processed, enhanced, tinyKernel, cv::Point(-1, -1), 1);
+        }
+
         // 連通組件分析
         cv::Mat labels, stats, centroids;
         int numLabels = cv::connectedComponentsWithStats(
-            processed, labels, stats, centroids, m_connectivity);
+            enhanced, labels, stats, centroids, m_connectivity);
 
         int minArea = m_ultraHighSpeedMode ? m_highSpeedMinArea : m_minArea;
         int maxArea = m_ultraHighSpeedMode ? m_highSpeedMaxArea : m_maxArea;

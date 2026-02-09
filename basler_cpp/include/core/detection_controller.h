@@ -155,18 +155,32 @@ private:
     double m_minAspectRatio = 0.001;
     double m_maxAspectRatio = 100.0;
     double m_minExtent = 0.001;
+    double m_maxSolidity = 5.0;
     int m_bgHistory = 1000;
     int m_bgVarThreshold = 3;
     bool m_detectShadows = false;
     double m_bgLearningRate = 0.001;
     int m_connectivity = 4;
 
-    // ROI 參數
+    // 邊緣檢測參數（basler_mvc 驗證值）
+    int m_gaussianBlurKernelSize = 1;
+    int m_cannyLowThreshold = 3;
+    int m_cannyHighThreshold = 10;
+    int m_binaryThreshold = 1;
+
+    // 形態學參數（預設跳過，可由 UI 調整啟用）
+    int m_dilateKernelSize = 1;
+    int m_dilateIterations = 0;
+    int m_closeKernelSize = 1;
+    int m_openingKernelSize = 1;
+    int m_openingIterations = 0;
+
+    // ROI 參數（basler_mvc 驗證值）
     bool m_roiEnabled = true;
-    int m_roiHeight = 150;
-    double m_roiPositionRatio = 0.10;
+    int m_roiHeight = 120;
+    double m_roiPositionRatio = 0.12;
     int m_currentRoiY = 0;
-    int m_currentRoiHeight = 150;
+    int m_currentRoiHeight = 120;
 
     // 高速模式參數
     bool m_ultraHighSpeedMode = false;

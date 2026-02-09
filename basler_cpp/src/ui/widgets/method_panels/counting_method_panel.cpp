@@ -180,8 +180,20 @@ void CountingMethodPanel::updateVibratorStatus(bool vibrator1Running, bool vibra
 void CountingMethodPanel::setPackagingState(bool running)
 {
     m_isRunning = running;
-    m_startBtn->setEnabled(!running);
-    m_pauseBtn->setEnabled(running);
+
+    if (running) {
+        m_startBtn->setText(tr("⏹ 包裝中..."));
+        m_startBtn->setStyleSheet("QPushButton { background-color: #FF9800; color: white; padding: 10px; }");
+        m_startBtn->setEnabled(false);
+        m_pauseBtn->setEnabled(true);
+        m_resetBtn->setEnabled(false);
+    } else {
+        m_startBtn->setText(tr("▶ 開始包裝"));
+        m_startBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 10px; }");
+        m_startBtn->setEnabled(true);
+        m_pauseBtn->setEnabled(false);
+        m_resetBtn->setEnabled(true);
+    }
 }
 
 void CountingMethodPanel::showPackagingCompleted()

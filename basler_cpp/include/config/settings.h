@@ -35,8 +35,8 @@ struct DetectionConfig {
 
     // 邊緣檢測參數
     int gaussianBlurKernelSize = 1;
-    int cannyLowThreshold = 2;
-    int cannyHighThreshold = 8;
+    int cannyLowThreshold = 3;     // Python basler_mvc 驗證值
+    int cannyHighThreshold = 10;   // Python basler_mvc 驗證值
     int binaryThreshold = 1;
 
     // 形態學處理參數
@@ -57,8 +57,8 @@ struct DetectionConfig {
     int roiX = 0;
     int roiY = 0;
     int roiWidth = 640;
-    int roiHeight = 150;
-    double roiPositionRatio = 0.10;
+    int roiHeight = 120;           // Python basler_mvc 驗證值 (原 150)
+    double roiPositionRatio = 0.12; // Python basler_mvc 驗證值 (原 0.10)
 
     // 瑕疵檢測參數
     double defectSensitivity = 0.5;

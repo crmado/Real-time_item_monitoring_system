@@ -3,6 +3,7 @@
 #include "ui/widgets/camera_control.h"
 #include "ui/widgets/recording_control.h"
 #include "ui/widgets/packaging_control.h"
+#include "ui/widgets/method_panels/counting_method_panel.h"
 #include "ui/widgets/debug_panel.h"
 #include "ui/widgets/system_monitor.h"
 #include "config/settings.h"
@@ -16,6 +17,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QDebug>
 #include <QTimer>
 #include <QtConcurrent>
@@ -517,6 +519,10 @@ namespace basler
                     auto &config = Settings::instance().gate();
                     config.triggerRadius = radius;
                 });
+
+        // 測試影片載入
+        connect(m_debugPanel, &DebugPanelWidget::loadTestVideo,
+                this, &MainWindow::onLoadVideo);
     }
 
     // ============================================================================
@@ -795,18 +801,45 @@ namespace basler
         m_detectionController->enablePackagingMode(true);
         m_vibratorManager->start();
         m_detectionLabel->setText("計數中...");
+
+        // 更新 UI 按鈕狀態
+        m_packagingControl->countingPanel()->setPackagingState(true);
+
+        qDebug() << "[MainWindow] 包裝已啟動";
     }
 
     void MainWindow::onPausePackaging()
     {
         m_isPackaging = false;
+        m_isDetecting = false;
+        m_detectionController->disable();
+        m_detectionController->enablePackagingMode(false);
         m_vibratorManager->stop();
         m_detectionLabel->setText("已暫停");
+
+        // 更新 UI 按鈕狀態
+        m_packagingControl->countingPanel()->setPackagingState(false);
+
+        qDebug() << "[MainWindow] 包裝已暫停";
     }
 
     void MainWindow::onResetCount()
     {
+        // 停止所有操作
+        m_isPackaging = false;
+        m_isDetecting = false;
+        m_detectionController->disable();
         m_detectionController->resetPackaging();
+        m_vibratorManager->stop();
+        m_detectionLabel->setText("檢測: 停止");
+
+        // 重置 UI 狀態
+        m_packagingControl->countingPanel()->setPackagingState(false);
+        auto& pkg = getConfig().packaging();
+        m_packagingControl->updateCount(0, pkg.targetCount);
+        m_packagingControl->updateVibratorStatus(false, false, 0);
+
+        qDebug() << "[MainWindow] 包裝已重置";
     }
 
     void MainWindow::onTargetCountChanged(int count)
@@ -814,10 +847,18 @@ namespace basler
         m_detectionController->setTargetCount(count);
     }
 
-    void MainWindow::onThresholdChanged(int threshold)
+    void MainWindow::onThresholdChanged(double full, double medium, double slow)
     {
         auto &config = Settings::instance().packaging();
-        config.speedThreshold = threshold;
+        config.speedFullThreshold = full;
+        config.speedMediumThreshold = medium;
+        config.speedSlowThreshold = slow;
+
+        // 同步更新 DetectionController
+        m_detectionController->setSpeedThresholds(full, medium, slow);
+
+        qDebug() << "[MainWindow] 速度閾值變更: full=" << full
+                 << ", medium=" << medium << ", slow=" << slow;
     }
 
     void MainWindow::onPartTypeChanged(const QString &partId)
@@ -893,14 +934,23 @@ namespace basler
 
     void MainWindow::onPackagingCompleted()
     {
-        // 停止震動機
+        // 停止所有操作
         m_vibratorManager->stop();
         m_isPackaging = false;
+        m_isDetecting = false;
+        m_detectionController->disable();
+        m_detectionLabel->setText("包裝完成");
+
+        // 更新 UI 狀態
+        m_packagingControl->countingPanel()->showPackagingCompleted();
+        m_packagingControl->updateVibratorStatus(false, false, 0);
 
         // 提示用戶
         QMessageBox::information(this, "包裝完成",
                                  QString("已達到目標數量！\n當前計數: %1")
                                      .arg(m_detectionController->count()));
+
+        qDebug() << "[MainWindow] 包裝完成！計數:" << m_detectionController->count();
     }
 
     void MainWindow::onDefectStatsUpdated(double passRate, int passCount, int failCount)
@@ -963,19 +1013,35 @@ namespace basler
 
     void MainWindow::onLoadVideo()
     {
+        // 預設開啟測試影片目錄（從 build/Release/ 往上 3 層到專案根目錄）
+        QDir appDir(QCoreApplication::applicationDirPath());
+        QString testVideoDir = appDir.absoluteFilePath("../../../basler_mvc/recordings/新工業相機收集資料");
+        QString defaultDir = QDir(testVideoDir).exists() ? testVideoDir : QDir::homePath();
+
         QString filePath = QFileDialog::getOpenFileName(
             this,
             "選擇影片檔案",
-            QDir::homePath(),
+            defaultDir,
             "影片檔案 (*.mp4 *.avi *.mov *.mkv);;所有檔案 (*.*)");
 
         if (filePath.isEmpty())
             return;
 
+        // 如果正在播放/抓取，先停止
+        if (m_sourceManager->isGrabbing())
+        {
+            m_sourceManager->stopGrabbing();
+        }
+
         // 切換到影片源
         if (m_sourceManager->loadVideo(filePath))
         {
-            m_statusLabel->setText(QString("已載入: %1").arg(QFileInfo(filePath).fileName()));
+            // 更新 UI 狀態
+            m_cameraControl->setVideoMode(true);
+            m_statusLabel->setText(QString("已載入影片: %1").arg(QFileInfo(filePath).fileName()));
+
+            // 自動開始播放
+            m_sourceManager->startGrabbing();
         }
         else
         {
