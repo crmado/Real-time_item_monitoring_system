@@ -120,6 +120,7 @@ private slots:
     void onImageScaleChanged(int index);
     void onSkipFramesChanged(int value);
     void onShowDebugViewChanged(bool show);
+    void onLockParamsChanged(bool locked);
 
 private:
     void initUi();
@@ -192,6 +193,13 @@ private:
     QPushButton* m_saveConfigBtn;
     QPushButton* m_loadConfigBtn;
     QPushButton* m_resetCountBtn;
+
+    // 參數鎖定
+    QCheckBox* m_lockParamsCheck;
+    QList<QWidget*> m_paramGroupWidgets;  // 參數組容器（鎖定/解鎖用）
+
+    // 跳轉按鈕
+    QPushButton* m_jumpFrameBtn;
 
     // 滾動區域
     QScrollArea* m_scrollArea;

@@ -29,18 +29,44 @@ void DebugPanelWidget::initUi()
     QVBoxLayout* scrollLayout = new QVBoxLayout(scrollContent);
     scrollLayout->setSpacing(4);
 
-    // 添加各個參數組
-    scrollLayout->addWidget(createDetectionParamsGroup());
-    scrollLayout->addWidget(createBgSubtractorGroup());
-    scrollLayout->addWidget(createEdgeDetectionGroup());
-    scrollLayout->addWidget(createMorphologyGroup());
-    scrollLayout->addWidget(createRoiGroup());
-    scrollLayout->addWidget(createGateGroup());
-    scrollLayout->addWidget(createPerformanceGroup());
+    // 參數鎖定 checkbox（預設鎖定，防止滑鼠滾輪誤改參數）
+    m_lockParamsCheck = new QCheckBox(tr("🔒 鎖定參數"));
+    m_lockParamsCheck->setChecked(true);
+    m_lockParamsCheck->setStyleSheet("QCheckBox { font-weight: bold; padding: 4px; }");
+    connect(m_lockParamsCheck, &QCheckBox::toggled,
+            this, &DebugPanelWidget::onLockParamsChanged);
+    scrollLayout->addWidget(m_lockParamsCheck);
+
+    // 添加各個參數組（受鎖定控制的）
+    QWidget* detectionGroup = createDetectionParamsGroup();
+    QWidget* bgGroup = createBgSubtractorGroup();
+    QWidget* edgeGroup = createEdgeDetectionGroup();
+    QWidget* morphGroup = createMorphologyGroup();
+    QWidget* roiGroup = createRoiGroup();
+    QWidget* gateGroup = createGateGroup();
+    QWidget* perfGroup = createPerformanceGroup();
+
+    m_paramGroupWidgets = { detectionGroup, bgGroup, edgeGroup,
+                            morphGroup, roiGroup, gateGroup, perfGroup };
+
+    scrollLayout->addWidget(detectionGroup);
+    scrollLayout->addWidget(bgGroup);
+    scrollLayout->addWidget(edgeGroup);
+    scrollLayout->addWidget(morphGroup);
+    scrollLayout->addWidget(roiGroup);
+    scrollLayout->addWidget(gateGroup);
+    scrollLayout->addWidget(perfGroup);
+
+    // 以下區域不受鎖定影響（始終可操作）
     scrollLayout->addWidget(createDebugViewGroup());
     scrollLayout->addWidget(createVideoControlGroup());
     scrollLayout->addWidget(createActionButtonsGroup());
     scrollLayout->addStretch();
+
+    // 初始鎖定所有參數組
+    for (auto* w : m_paramGroupWidgets) {
+        w->setEnabled(false);
+    }
 
     m_scrollArea->setWidget(scrollContent);
     mainLayout->addWidget(m_scrollArea);
@@ -320,6 +346,12 @@ QWidget* DebugPanelWidget::createVideoControlGroup()
     m_jumpFrameSpin->setRange(0, 999999);
     btnLayout2->addWidget(m_jumpFrameSpin);
 
+    m_jumpFrameBtn = new QPushButton(tr("跳轉"));
+    connect(m_jumpFrameBtn, &QPushButton::clicked, this, [this]() {
+        emit jumpToFrame(m_jumpFrameSpin->value());
+    });
+    btnLayout2->addWidget(m_jumpFrameBtn);
+
     m_nextFrameBtn = new QPushButton(tr("▶"));
     connect(m_nextFrameBtn, &QPushButton::clicked, this, &DebugPanelWidget::nextFrame);
     btnLayout2->addWidget(m_nextFrameBtn);
@@ -538,6 +570,13 @@ void DebugPanelWidget::onShowDebugViewChanged(bool show)
     m_showDebugView = show;
     m_debugImageLabel->setVisible(show);
     emit debugViewToggled(show);
+}
+
+void DebugPanelWidget::onLockParamsChanged(bool locked)
+{
+    for (auto* w : m_paramGroupWidgets) {
+        w->setEnabled(!locked);
+    }
 }
 
 } // namespace basler

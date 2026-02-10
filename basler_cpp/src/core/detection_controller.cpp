@@ -3,6 +3,8 @@
 #include <QDebug>
 #include <opencv2/imgproc.hpp>
 #include <cmath>
+#include <set>
+#include <algorithm>
 
 namespace basler
 {
@@ -230,7 +232,7 @@ namespace basler
 
         // 2. 高斯模糊減少噪聲（使用配置參數，預設 1x1 等同跳過，保留小零件細節）
         cv::Mat blurred;
-        int blurSize = m_gaussianBlurKernelSize | 1;  // 確保為奇數
+        int blurSize = m_gaussianBlurKernelSize | 1; // 確保為奇數
         cv::GaussianBlur(processRegion, blurred, cv::Size(blurSize, blurSize), 0);
 
         // 3. 增強前景遮罩濾波
@@ -291,7 +293,8 @@ namespace basler
         cv::Mat postProcessed = combined;
 
         // 開運算（如果 kernel > 1 且 iterations > 0）
-        if (m_openingKernelSize > 1 && m_openingIterations > 0) {
+        if (m_openingKernelSize > 1 && m_openingIterations > 0)
+        {
             cv::Mat openKernel = cv::getStructuringElement(
                 cv::MORPH_ELLIPSE, cv::Size(m_openingKernelSize, m_openingKernelSize));
             cv::morphologyEx(postProcessed, postProcessed, cv::MORPH_OPEN,
@@ -299,14 +302,16 @@ namespace basler
         }
 
         // 膨脹（如果 kernel > 1 且 iterations > 0）
-        if (m_dilateKernelSize > 1 && m_dilateIterations > 0) {
+        if (m_dilateKernelSize > 1 && m_dilateIterations > 0)
+        {
             cv::Mat dilateKernel = cv::Mat::ones(m_dilateKernelSize, m_dilateKernelSize, CV_8U);
             cv::dilate(postProcessed, postProcessed, dilateKernel,
                        cv::Point(-1, -1), m_dilateIterations);
         }
 
         // 閉合（如果 kernel > 1）
-        if (m_closeKernelSize > 1) {
+        if (m_closeKernelSize > 1)
+        {
             cv::Mat closeK = cv::getStructuringElement(
                 cv::MORPH_ELLIPSE, cv::Size(m_closeKernelSize, m_closeKernelSize));
             cv::morphologyEx(postProcessed, postProcessed, cv::MORPH_CLOSE, closeK);
@@ -339,7 +344,8 @@ namespace basler
 
         // 小零件增強預處理：2x2 微膨脹使極小零件更容易被檢測（參考 Python basler_mvc）
         cv::Mat enhanced = processed;
-        if (!m_ultraHighSpeedMode) {
+        if (!m_ultraHighSpeedMode)
+        {
             cv::Mat tinyKernel = cv::Mat::ones(2, 2, CV_8U);
             cv::dilate(processed, enhanced, tinyKernel, cv::Point(-1, -1), 1);
         }
@@ -422,52 +428,85 @@ namespace basler
     {
         m_currentFrameCount++;
 
-        // 注意：m_gateLineY 已在 processFrame 中計算
+        // 更新物件追蹤
+        updateObjectTracks(objects);
 
-        // 清理過期的觸發記錄
-        std::vector<std::pair<int, int>> expiredPositions;
-        for (const auto &[pos, frameNum] : m_triggeredPositions)
+        // 檢查每個追蹤是否滿足計數條件
+        for (auto &[trackId, track] : m_objectTracks)
         {
-            if (m_currentFrameCount - frameNum > m_gateHistoryFrames)
+            // 如果已計數或幀數不足，跳過
+            if (track.counted || track.inRoiFrames < m_minTrackFrames)
             {
-                expiredPositions.push_back(pos);
+                continue;
             }
-        }
-        for (const auto &pos : expiredPositions)
-        {
-            m_triggeredPositions.erase(pos);
-        }
 
-        // 遍歷當前幀的所有檢測物件
-        for (const auto &obj : objects)
-        {
-            int cx = obj.cx;
-            int cy = obj.cy;
+            // 計算 Y 軸移動距離
+            int yTravel = track.maxY - track.minY;
 
-            // 檢查物件中心是否穿越光柵線
-            if (cy >= m_gateLineY)
+            // 檢查是否為重複計數
+            if (checkDuplicateCount(track))
             {
-                // 檢查是否為重複觸發
-                if (!checkGateTriggerDuplicate(cx, cy))
+                continue;
+            }
+
+            // 檢查是否滿足計數條件（寬鬆模式）
+            bool validCrossing = (yTravel >= m_minYTravel &&
+                                  track.inRoiFrames >= m_minTrackFrames);
+
+            // 額外調試：記錄接近計數但未計數的情況（每 20 幀記錄一次）
+            if (m_currentFrameCount % 20 == 0 && yTravel >= 1 && track.inRoiFrames >= 1 && !validCrossing)
+            {
+                qDebug() << "[Debug] 接近計數 Track" << trackId
+                         << ": Y移動=" << yTravel << "px (需要>=" << m_minYTravel << ")"
+                         << ", ROI幀數=" << track.inRoiFrames << "(需要>=" << m_minTrackFrames << ")";
+            }
+
+            if (validCrossing)
+            {
+                // 記錄到歷史中防止重複
+                m_countedObjectsHistory.push_back({{track.x, track.y}, m_currentFrameCount});
+
+                // 維護歷史長度
+                if (m_countedObjectsHistory.size() > static_cast<size_t>(m_historyLength))
                 {
-                    // 新物件穿越光柵線
-                    m_crossingCounter++;
-                    m_triggeredPositions[{cx, cy}] = m_currentFrameCount;
+                    m_countedObjectsHistory.erase(m_countedObjectsHistory.begin());
+                }
 
-                    qDebug() << "[DetectionController] 光柵計數 #" << m_crossingCounter
-                             << " - 位置:(" << cx << "," << cy << ")"
-                             << ", 幀:" << m_currentFrameCount;
+                m_crossingCounter++;
+                track.counted = true;
 
-                    emit countChanged(m_crossingCounter);
-                    emit objectsCrossedGate(m_crossingCounter);
+                qDebug() << "[DetectionController] ✅ 成功計數 #" << m_crossingCounter
+                         << " - Track" << trackId
+                         << " (Y移動: " << yTravel << "px)"
+                         << ", 幀:" << m_currentFrameCount;
 
-                    // 自動包裝模式：更新震動機速度
-                    if (m_packagingEnabled)
-                    {
-                        updateVibratorSpeed();
-                    }
+                emit countChanged(m_crossingCounter);
+                emit objectsCrossedGate(m_crossingCounter);
+
+                // 自動包裝模式：更新震動機速度
+                if (m_packagingEnabled)
+                {
+                    updateVibratorSpeed();
                 }
             }
+        }
+
+        // 清理過期的歷史記錄
+        m_countedObjectsHistory.erase(
+            std::remove_if(m_countedObjectsHistory.begin(), m_countedObjectsHistory.end(),
+                           [this](const auto &entry)
+                           {
+                               return m_currentFrameCount - entry.second > m_historyLength;
+                           }),
+            m_countedObjectsHistory.end());
+
+        // 診斷報告（每 50 幀）
+        if (m_currentFrameCount % 50 == 0)
+        {
+            qDebug() << "[DetectionController] 追蹤狀態: 總追蹤=" << m_objectTracks.size()
+                     << ", 失去追蹤=" << m_lostTracks.size()
+                     << ", 計數=" << m_crossingCounter
+                     << ", 幀=" << m_currentFrameCount;
         }
     }
 
@@ -729,6 +768,295 @@ namespace basler
         status.vibratorSpeed = m_currentSpeed;
         status.completed = m_packagingCompleted;
         return status;
+    }
+
+    // ===== 增強型物件追蹤系統實作 - 多特徵匹配 =====
+
+    void DetectionController::updateObjectTracks(const std::vector<DetectedObject> &objects)
+    {
+        std::map<int, ObjectTrack> newTracks;
+        std::set<int> usedTrackIds;
+        std::set<int> usedObjectIds;
+
+        // 第一階段：為現有追蹤更新速度和預測
+        for (auto &[trackId, track] : m_objectTracks)
+        {
+            updateTrackVelocity(track);
+            track.missedFrames++;
+        }
+
+        // 第二階段：使用多特徵匹配尋找最佳配對
+        std::vector<std::tuple<int, int, double>> matches; // (trackId, objIdx, score)
+
+        for (size_t objIdx = 0; objIdx < objects.size(); ++objIdx)
+        {
+            const auto &obj = objects[objIdx];
+            double bestScore = 0.0;
+            int trackId = findMatchingTrack(obj, bestScore);
+
+            if (trackId != -1 && bestScore >= m_matchThreshold)
+            {
+                matches.push_back({trackId, static_cast<int>(objIdx), bestScore});
+            }
+        }
+
+        // 按評分排序，優先處理高分匹配
+        std::sort(matches.begin(), matches.end(),
+                  [](const auto &a, const auto &b)
+                  { return std::get<2>(a) > std::get<2>(b); });
+
+        // 第三階段：應用匹配並更新追蹤
+        for (const auto &[trackId, objIdx, score] : matches)
+        {
+            if (usedTrackIds.find(trackId) != usedTrackIds.end() ||
+                usedObjectIds.find(objIdx) != usedObjectIds.end())
+            {
+                continue; // 已被使用
+            }
+
+            const auto &obj = objects[objIdx];
+            const auto &oldTrack = m_objectTracks[trackId];
+
+            ObjectTrack updatedTrack = oldTrack;
+            updatedTrack.x = obj.cx;
+            updatedTrack.y = obj.cy;
+            updatedTrack.w = obj.w;
+            updatedTrack.h = obj.h;
+            updatedTrack.area = obj.area;
+            updatedTrack.lastFrame = m_currentFrameCount;
+            updatedTrack.positions.push_back({obj.cx, obj.cy});
+            updatedTrack.areaHistory.push_back(obj.area);
+            updatedTrack.inRoiFrames++;
+            updatedTrack.maxY = std::max(updatedTrack.maxY, obj.cy);
+            updatedTrack.minY = std::min(updatedTrack.minY, obj.cy);
+            updatedTrack.missedFrames = 0;
+
+            // 限制歷史長度
+            if (updatedTrack.positions.size() > 10)
+            {
+                updatedTrack.positions.erase(updatedTrack.positions.begin());
+                updatedTrack.areaHistory.erase(updatedTrack.areaHistory.begin());
+            }
+
+            newTracks[trackId] = updatedTrack;
+            usedTrackIds.insert(trackId);
+            usedObjectIds.insert(objIdx);
+        }
+
+        // 第四階段：嘗試從失去的追蹤中恢復
+        for (size_t objIdx = 0; objIdx < objects.size(); ++objIdx)
+        {
+            if (usedObjectIds.find(objIdx) != usedObjectIds.end())
+            {
+                continue;
+            }
+
+            const auto &obj = objects[objIdx];
+            int recoveredTrackId = -1;
+            double bestScore = 0.0;
+
+            for (const auto &[lostId, lostTrack] : m_lostTracks)
+            {
+                double score = calculateMatchScore(obj, lostTrack);
+                if (score > bestScore && score >= m_matchThreshold * 0.5) // 進一步放寬恢復閾值
+                {
+                    bestScore = score;
+                    recoveredTrackId = lostId;
+                }
+            }
+
+            if (recoveredTrackId != -1)
+            {
+                ObjectTrack recoveredTrack = m_lostTracks[recoveredTrackId];
+                recoveredTrack.x = obj.cx;
+                recoveredTrack.y = obj.cy;
+                recoveredTrack.w = obj.w;
+                recoveredTrack.h = obj.h;
+                recoveredTrack.area = obj.area;
+                recoveredTrack.lastFrame = m_currentFrameCount;
+                recoveredTrack.positions.push_back({obj.cx, obj.cy});
+                recoveredTrack.areaHistory.push_back(obj.area);
+                recoveredTrack.inRoiFrames++;
+                recoveredTrack.maxY = std::max(recoveredTrack.maxY, obj.cy);
+                recoveredTrack.minY = std::min(recoveredTrack.minY, obj.cy);
+                recoveredTrack.missedFrames = 0;
+
+                newTracks[recoveredTrackId] = recoveredTrack;
+                m_lostTracks.erase(recoveredTrackId);
+                usedObjectIds.insert(objIdx);
+            }
+        }
+
+        // 第五階段：為未匹配的物件創建新追蹤
+        for (size_t objIdx = 0; objIdx < objects.size(); ++objIdx)
+        {
+            if (usedObjectIds.find(objIdx) != usedObjectIds.end())
+            {
+                continue;
+            }
+
+            const auto &obj = objects[objIdx];
+            ObjectTrack newTrack;
+            newTrack.trackId = m_nextTrackId++;
+            newTrack.x = obj.cx;
+            newTrack.y = obj.cy;
+            newTrack.w = obj.w;
+            newTrack.h = obj.h;
+            newTrack.area = obj.area;
+            newTrack.firstFrame = m_currentFrameCount;
+            newTrack.lastFrame = m_currentFrameCount;
+            newTrack.inRoiFrames = 1;
+            newTrack.maxY = obj.cy;
+            newTrack.minY = obj.cy;
+            newTrack.counted = false;
+            newTrack.positions.push_back({obj.cx, obj.cy});
+            newTrack.areaHistory.push_back(obj.area);
+            newTrack.velocityX = 0;
+            newTrack.velocityY = 0;
+            newTrack.predictedX = obj.cx;
+            newTrack.predictedY = obj.cy;
+            newTrack.missedFrames = 0;
+
+            newTracks[newTrack.trackId] = newTrack;
+        }
+
+        // 第六階段：將未更新的追蹤移至 lostTracks
+        for (const auto &[trackId, track] : m_objectTracks)
+        {
+            if (newTracks.find(trackId) == newTracks.end())
+            {
+                if (track.missedFrames < m_maxMissedFrames)
+                {
+                    m_lostTracks[trackId] = track;
+                }
+            }
+        }
+
+        // 清理過期的 lostTracks
+        for (auto it = m_lostTracks.begin(); it != m_lostTracks.end();)
+        {
+            if (it->second.missedFrames >= m_maxMissedFrames)
+            {
+                it = m_lostTracks.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        // 更新追蹤狀態
+        m_objectTracks = newTracks;
+    }
+
+    int DetectionController::findMatchingTrack(const DetectedObject &obj, double &outScore)
+    {
+        int bestTrackId = -1;
+        double bestScore = 0.0;
+
+        for (const auto &[trackId, track] : m_objectTracks)
+        {
+            double score = calculateMatchScore(obj, track);
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestTrackId = trackId;
+            }
+        }
+
+        outScore = bestScore;
+        return bestTrackId;
+    }
+
+    double DetectionController::calculateMatchScore(const DetectedObject &obj, const ObjectTrack &track)
+    {
+        // 純距離匹配模式（帶速度預測 + 當前位置雙重比較）
+        double dx = obj.cx - track.predictedX;
+        double dy = obj.cy - track.predictedY;
+        double distance = std::sqrt(dx * dx + dy * dy);
+
+        // 也計算與當前位置的距離，取較小值
+        double dxCur = obj.cx - track.x;
+        double dyCur = obj.cy - track.y;
+        double distanceCur = std::sqrt(dxCur * dxCur + dyCur * dyCur);
+        distance = std::min(distance, distanceCur);
+
+        double maxDistance = std::sqrt(
+            static_cast<double>(m_crossingToleranceX * m_crossingToleranceX) +
+            static_cast<double>(m_crossingToleranceY * m_crossingToleranceY));
+        double distanceScore = std::max(0.0, 1.0 - (distance / maxDistance));
+
+        // 硬性限制：距離太遠直接排除（寬鬆2倍）
+        if (std::abs(dxCur) > m_crossingToleranceX * 2.0 ||
+            std::abs(dyCur) > m_crossingToleranceY * 2.0)
+        {
+            return 0.0;
+        }
+
+        return distanceScore;
+    }
+
+    double DetectionController::calculateIoU(int x1, int y1, int w1, int h1,
+                                             int x2, int y2, int w2, int h2)
+    {
+        // 計算交集區域
+        int xLeft = std::max(x1, x2);
+        int yTop = std::max(y1, y2);
+        int xRight = std::min(x1 + w1, x2 + w2);
+        int yBottom = std::min(y1 + h1, y2 + h2);
+
+        if (xRight < xLeft || yBottom < yTop)
+        {
+            return 0.0; // 無交集
+        }
+
+        int intersectionArea = (xRight - xLeft) * (yBottom - yTop);
+        int unionArea = w1 * h1 + w2 * h2 - intersectionArea;
+
+        return (unionArea > 0) ? static_cast<double>(intersectionArea) / unionArea : 0.0;
+    }
+
+    void DetectionController::updateTrackVelocity(ObjectTrack &track)
+    {
+        if (track.positions.size() >= 2)
+        {
+            // 使用最近兩個位置計算速度
+            size_t size = track.positions.size();
+            auto &recent = track.positions[size - 1];
+            auto &previous = track.positions[size - 2];
+
+            track.velocityX = recent.first - previous.first;
+            track.velocityY = recent.second - previous.second;
+
+            // 預測下一幀位置
+            track.predictedX = recent.first + track.velocityX;
+            track.predictedY = recent.second + track.velocityY;
+        }
+        else
+        {
+            // 沒有足夠歷史，使用當前位置
+            track.predictedX = track.x;
+            track.predictedY = track.y;
+        }
+    }
+
+    bool DetectionController::checkDuplicateCount(const ObjectTrack &track)
+    {
+        for (const auto &entry : m_countedObjectsHistory)
+        {
+            const auto &[pos, frame] = entry;
+            double distance = std::sqrt(std::pow(track.x - pos.first, 2) +
+                                        std::pow(track.y - pos.second, 2));
+            int temporalDistance = m_currentFrameCount - frame;
+
+            if (distance < m_duplicateDistanceThreshold &&
+                temporalDistance < m_temporalTolerance)
+            {
+                return true; // 重複計數
+            }
+        }
+        return false;
     }
 
 } // namespace basler

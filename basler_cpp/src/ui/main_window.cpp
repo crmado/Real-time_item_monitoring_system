@@ -7,6 +7,7 @@
 #include "ui/widgets/debug_panel.h"
 #include "ui/widgets/system_monitor.h"
 #include "config/settings.h"
+#include "core/video_player.h"
 
 #include <QMenuBar>
 #include <QStatusBar>
@@ -21,7 +22,11 @@
 #include <QDebug>
 #include <QTimer>
 #include <QtConcurrent>
+#include <QStandardPaths>
+#include <QDateTime>
+#include <QDir>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 namespace basler
 {
@@ -523,6 +528,42 @@ namespace basler
         // 測試影片載入
         connect(m_debugPanel, &DebugPanelWidget::loadTestVideo,
                 this, &MainWindow::onLoadVideo);
+
+        // 影片控制信號
+        connect(m_debugPanel, &DebugPanelWidget::playVideo, this, [this]() {
+            auto* vp = m_sourceManager->videoPlayer();
+            if (vp) vp->resume();
+        });
+        connect(m_debugPanel, &DebugPanelWidget::pauseVideo, this, [this]() {
+            auto* vp = m_sourceManager->videoPlayer();
+            if (vp) vp->pause();
+        });
+        connect(m_debugPanel, &DebugPanelWidget::prevFrame, this, [this]() {
+            auto* vp = m_sourceManager->videoPlayer();
+            if (vp) vp->previousFrame();
+        });
+        connect(m_debugPanel, &DebugPanelWidget::nextFrame, this, [this]() {
+            auto* vp = m_sourceManager->videoPlayer();
+            if (vp) vp->nextFrame();
+        });
+        connect(m_debugPanel, &DebugPanelWidget::jumpToFrame, this, [this](int frame) {
+            auto* vp = m_sourceManager->videoPlayer();
+            if (vp) vp->seek(frame);
+        });
+        connect(m_debugPanel, &DebugPanelWidget::screenshot, this, [this]() {
+            QMutexLocker locker(&m_frameMutex);
+            if (m_latestFrame.empty()) return;
+
+            QString picturesDir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+            QDir().mkpath(picturesDir);
+            QString filename = QString("%1/screenshot_%2.png")
+                .arg(picturesDir)
+                .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+
+            cv::imwrite(filename.toStdString(), m_latestFrame);
+            m_statusLabel->setText(QString("截圖已儲存: %1").arg(filename));
+            qDebug() << "[MainWindow] 截圖已儲存:" << filename;
+        });
     }
 
     // ============================================================================
@@ -1042,6 +1083,11 @@ namespace basler
 
             // 自動開始播放
             m_sourceManager->startGrabbing();
+
+            // 影片模式自動啟用檢測（否則 processFrame 永遠不會被呼叫）
+            m_isDetecting = true;
+            m_detectionController->enable();
+            m_detectionLabel->setText("檢測中（影片模式）");
         }
         else
         {
