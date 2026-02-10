@@ -101,7 +101,23 @@ namespace basler
 
     DetectionController::~DetectionController()
     {
-        // 清理資源
+        // 清理資源 - 確保所有容器被清空
+        {
+            QMutexLocker locker(&m_mutex);
+            m_objectTracks.clear();
+            m_lostTracks.clear();
+            m_yoloTracks.clear();
+            m_countedObjectsHistory.clear();
+            m_triggeredPositions.clear();
+        }
+
+        // YOLO 偵測器由 unique_ptr 自動清理
+        m_yoloDetector.reset();
+
+        // 背景減除器由 cv::Ptr 自動清理
+        m_bgSubtractor.release();
+
+        qDebug() << "[DetectionController] 資源已清理";
     }
 
     void DetectionController::resetBackgroundSubtractor()
@@ -993,6 +1009,7 @@ namespace basler
         // 清理過期的 lostTracks
         for (auto it = m_lostTracks.begin(); it != m_lostTracks.end();)
         {
+            it->second.missedFrames++; // 增加失蹤計數
             if (it->second.missedFrames >= m_maxMissedFrames)
             {
                 it = m_lostTracks.erase(it);
@@ -1005,6 +1022,32 @@ namespace basler
 
         // 更新追蹤狀態
         m_objectTracks = newTracks;
+
+        // 防止追蹤 map 過度增長（硬性上限）
+        static constexpr size_t MAX_ACTIVE_TRACKS = 100;
+        static constexpr size_t MAX_LOST_TRACKS = 50;
+
+        if (m_objectTracks.size() > MAX_ACTIVE_TRACKS)
+        {
+            qWarning() << "[DetectionController] 警告：活動追蹤數超限，清理最舊追蹤";
+            // 移除最舊的追蹤（按 firstFrame 排序）
+            while (m_objectTracks.size() > MAX_ACTIVE_TRACKS)
+            {
+                auto oldest = std::min_element(
+                    m_objectTracks.begin(), m_objectTracks.end(),
+                    [](const auto &a, const auto &b)
+                    { return a.second.firstFrame < b.second.firstFrame; });
+                if (oldest != m_objectTracks.end())
+                {
+                    m_objectTracks.erase(oldest);
+                }
+            }
+        }
+
+        if (m_lostTracks.size() > MAX_LOST_TRACKS)
+        {
+            m_lostTracks.clear(); // 太多失蹤追蹤，直接清空
+        }
     }
 
     int DetectionController::findMatchingTrack(const DetectedObject &obj, double &outScore)
@@ -1219,7 +1262,7 @@ namespace basler
                     for (const auto &entry : m_countedObjectsHistory)
                     {
                         double d = std::sqrt(std::pow(track.cx - entry.first.first, 2) +
-                                              std::pow(track.cy - entry.first.second, 2));
+                                             std::pow(track.cy - entry.first.second, 2));
                         if (d < m_duplicateDistanceThreshold &&
                             m_currentFrameCount - entry.second < m_temporalTolerance)
                         {

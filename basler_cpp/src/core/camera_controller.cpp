@@ -494,12 +494,15 @@ namespace basler
         // 重置統計
         m_totalFrames.store(0);
         m_currentFps.store(0.0);
-        m_frameTimes.clear();
+        {
+            QMutexLocker locker(&m_statsMutex);
+            m_frameTimes.clear();
+        }
 
-        // 啟動線程
+        // 先設定狀態，再啟動線程（避免競態條件）
+        setState(CameraState::Grabbing);
         m_grabThread->start();
 
-        setState(CameraState::Grabbing);
         emit grabbingStarted();
 
         qDebug() << "[CameraController] 開始抓取";
@@ -767,6 +770,14 @@ namespace basler
     QList<CameraInfo> CameraController::detectCameras()
     {
         qWarning() << "[CameraController] Pylon SDK not available - no cameras detected";
+        return QList<CameraInfo>();
+    }
+
+    QList<CameraInfo> CameraController::detectCamerasWithRetry(int maxRetries, int delayMs)
+    {
+        Q_UNUSED(maxRetries);
+        Q_UNUSED(delayMs);
+        qWarning() << "[CameraController] Pylon SDK not available - no cameras detected (with retry)";
         return QList<CameraInfo>();
     }
 

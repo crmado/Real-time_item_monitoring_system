@@ -275,10 +275,15 @@ namespace basler
 
     void SourceManager::onCameraFrameReady(const cv::Mat &frame)
     {
+        // 注意：CameraController 已經做過 clone()，這裡的 frame 已是獨立副本
+        // 只有當需要保存最新幀供外部查詢時才進行第二次 clone
         {
             QMutexLocker locker(&m_frameMutex);
+            // 使用移動語義避免不必要的拷貝，但 cv::Mat 的 clone 是深拷貝
+            // 這裡只在需要保留幀時才 clone
             m_latestFrame = frame.clone();
         }
+        // 直接轉發不 clone 的幀給下游（它們應該在需要時自行 clone）
         emit frameReady(frame);
     }
 
