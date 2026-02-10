@@ -145,6 +145,21 @@ struct PerformanceConfig {
 };
 
 /**
+ * @brief YOLO 深度學習偵測配置
+ */
+struct YoloConfig {
+    QString modelPath;                    // ONNX 模型路徑
+    double confidenceThreshold = 0.25;    // 信心閾值
+    double nmsThreshold = 0.45;           // NMS 閾值
+    double roiUpscaleFactor = 2.0;        // ROI 放大倍數（小零件增強）
+    int inputSize = 640;                  // 模型輸入尺寸
+    bool enabled = false;                 // 是否啟用 YOLO 模式
+
+    QJsonObject toJson() const;
+    static YoloConfig fromJson(const QJsonObject& json);
+};
+
+/**
  * @brief 調試配置
  */
 struct DebugConfig {
@@ -245,6 +260,9 @@ public:
     DebugConfig& debug() { return m_debug; }
     const DebugConfig& debug() const { return m_debug; }
 
+    YoloConfig& yolo() { return m_yolo; }
+    const YoloConfig& yolo() const { return m_yolo; }
+
     UIConfig& ui() { return m_ui; }
     const UIConfig& ui() const { return m_ui; }
 
@@ -285,6 +303,7 @@ private:
     PerformanceConfig m_performance;
     DebugConfig m_debug;
     UIConfig m_ui;
+    YoloConfig m_yolo;
 
     std::vector<PartProfile> m_partProfiles;
     QString m_currentPartId = "default_small_part";

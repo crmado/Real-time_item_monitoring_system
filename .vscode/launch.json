@@ -1,0 +1,35 @@
+{
+    // 使用 IntelliSense 以得知可用的屬性。
+    // 暫留以檢視現有屬性的描述。
+    // 如需詳細資訊，請瀏覽: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(lldb) 啟動 C++ 專案",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/basler_cpp/build/BaslerVisionSystem.app/Contents/MacOS/BaslerVisionSystem",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/basler_cpp",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "CMake: Build C++ Project",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(lldb) 附加到執行中的程序",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/basler_cpp/build/BaslerVisionSystem.app/Contents/MacOS/BaslerVisionSystem",
+            "MIMode": "lldb"
+        }
+    ]
+}

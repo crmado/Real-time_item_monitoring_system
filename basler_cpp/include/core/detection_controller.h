@@ -11,11 +11,24 @@
 #include <vector>
 #include <map>
 
+// 前向聲明 YoloDetector
+namespace basler { class YoloDetector; }
+
 namespace basler
 {
 
     // 前向聲明
     class AppConfig;
+
+    /**
+     * @brief 偵測模式列舉
+     */
+    enum class DetectionMode
+    {
+        Classical, // 傳統 MOG2 背景減除
+        YOLO,      // YOLO 深度學習偵測
+        Auto       // 自動：有模型用 YOLO，否則退回傳統
+    };
 
     /**
      * @brief 檢測到的物件結構
@@ -43,6 +56,7 @@ namespace basler
         int lastFrame;   // 最後出現幀
         int inRoiFrames; // 在 ROI 中的幀數
         int maxY, minY;  // Y 軸移動範圍
+        int firstY;      // 首次出現的 Y 位置（用於方向驗證）
         bool counted;    // 是否已計數
 
         // 增強追蹤特徵
@@ -106,6 +120,8 @@ namespace basler
         bool isEnabled() const { return m_enabled; }
         int count() const { return m_crossingCounter; }
         int totalProcessedFrames() const { return m_totalProcessedFrames; }
+        DetectionMode detectionMode() const { return m_detectionMode; }
+        bool isYoloModelLoaded() const;
 
         // ===== 幀處理 =====
         /**
@@ -139,6 +155,13 @@ namespace basler
         void setGateLinePositionRatio(double ratio);
         void setUltraHighSpeedMode(bool enabled, int targetFps = 280);
 
+        // YOLO 偵測控制
+        bool loadYoloModel(const QString &modelPath);
+        void setDetectionMode(DetectionMode mode);
+        void setYoloConfidence(double threshold);
+        void setYoloNmsThreshold(double threshold);
+        void setYoloRoiUpscale(double factor);
+
         // 包裝控制
         void enablePackagingMode(bool enabled);
         void setTargetCount(int count);
@@ -151,6 +174,9 @@ namespace basler
         void objectsCrossedGate(int newCount); // 新物件穿越光柵
         void packagingCompleted();
         void vibratorSpeedChanged(VibratorSpeed speed);
+        void detectionModeChanged(DetectionMode mode);
+        void yoloModelLoaded(bool success);
+        void yoloInferenceTimeUpdated(double ms);
 
     private:
         // 處理流程
@@ -158,6 +184,13 @@ namespace basler
         cv::Mat ultraHighSpeedProcessing(const cv::Mat &processRegion);
         std::vector<DetectedObject> detectObjects(const cv::Mat &processed);
         bool validateShape(int width, int height, int area);
+
+        // YOLO 偵測流程
+        std::vector<DetectedObject> yoloProcessing(const cv::Mat &roiImage, int roiY);
+        void yoloBasedCounting(const std::vector<DetectedObject> &objects);
+
+        // 判斷當前是否使用 YOLO 模式
+        bool shouldUseYolo() const;
 
         // 虛擬光柵計數 - 基於物件追蹤
         void virtualGateCounting(const std::vector<DetectedObject> &objects);
@@ -249,7 +282,7 @@ namespace basler
         // 追蹤參數
         int m_crossingToleranceX = 35;         // X 軸容錯距離
         int m_crossingToleranceY = 50;         // Y 軸容錯距離
-        int m_minTrackFrames = 2;              // 最少追蹤幀數
+        int m_minTrackFrames = 2;              // 最少追蹤幀數（保持 2 幀以適應快速掉落零件）
         int m_trackLifetime = 20;              // 追蹤生命週期
         int m_minYTravel = 2;                  // 最小 Y 移動距離
         int m_historyLength = 10;              // 歷史記錄長度
@@ -257,11 +290,12 @@ namespace basler
         int m_temporalTolerance = 6;           // 時間容錯
         int m_maxMissedFrames = 5;             // 最大可容忍的未匹配幀數
 
-        // 匹配權重（純距離模式，小零件IoU太低不適用）
-        double m_weightDistance = 1.0;  // 距離權重（100%）
-        double m_weightArea = 0.0;      // 面積權重（禁用）
-        double m_weightIoU = 0.0;       // IoU 權重（禁用）
-        double m_matchThreshold = 0.15; // 匹配閾值（極低）
+        // 匹配權重（距離 + 面積相似度，防止密集零件 Track Swap）
+        double m_weightDistance = 0.8;  // 距離權重（80%）
+        double m_weightArea = 0.2;      // 面積相似度權重（20%）
+        double m_weightIoU = 0.0;       // IoU 權重（禁用，小零件不適用）
+        double m_matchThreshold = 0.15; // 匹配閾值
+        double m_directionConsistencyRatio = 0.7; // 方向一致性要求（70% 幀間 Y 遞增）
 
         // 包裝控制
         bool m_packagingEnabled = false;
@@ -273,6 +307,22 @@ namespace basler
         VibratorSpeed m_currentSpeed = VibratorSpeed::STOP;
         bool m_packagingCompleted = false;
 
+        // YOLO 偵測
+        std::unique_ptr<YoloDetector> m_yoloDetector;
+        DetectionMode m_detectionMode = DetectionMode::Auto;
+
+        // YOLO 簡化追蹤（用於計數）
+        struct YoloTrack
+        {
+            int trackId;
+            int cx, cy;       // 當前中心
+            int firstY;       // 首次出現 Y
+            int lastFrame;    // 最後出現幀
+            bool counted;     // 是否已計數
+        };
+        std::map<int, YoloTrack> m_yoloTracks;
+        int m_nextYoloTrackId = 1;
+
         // 互斥鎖
         mutable QMutex m_mutex;
     };
@@ -281,5 +331,6 @@ namespace basler
 
 Q_DECLARE_METATYPE(basler::VibratorSpeed)
 Q_DECLARE_METATYPE(basler::DetectedObject)
+Q_DECLARE_METATYPE(basler::DetectionMode)
 
 #endif // DETECTION_CONTROLLER_H

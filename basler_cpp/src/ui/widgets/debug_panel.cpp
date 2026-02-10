@@ -58,6 +58,7 @@ void DebugPanelWidget::initUi()
     scrollLayout->addWidget(perfGroup);
 
     // 以下區域不受鎖定影響（始終可操作）
+    scrollLayout->addWidget(createYoloGroup());
     scrollLayout->addWidget(createDebugViewGroup());
     scrollLayout->addWidget(createVideoControlGroup());
     scrollLayout->addWidget(createActionButtonsGroup());
@@ -365,6 +366,70 @@ QWidget* DebugPanelWidget::createVideoControlGroup()
     return group;
 }
 
+QWidget* DebugPanelWidget::createYoloGroup()
+{
+    QGroupBox* group = new QGroupBox(tr("YOLO 偵測設定"));
+    group->setStyleSheet("QGroupBox { font-weight: bold; color: #00d4ff; }");
+    QFormLayout* layout = new QFormLayout();
+
+    // 偵測模式選擇
+    m_yoloModeCombo = new QComboBox();
+    m_yoloModeCombo->addItems({tr("傳統 (MOG2)"), tr("YOLO"), tr("自動")});
+    m_yoloModeCombo->setCurrentIndex(2); // 預設自動
+    connect(m_yoloModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DebugPanelWidget::onYoloModeChanged);
+    layout->addRow(tr("偵測模式:"), m_yoloModeCombo);
+
+    // 信心閾值
+    m_yoloConfidenceSpin = new QDoubleSpinBox();
+    m_yoloConfidenceSpin->setRange(0.05, 0.95);
+    m_yoloConfidenceSpin->setSingleStep(0.05);
+    m_yoloConfidenceSpin->setDecimals(2);
+    m_yoloConfidenceSpin->setValue(0.25);
+    connect(m_yoloConfidenceSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &DebugPanelWidget::onYoloConfidenceChanged);
+    layout->addRow(tr("信心閾值:"), m_yoloConfidenceSpin);
+
+    // NMS 閾值
+    m_yoloNmsSpin = new QDoubleSpinBox();
+    m_yoloNmsSpin->setRange(0.1, 0.9);
+    m_yoloNmsSpin->setSingleStep(0.05);
+    m_yoloNmsSpin->setDecimals(2);
+    m_yoloNmsSpin->setValue(0.45);
+    connect(m_yoloNmsSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &DebugPanelWidget::onYoloNmsChanged);
+    layout->addRow(tr("NMS 閾值:"), m_yoloNmsSpin);
+
+    // ROI 放大倍數
+    m_yoloRoiUpscaleSpin = new QDoubleSpinBox();
+    m_yoloRoiUpscaleSpin->setRange(1.0, 4.0);
+    m_yoloRoiUpscaleSpin->setSingleStep(0.5);
+    m_yoloRoiUpscaleSpin->setDecimals(1);
+    m_yoloRoiUpscaleSpin->setValue(2.0);
+    connect(m_yoloRoiUpscaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &DebugPanelWidget::onYoloRoiUpscaleChanged);
+    layout->addRow(tr("ROI 放大:"), m_yoloRoiUpscaleSpin);
+
+    // 載入模型按鈕
+    m_loadYoloModelBtn = new QPushButton(tr("載入 ONNX 模型..."));
+    connect(m_loadYoloModelBtn, &QPushButton::clicked,
+            this, &DebugPanelWidget::loadYoloModelRequested);
+    layout->addRow(m_loadYoloModelBtn);
+
+    // 模型狀態
+    m_yoloStatusLabel = new QLabel(tr("模型: 未載入"));
+    m_yoloStatusLabel->setStyleSheet("color: #888;");
+    layout->addRow(m_yoloStatusLabel);
+
+    // 推理時間
+    m_yoloInferenceLabel = new QLabel(tr("推理: -- ms"));
+    m_yoloInferenceLabel->setStyleSheet("color: #888;");
+    layout->addRow(m_yoloInferenceLabel);
+
+    group->setLayout(layout);
+    return group;
+}
+
 QWidget* DebugPanelWidget::createActionButtonsGroup()
 {
     QGroupBox* group = new QGroupBox(tr("⚙️ 操作"));
@@ -576,6 +641,63 @@ void DebugPanelWidget::onLockParamsChanged(bool locked)
 {
     for (auto* w : m_paramGroupWidgets) {
         w->setEnabled(!locked);
+    }
+}
+
+// ============================================================================
+// YOLO 槽函數
+// ============================================================================
+
+void DebugPanelWidget::onYoloModeChanged(int index)
+{
+    emit yoloModeChanged(index);
+}
+
+void DebugPanelWidget::onYoloConfidenceChanged(double value)
+{
+    emit yoloConfidenceChanged(value);
+}
+
+void DebugPanelWidget::onYoloNmsChanged(double value)
+{
+    emit yoloNmsThresholdChanged(value);
+}
+
+void DebugPanelWidget::onYoloRoiUpscaleChanged(double value)
+{
+    emit yoloRoiUpscaleChanged(value);
+}
+
+void DebugPanelWidget::updateYoloModelStatus(bool loaded)
+{
+    if (loaded)
+    {
+        m_yoloStatusLabel->setText(tr("模型: 已載入"));
+        m_yoloStatusLabel->setStyleSheet("color: #00ff88; font-weight: bold;");
+    }
+    else
+    {
+        m_yoloStatusLabel->setText(tr("模型: 未載入"));
+        m_yoloStatusLabel->setStyleSheet("color: #888;");
+    }
+}
+
+void DebugPanelWidget::updateYoloInferenceTime(double ms)
+{
+    m_yoloInferenceLabel->setText(QString(tr("推理: %1 ms")).arg(ms, 0, 'f', 1));
+
+    // 依據推理時間變色：< 30ms 綠色, < 100ms 黃色, > 100ms 紅色
+    if (ms < 30.0)
+    {
+        m_yoloInferenceLabel->setStyleSheet("color: #00ff88;");
+    }
+    else if (ms < 100.0)
+    {
+        m_yoloInferenceLabel->setStyleSheet("color: #ffcc00;");
+    }
+    else
+    {
+        m_yoloInferenceLabel->setStyleSheet("color: #ff4444;");
     }
 }
 

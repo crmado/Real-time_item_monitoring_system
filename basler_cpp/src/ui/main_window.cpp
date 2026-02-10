@@ -257,18 +257,13 @@ namespace basler
         monitoringScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
         // ========== Tab 3: 調試工具 ==========
+        // Debug Panel 內部已自帶 QScrollArea，不需要再包一層
         m_debugPanel = new DebugPanelWidget();
-
-        QScrollArea *debugScroll = new QScrollArea();
-        debugScroll->setWidgetResizable(true);
-        debugScroll->setWidget(m_debugPanel);
-        debugScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        debugScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
         // 添加分頁
         tabWidget->addTab(settingsScroll, "⚙️ 設定");
         tabWidget->addTab(monitoringScroll, "📊 監控");
-        tabWidget->addTab(debugScroll, "🛠️ 調試");
+        tabWidget->addTab(m_debugPanel, "🛠️ 調試");
 
         // 預設顯示「檢測監控」頁面
         tabWidget->setCurrentIndex(1);
@@ -303,6 +298,11 @@ namespace basler
 
         QAction *loadConfigAction = fileMenu->addAction("載入設定(&L)...");
         connect(loadConfigAction, &QAction::triggered, this, &MainWindow::onLoadConfig);
+
+        fileMenu->addSeparator();
+
+        QAction *loadYoloAction = fileMenu->addAction("載入 YOLO 模型(&Y)...");
+        connect(loadYoloAction, &QAction::triggered, this, &MainWindow::onLoadYoloModel);
 
         fileMenu->addSeparator();
 
@@ -564,6 +564,35 @@ namespace basler
             m_statusLabel->setText(QString("截圖已儲存: %1").arg(filename));
             qDebug() << "[MainWindow] 截圖已儲存:" << filename;
         });
+
+        // ===== YOLO 偵測信號 =====
+        connect(m_debugPanel, &DebugPanelWidget::yoloModeChanged,
+                [this](int modeIndex) {
+                    DetectionMode mode = static_cast<DetectionMode>(modeIndex);
+                    m_detectionController->setDetectionMode(mode);
+                    m_statusLabel->setText(QString("偵測模式: %1")
+                        .arg(modeIndex == 0 ? "傳統" : modeIndex == 1 ? "YOLO" : "自動"));
+                });
+        connect(m_debugPanel, &DebugPanelWidget::yoloConfidenceChanged,
+                [this](double threshold) {
+                    m_detectionController->setYoloConfidence(threshold);
+                });
+        connect(m_debugPanel, &DebugPanelWidget::yoloNmsThresholdChanged,
+                [this](double threshold) {
+                    m_detectionController->setYoloNmsThreshold(threshold);
+                });
+        connect(m_debugPanel, &DebugPanelWidget::yoloRoiUpscaleChanged,
+                [this](double factor) {
+                    m_detectionController->setYoloRoiUpscale(factor);
+                });
+        connect(m_debugPanel, &DebugPanelWidget::loadYoloModelRequested,
+                this, &MainWindow::onLoadYoloModel);
+
+        // YOLO 狀態反饋到 UI
+        connect(m_detectionController.get(), &DetectionController::yoloModelLoaded,
+                m_debugPanel, &DebugPanelWidget::updateYoloModelStatus);
+        connect(m_detectionController.get(), &DetectionController::yoloInferenceTimeUpdated,
+                m_debugPanel, &DebugPanelWidget::updateYoloInferenceTime);
     }
 
     // ============================================================================
@@ -1059,11 +1088,14 @@ namespace basler
         QString testVideoDir = appDir.absoluteFilePath("../../../basler_mvc/recordings/新工業相機收集資料");
         QString defaultDir = QDir(testVideoDir).exists() ? testVideoDir : QDir::homePath();
 
+        // macOS 原生對話框可能與 Qt6 事件循環衝突導致無法選取檔案，改用 Qt 對話框
         QString filePath = QFileDialog::getOpenFileName(
             this,
             "選擇影片檔案",
             defaultDir,
-            "影片檔案 (*.mp4 *.avi *.mov *.mkv);;所有檔案 (*.*)");
+            "影片檔案 (*.mp4 *.avi *.mov *.mkv);;所有檔案 (*.*)",
+            nullptr,
+            QFileDialog::DontUseNativeDialog);
 
         if (filePath.isEmpty())
             return;
@@ -1114,6 +1146,39 @@ namespace basler
     {
         // 根據當前狀態更新按鈕的啟用狀態
         // 這由各個 widget 內部處理
+    }
+
+    void MainWindow::onLoadYoloModel()
+    {
+        // 預設開啟 models 目錄
+        QDir appDir(QCoreApplication::applicationDirPath());
+        QString modelsDir = appDir.absoluteFilePath("models");
+        if (!QDir(modelsDir).exists())
+        {
+            modelsDir = appDir.absoluteFilePath("../../../basler_cpp/models");
+        }
+        QString defaultDir = QDir(modelsDir).exists() ? modelsDir : QDir::homePath();
+
+        QString filePath = QFileDialog::getOpenFileName(
+            this,
+            "選擇 YOLO ONNX 模型",
+            defaultDir,
+            "ONNX 模型 (*.onnx);;所有檔案 (*.*)",
+            nullptr,
+            QFileDialog::DontUseNativeDialog);
+
+        if (filePath.isEmpty())
+            return;
+
+        bool success = m_detectionController->loadYoloModel(filePath);
+        if (success)
+        {
+            m_statusLabel->setText(QString("YOLO 模型已載入: %1").arg(QFileInfo(filePath).fileName()));
+        }
+        else
+        {
+            QMessageBox::warning(this, "載入失敗", "無法載入 YOLO ONNX 模型");
+        }
     }
 
 } // namespace basler

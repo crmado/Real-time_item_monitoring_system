@@ -110,6 +110,7 @@ namespace basler
 
         // ========== 選單動作 ==========
         void onLoadVideo();
+        void onLoadYoloModel();
         void onSaveConfig();
         void onLoadConfig();
 

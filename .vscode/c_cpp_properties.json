@@ -1,0 +1,38 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/basler_cpp/include",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtCore.framework/Headers",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtCore.framework/Headers/6.10.1",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtCore.framework/Headers/6.10.1/QtCore",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtGui.framework/Headers",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtGui.framework/Headers/6.10.1",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtGui.framework/Headers/6.10.1/QtGui",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtWidgets.framework/Headers",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtWidgets.framework/Headers/6.10.1",
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib/QtWidgets.framework/Headers/6.10.1/QtWidgets",
+                "/opt/homebrew/opt/opencv/include/opencv4",
+                "/Library/Frameworks/pylon.framework/Headers",
+                "/Library/Frameworks/pylon.framework/Headers/GenICam"
+            ],
+            "defines": [
+                "QT_CORE_LIB",
+                "QT_GUI_LIB",
+                "QT_WIDGETS_LIB"
+            ],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "macos-clang-arm64",
+            "macFrameworkPath": [
+                "/opt/homebrew/Cellar/qtbase/6.10.1/lib",
+                "/Library/Frameworks"
+            ],
+            "forcedInclude": []
+        }
+    ],
+    "version": 4
+}

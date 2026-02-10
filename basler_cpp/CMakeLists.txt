@@ -24,13 +24,14 @@ endif()
 
 message(STATUS "Using Qt${QT_VERSION_MAJOR}")
 
-# OpenCV
+# OpenCV (含 dnn 模組，用於 YOLO ONNX 推理)
 find_package(OpenCV REQUIRED COMPONENTS
     core
     imgproc
     videoio
     highgui
     video
+    dnn
 )
 
 # Pylon SDK (Basler Camera)
@@ -70,6 +71,7 @@ set(CORE_SOURCES
     src/core/source_manager.cpp
     src/core/detection_controller.cpp
     src/core/vibrator_controller.cpp
+    src/core/yolo_detector.cpp
 )
 
 set(CORE_HEADERS
@@ -79,6 +81,7 @@ set(CORE_HEADERS
     include/core/source_manager.h
     include/core/detection_controller.h
     include/core/vibrator_controller.h
+    include/core/yolo_detector.h
 )
 
 # ============================================================================
@@ -248,6 +251,22 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
     "$<TARGET_FILE_DIR:${PROJECT_NAME}>/recordings"
 )
+
+# 複製 models 目錄（YOLO ONNX 模型）
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/models"
+    COMMENT "Creating models directory for YOLO ONNX models"
+)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/models"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/models"
+        COMMENT "Copying YOLO models to build directory"
+    )
+endif()
 
 # ============================================================================
 # 可選：跳過 Pylon SDK（用於無相機的 CI 環境）

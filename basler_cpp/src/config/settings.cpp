@@ -128,6 +128,34 @@ PackagingConfig PackagingConfig::fromJson(const QJsonObject& json)
 }
 
 // ============================================================================
+// YoloConfig
+// ============================================================================
+
+QJsonObject YoloConfig::toJson() const
+{
+    return QJsonObject{
+        {"modelPath", modelPath},
+        {"confidenceThreshold", confidenceThreshold},
+        {"nmsThreshold", nmsThreshold},
+        {"roiUpscaleFactor", roiUpscaleFactor},
+        {"inputSize", inputSize},
+        {"enabled", enabled}
+    };
+}
+
+YoloConfig YoloConfig::fromJson(const QJsonObject& json)
+{
+    YoloConfig config;
+    config.modelPath = json.value("modelPath").toString(config.modelPath);
+    config.confidenceThreshold = json.value("confidenceThreshold").toDouble(config.confidenceThreshold);
+    config.nmsThreshold = json.value("nmsThreshold").toDouble(config.nmsThreshold);
+    config.roiUpscaleFactor = json.value("roiUpscaleFactor").toDouble(config.roiUpscaleFactor);
+    config.inputSize = json.value("inputSize").toInt(config.inputSize);
+    config.enabled = json.value("enabled").toBool(config.enabled);
+    return config;
+}
+
+// ============================================================================
 // PerformanceConfig, DebugConfig, UIConfig
 // ============================================================================
 
@@ -390,6 +418,7 @@ bool AppConfig::load(const QString& filePath)
     m_performance = PerformanceConfig::fromJson(root.value("performance").toObject());
     m_debug = DebugConfig::fromJson(root.value("debug").toObject());
     m_ui = UIConfig::fromJson(root.value("ui").toObject());
+    m_yolo = YoloConfig::fromJson(root.value("yolo").toObject());
 
     // 載入零件配置
     QJsonArray partsArray = root.value("partProfiles").toArray();
@@ -431,6 +460,7 @@ bool AppConfig::save(const QString& filePath) const
     root["performance"] = m_performance.toJson();
     root["debug"] = m_debug.toJson();
     root["ui"] = m_ui.toJson();
+    root["yolo"] = m_yolo.toJson();
     root["partProfiles"] = partsArray;
     root["currentPartId"] = m_currentPartId;
 
@@ -457,6 +487,7 @@ void AppConfig::resetToDefault()
     m_performance = PerformanceConfig();
     m_debug = DebugConfig();
     m_ui = UIConfig();
+    m_yolo = YoloConfig();
 
     m_partProfiles.clear();
     initDefaultPartProfiles();

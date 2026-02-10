@@ -1,31 +1,3 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/  # Python setuptools 臨時目錄
-!basler_pyqt6/resources/parts/  # 但要追蹤資源目錄結構
-basler_pyqt6/resources/parts/*.jpg  # 忽略實際圖片檔案
-basler_pyqt6/resources/parts/*.png
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
 # C++ Build
 basler_cpp/build/
 cmake-build-*/
@@ -37,88 +9,73 @@ cmake-build-*/
 *.dylib
 *.dll
 *.exe
+*.pdb
+*.ilk
+*.exp
 
-# PyQt6
-*.ui~
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Qt
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
 *.qmlc
 *.jsc
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# 日誌文件
-*.log
-basler_pyqt6/logs/
-
-# 錄製視頻（可選保留）
-basler_pyqt6/recordings/*.mp4
-basler_pyqt6/recordings/*.avi
-
-# 系統文件
+# macOS
 .DS_Store
+*.dSYM/
+
+# Windows
 Thumbs.db
-recordings/
+*.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+*.opendb
 
-# 打包文件
-dist/
-build/
-releases/
+# Logs
+*.log
+basler_cpp/logs/
 
-# PyInstaller spec 文件（保留專案配置，忽略臨時生成的）
-# basler_pyqt6.spec 需要追蹤
-*.spec.backup
-*-temp.spec
+# Recordings (keep structure, ignore files)
+basler_cpp/recordings/*.mp4
+basler_cpp/recordings/*.avi
 
-# 環境變量
-.env
-.env.local
+# Test data videos (large files - ignored to avoid bloating repo)
+basler_cpp/testData/*.mp4
+basler_cpp/testData/*.avi
 
-# 測試
-.pytest_cache/
-.coverage
-htmlcov/
-testData/
-basler_mvc/
-**/test_*.py
-**/test_*.ipynb
-
-# 文檔和範例（非必要）
-DEVELOPMENT_GUIDE.md
-PACKAGING_GUIDE.md
-UPDATE_WORKFLOW.md
-update_server_example/
-
-# 臨時打包文件
-*.tar.gz
-*.zip
-
-# 調試配置
-basler_pyqt6/configs/
-basler_pyqt6/screenshots/
-
-# 測試對比結果
-comparison_results/
-
-# 臨時文件
+# Temporary files
 *.tmp
 *.bak
 *.backup
+*-temp.*
 
-# basler_mvc (舊版本的緩存和日誌)
-basler_mvc/__pycache__/
-basler_mvc/**/__pycache__/
-basler_mvc/logs/
-basler_mvc/recordings/*.avi
-basler_mvc/recordings/1000顆/output_*.mp4
-basler_mvc/recordings/1000顆/colorConversion_*.mp4
-sftp.json
-temp_*.json
+# Package outputs
+*.tar.gz
+*.zip
+*.dmg
+*.AppImage
+releases/
 
-# Build outputs
-basler_cpp/build_release/
-basler_cpp/pylon_test/
-nul
+# VS Code local settings (keep shared settings)
+.vscode/settings.json
+.vscode/*.local.json
+
+# Local config overrides
+*.local.json
+.env
+.env.local

@@ -47,6 +47,10 @@ public slots:
     // 參數同步（從配置載入）
     void syncFromConfig();
 
+    // YOLO 狀態更新
+    void updateYoloModelStatus(bool loaded);
+    void updateYoloInferenceTime(double ms);
+
 signals:
     // ===== ROI 參數 =====
     void roiChanged(int x, int y, int width, int height);
@@ -94,6 +98,13 @@ signals:
     void jumpToFrame(int frame);
     void screenshot();
 
+    // YOLO 偵測控制
+    void yoloModeChanged(int modeIndex);          // 0=Classical, 1=YOLO, 2=Auto
+    void yoloConfidenceChanged(double threshold);
+    void yoloNmsThresholdChanged(double threshold);
+    void yoloRoiUpscaleChanged(double factor);
+    void loadYoloModelRequested();
+
     // 其他
     void resetTotalCount();
     void debugViewToggled(bool show);
@@ -121,6 +132,10 @@ private slots:
     void onSkipFramesChanged(int value);
     void onShowDebugViewChanged(bool show);
     void onLockParamsChanged(bool locked);
+    void onYoloModeChanged(int index);
+    void onYoloConfidenceChanged(double value);
+    void onYoloNmsChanged(double value);
+    void onYoloRoiUpscaleChanged(double value);
 
 private:
     void initUi();
@@ -132,6 +147,7 @@ private:
     QWidget* createGateGroup();
     QWidget* createPerformanceGroup();
     QWidget* createVideoControlGroup();
+    QWidget* createYoloGroup();
     QWidget* createDebugViewGroup();
     QWidget* createActionButtonsGroup();
 
@@ -193,6 +209,15 @@ private:
     QPushButton* m_saveConfigBtn;
     QPushButton* m_loadConfigBtn;
     QPushButton* m_resetCountBtn;
+
+    // YOLO 控制
+    QComboBox* m_yoloModeCombo;
+    QDoubleSpinBox* m_yoloConfidenceSpin;
+    QDoubleSpinBox* m_yoloNmsSpin;
+    QDoubleSpinBox* m_yoloRoiUpscaleSpin;
+    QPushButton* m_loadYoloModelBtn;
+    QLabel* m_yoloStatusLabel;
+    QLabel* m_yoloInferenceLabel;
 
     // 參數鎖定
     QCheckBox* m_lockParamsCheck;
