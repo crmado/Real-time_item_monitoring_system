@@ -32,6 +32,7 @@ qrc_*.cpp
 *.swp
 *.swo
 *~
+.vscode/mcp.json
 
 # macOS
 .DS_Store
@@ -79,3 +80,4 @@ releases/
 *.local.json
 .env
 .env.local
+node_modules
