@@ -159,9 +159,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${OpenCV_INCLUDE_DIRS}
 )
 
-# 條件性添加 Pylon 包含目錄
+# 條件性添加 Pylon 包含目錄（使用 SYSTEM 抑制第三方庫警告）
 if(NOT SKIP_PYLON AND PYLON_INCLUDE_DIRS)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${PYLON_INCLUDE_DIRS})
+    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${PYLON_INCLUDE_DIRS})
 endif()
 
 if(QT_VERSION_MAJOR EQUAL 6)
@@ -218,7 +218,12 @@ endif()
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /utf-8)
 else()
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(${PROJECT_NAME} PRIVATE 
+        -Wall -Wextra -Wpedantic
+        # 抑制特定警告
+        -Wno-unused-result              # 忽略 nodiscard 返回值警告
+        -Wno-unused-lambda-capture      # 忽略未使用的 lambda 捕獲警告
+    )
 endif()
 
 # Debug/Release 設定

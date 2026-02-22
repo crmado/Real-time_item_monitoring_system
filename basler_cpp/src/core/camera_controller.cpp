@@ -342,9 +342,9 @@ namespace basler
 
     void CameraController::connectCamera(int cameraIndex)
     {
-        // 使用 QtConcurrent 在背景線程執行，不阻塞 UI
-        QtConcurrent::run([this, cameraIndex]()
-                          {
+        // 使用 QThreadPool::start 在背景線程執行，不阻塞 UI
+        QThreadPool::globalInstance()->start([this, cameraIndex]()
+                                             {
         // 使用 QMetaObject::invokeMethod 確保狀態轉換在主線程執行
         bool transitionOk = false;
         QMetaObject::invokeMethod(this, [this, &transitionOk]() {
@@ -409,8 +409,8 @@ namespace basler
 
     void CameraController::disconnectCamera()
     {
-        QtConcurrent::run([this]()
-                          {
+        QThreadPool::globalInstance()->start([this]()
+                                             {
         // 使用 QMetaObject::invokeMethod 確保狀態轉換在主線程執行
         bool transitionOk = false;
         QMetaObject::invokeMethod(this, [this, &transitionOk]() {

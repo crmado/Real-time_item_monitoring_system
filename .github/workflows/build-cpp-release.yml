@@ -167,9 +167,13 @@ jobs:
         if: matrix.platform == 'windows'
         run: |
           cd basler_cpp
+          # 設置 PYLON_ROOT 默認值（如果未設置）
+          if (-not $env:PYLON_ROOT) {
+            $env:PYLON_ROOT = "C:/Program Files/Basler/pylon 7/Development"
+          }
           cmake -B build -G "${{ matrix.cmake_generator }}" `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
-            -DPYLON_ROOT="${{ env.PYLON_ROOT }}" `
+            -DPYLON_ROOT="$env:PYLON_ROOT" `
             -DSKIP_PYLON=ON
         shell: pwsh
 

@@ -530,27 +530,28 @@ namespace basler
                 this, &MainWindow::onLoadVideo);
 
         // 影片控制信號
-        connect(m_debugPanel, &DebugPanelWidget::playVideo, this, [this]() {
+        connect(m_debugPanel, &DebugPanelWidget::playVideo, this, [this]()
+                {
             auto* vp = m_sourceManager->videoPlayer();
-            if (vp) vp->resume();
-        });
-        connect(m_debugPanel, &DebugPanelWidget::pauseVideo, this, [this]() {
+            if (vp) vp->resume(); });
+        connect(m_debugPanel, &DebugPanelWidget::pauseVideo, this, [this]()
+                {
             auto* vp = m_sourceManager->videoPlayer();
-            if (vp) vp->pause();
-        });
-        connect(m_debugPanel, &DebugPanelWidget::prevFrame, this, [this]() {
+            if (vp) vp->pause(); });
+        connect(m_debugPanel, &DebugPanelWidget::prevFrame, this, [this]()
+                {
             auto* vp = m_sourceManager->videoPlayer();
-            if (vp) vp->previousFrame();
-        });
-        connect(m_debugPanel, &DebugPanelWidget::nextFrame, this, [this]() {
+            if (vp) vp->previousFrame(); });
+        connect(m_debugPanel, &DebugPanelWidget::nextFrame, this, [this]()
+                {
             auto* vp = m_sourceManager->videoPlayer();
-            if (vp) vp->nextFrame();
-        });
-        connect(m_debugPanel, &DebugPanelWidget::jumpToFrame, this, [this](int frame) {
+            if (vp) vp->nextFrame(); });
+        connect(m_debugPanel, &DebugPanelWidget::jumpToFrame, this, [this](int frame)
+                {
             auto* vp = m_sourceManager->videoPlayer();
-            if (vp) vp->seek(frame);
-        });
-        connect(m_debugPanel, &DebugPanelWidget::screenshot, this, [this]() {
+            if (vp) vp->seek(frame); });
+        connect(m_debugPanel, &DebugPanelWidget::screenshot, this, [this]()
+                {
             QMutexLocker locker(&m_frameMutex);
             if (m_latestFrame.empty()) return;
 
@@ -562,27 +563,31 @@ namespace basler
 
             cv::imwrite(filename.toStdString(), m_latestFrame);
             m_statusLabel->setText(QString("截圖已儲存: %1").arg(filename));
-            qDebug() << "[MainWindow] 截圖已儲存:" << filename;
-        });
+            qDebug() << "[MainWindow] 截圖已儲存:" << filename; });
 
         // ===== YOLO 偵測信號 =====
         connect(m_debugPanel, &DebugPanelWidget::yoloModeChanged,
-                [this](int modeIndex) {
+                [this](int modeIndex)
+                {
                     DetectionMode mode = static_cast<DetectionMode>(modeIndex);
                     m_detectionController->setDetectionMode(mode);
                     m_statusLabel->setText(QString("偵測模式: %1")
-                        .arg(modeIndex == 0 ? "傳統" : modeIndex == 1 ? "YOLO" : "自動"));
+                                               .arg(modeIndex == 0 ? "傳統" : modeIndex == 1 ? "YOLO"
+                                                                                             : "自動"));
                 });
         connect(m_debugPanel, &DebugPanelWidget::yoloConfidenceChanged,
-                [this](double threshold) {
+                [this](double threshold)
+                {
                     m_detectionController->setYoloConfidence(threshold);
                 });
         connect(m_debugPanel, &DebugPanelWidget::yoloNmsThresholdChanged,
-                [this](double threshold) {
+                [this](double threshold)
+                {
                     m_detectionController->setYoloNmsThreshold(threshold);
                 });
         connect(m_debugPanel, &DebugPanelWidget::yoloRoiUpscaleChanged,
-                [this](double factor) {
+                [this](double factor)
+                {
                     m_detectionController->setYoloRoiUpscale(factor);
                 });
         connect(m_debugPanel, &DebugPanelWidget::loadYoloModelRequested,
@@ -626,8 +631,8 @@ namespace basler
         m_statusLabel->setText("Auto-detecting cameras (smart scan with retry)...");
 
         // Run in background to avoid UI blocking
-        QtConcurrent::run([this]()
-                          {
+        QThreadPool::globalInstance()->start([this]()
+                                             {
             auto cameras = m_sourceManager->cameraController()->detectCamerasWithRetry(3, 2000);
 
             // Update UI in main thread
@@ -905,7 +910,7 @@ namespace basler
 
         // 重置 UI 狀態
         m_packagingControl->countingPanel()->setPackagingState(false);
-        auto& pkg = getConfig().packaging();
+        auto &pkg = getConfig().packaging();
         m_packagingControl->updateCount(0, pkg.targetCount);
         m_packagingControl->updateVibratorStatus(false, false, 0);
 
