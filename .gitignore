@@ -1,5 +1,19 @@
+# ============================================================================
+# Python
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+*.egg
+
+# ============================================================================
 # C++ Build
+# ============================================================================
 basler_cpp/build/
+basler_cpp/build_release/
 cmake-build-*/
 *_autogen/
 *.o
@@ -20,6 +34,15 @@ cmake_install.cmake
 Makefile
 compile_commands.json
 
+# Visual Studio
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.tlog
+*.recipe
+*.lastbuildstate
+*.idb
+
 # Qt
 moc_*.cpp
 ui_*.h
@@ -27,19 +50,29 @@ qrc_*.cpp
 *.qmlc
 *.jsc
 
+# ============================================================================
 # IDE
+# ============================================================================
 .idea/
 *.swp
 *.swo
 *~
 .vscode/mcp.json
+.vscode/settings.json
+.vscode/sftp.json
+.vscode/*.local.json
 
+# ============================================================================
+# OS
+# ============================================================================
 # macOS
 .DS_Store
 *.dSYM/
 
 # Windows
 Thumbs.db
+Desktop.ini
+nul
 *.user
 *.suo
 *.ncb
@@ -47,37 +80,55 @@ Thumbs.db
 *.opensdf
 *.opendb
 
+# ============================================================================
 # Logs
+# ============================================================================
 *.log
 basler_cpp/logs/
 
-# Recordings (keep structure, ignore files)
+# ============================================================================
+# Recordings & Test Data (large media files)
+# ============================================================================
+recordings/
 basler_cpp/recordings/*.mp4
 basler_cpp/recordings/*.avi
-
-# Test data videos (large files - ignored to avoid bloating repo)
 basler_cpp/testData/*.mp4
 basler_cpp/testData/*.avi
+basler_mvc/recordings/
+basler_pyqt6/testData/**/*.mp4
+basler_pyqt6/testData/**/*.avi
 
+# ============================================================================
+# basler_mvc (reference only, not production code)
+# ============================================================================
+basler_mvc/
+
+# ============================================================================
 # Temporary files
+# ============================================================================
 *.tmp
 *.bak
 *.backup
 *-temp.*
 
+# ============================================================================
 # Package outputs
+# ============================================================================
 *.tar.gz
 *.zip
 *.dmg
 *.AppImage
 releases/
 
-# VS Code local settings (keep shared settings)
-.vscode/settings.json
-.vscode/*.local.json
+# ============================================================================
+# Node.js (not used in production)
+# ============================================================================
+node_modules/
+package-lock.json
 
+# ============================================================================
 # Local config overrides
+# ============================================================================
 *.local.json
 .env
 .env.local
-node_modules

@@ -1,6 +1,37 @@
 {
     "configurations": [
         {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/basler_cpp/include",
+                "C:/Qt/5.15.2/msvc2019_64/include",
+                "C:/Qt/5.15.2/msvc2019_64/include/QtCore",
+                "C:/Qt/5.15.2/msvc2019_64/include/QtGui",
+                "C:/Qt/5.15.2/msvc2019_64/include/QtWidgets",
+                "C:/Qt/5.15.2/msvc2019_64/include/QtMultimedia",
+                "C:/Qt/5.15.2/msvc2019_64/include/QtMultimediaWidgets",
+                "C:/Qt/5.15.2/msvc2019_64/include/QtConcurrent",
+                "C:/opencv/opencv/build/include",
+                "C:/Program Files/Basler/pylon 8/Development/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "QT_CORE_LIB",
+                "QT_GUI_LIB",
+                "QT_WIDGETS_LIB",
+                "WIN32"
+            ],
+            "windowsSdkVersion": "10.0.22621.0",
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        },
+        {
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/**",
