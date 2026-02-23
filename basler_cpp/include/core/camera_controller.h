@@ -238,9 +238,7 @@ namespace basler
         std::deque<qint64> m_frameTimes;
         QMutex m_statsMutex;
 
-        // 配置 (先使用 60fps 確保穩定)
-        double m_targetFps = 60.0;
-        double m_exposureTime = 1000.0; // 微秒
+        double m_exposureTime = 1000.0; // 微秒（runtime 可由 setExposure 覆蓋）
 
 #ifndef NO_PYLON_SDK
         // Pylon 初始化（全局單例）

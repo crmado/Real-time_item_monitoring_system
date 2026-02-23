@@ -160,12 +160,35 @@ namespace basler
 
         try
         {
-            int frameHeight = frame.rows;
-            int frameWidth = frame.cols;
+            const int origW = frame.cols;
+            const int origH = frame.rows;
+
+            // ========== 解析度縮放 ==========
+            // 根據 targetProcessingWidth 計算縮放比例，使處理影像寬度恆為目標值。
+            // 目的：讓檢測參數（minArea / roiHeight 等）在任何相機解析度下都有一致的物理意義。
+            int targetW = getConfig().performance().targetProcessingWidth;
+            double scale = (targetW > 0 && origW > targetW)
+                               ? static_cast<double>(targetW) / origW
+                               : 1.0;
+
+            cv::Mat workFrame; // 實際用於檢測的縮放幀
+            if (scale < 1.0)
+            {
+                int scaledW = static_cast<int>(origW * scale);
+                int scaledH = static_cast<int>(origH * scale);
+                cv::resize(frame, workFrame, cv::Size(scaledW, scaledH), 0, 0, cv::INTER_LINEAR);
+            }
+            else
+            {
+                workFrame = frame; // 不需要縮放（相機解析度已 ≤ 目標寬度）
+            }
+
+            const int frameWidth  = workFrame.cols;
+            const int frameHeight = workFrame.rows;
             int currentRoiY = 0;
             int currentRoiHeight = frameHeight;
 
-            // ROI 區域提取（不需要鎖，使用本地變量）
+            // ROI 區域提取（在縮放幀上操作）
             cv::Mat processRegion;
             if (roiEnabled)
             {
@@ -173,27 +196,29 @@ namespace basler
                 currentRoiHeight = std::min(roiHeight, frameHeight - currentRoiY);
                 if (currentRoiHeight > 0 && currentRoiY < frameHeight)
                 {
-                    processRegion = frame(cv::Rect(0, currentRoiY, frameWidth, currentRoiHeight));
+                    processRegion = workFrame(cv::Rect(0, currentRoiY, frameWidth, currentRoiHeight));
                 }
                 else
                 {
-                    processRegion = frame;
+                    processRegion = workFrame;
                     currentRoiY = 0;
                     currentRoiHeight = frameHeight;
                 }
             }
             else
             {
-                processRegion = frame;
+                processRegion = workFrame;
             }
 
-            // 更新共享變量
+            // 更新共享變量（存原始解析度座標，供 drawDetectionResults 使用）
             {
                 QMutexLocker locker(&m_mutex);
-                m_frameHeight = frameHeight;
-                m_frameWidth = frameWidth;
-                m_currentRoiY = currentRoiY;
-                m_currentRoiHeight = currentRoiHeight;
+                m_frameHeight = origH;
+                m_frameWidth  = origW;
+                m_processingScale = scale;
+                // ROI 座標映射回原始解析度
+                m_currentRoiY      = static_cast<int>(currentRoiY / scale);
+                m_currentRoiHeight = static_cast<int>(currentRoiHeight / scale);
             }
 
             // 根據偵測模式執行不同的處理流程
@@ -219,13 +244,17 @@ namespace basler
                 detectedObjects = detectObjects(processed);
             }
 
-            // 始終計算光柵線位置（無論是否有物件）
+            // 始終計算光柵線位置（座標在原始解析度空間）
+            // m_roiHeight 是處理解析度下的像素值，需除以 processingScale 換算回原始空間
             int gateLineY = 0;
             {
                 QMutexLocker locker(&m_mutex);
                 if (m_roiEnabled)
                 {
-                    gateLineY = m_currentRoiY + static_cast<int>(m_roiHeight * m_gateLinePositionRatio);
+                    double roiHeightOrig = (m_processingScale > 0.0)
+                                              ? m_roiHeight / m_processingScale
+                                              : m_roiHeight;
+                    gateLineY = m_currentRoiY + static_cast<int>(roiHeightOrig * m_gateLinePositionRatio);
                 }
                 else
                 {
@@ -420,13 +449,15 @@ namespace basler
                 continue;
             }
 
-            int x = stats.at<int>(i, cv::CC_STAT_LEFT);
-            int y = stats.at<int>(i, cv::CC_STAT_TOP) + m_currentRoiY;
-            int w = stats.at<int>(i, cv::CC_STAT_WIDTH);
-            int h = stats.at<int>(i, cv::CC_STAT_HEIGHT);
+            // 座標由縮放空間映射回原始相機解析度（供 overlay 繪製與光柵計數使用）
+            double invScale = (m_processingScale > 0.0) ? (1.0 / m_processingScale) : 1.0;
+            int x = static_cast<int>(stats.at<int>(i, cv::CC_STAT_LEFT)  * invScale);
+            int y = static_cast<int>(stats.at<int>(i, cv::CC_STAT_TOP)   * invScale) + m_currentRoiY;
+            int w = static_cast<int>(stats.at<int>(i, cv::CC_STAT_WIDTH)  * invScale);
+            int h = static_cast<int>(stats.at<int>(i, cv::CC_STAT_HEIGHT) * invScale);
 
-            int cx = static_cast<int>(centroids.at<double>(i, 0));
-            int cy = static_cast<int>(centroids.at<double>(i, 1)) + m_currentRoiY;
+            int cx = static_cast<int>(centroids.at<double>(i, 0) * invScale);
+            int cy = static_cast<int>(centroids.at<double>(i, 1) * invScale) + m_currentRoiY;
 
             // 形狀驗證
             if (!validateShape(w, h, area))

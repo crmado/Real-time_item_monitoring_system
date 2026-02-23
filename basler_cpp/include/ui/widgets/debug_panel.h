@@ -80,7 +80,7 @@ signals:
     void gateLinePositionChanged(double ratio);
 
     // ===== 性能參數 =====
-    void imageScaleChanged(double scale);
+    void processingWidthChanged(int targetWidth); // 取代舊的 imageScaleChanged
     void skipFramesChanged(int frames);
 
     // ===== 控制信號 =====
@@ -128,7 +128,7 @@ private slots:
     void onGateTriggerRadiusChanged(int value);
     void onGateHistoryFramesChanged(int value);
     void onGateLinePositionChanged(double value);
-    void onImageScaleChanged(int index);
+    void onProcessingWidthChanged(int index);
     void onSkipFramesChanged(int value);
     void onShowDebugViewChanged(bool show);
     void onLockParamsChanged(bool locked);

@@ -268,8 +268,9 @@ namespace basler
         // 光柵狀態
         std::map<std::pair<int, int>, int> m_triggeredPositions; // {(x,y): frame_number}
         int m_crossingCounter = 0;
-        int m_frameWidth = 640;
-        int m_frameHeight = 480;
+        int m_frameWidth = 0;       // 原始相機幀寬度（連線後由第一幀決定）
+        int m_frameHeight = 0;      // 原始相機幀高度
+        double m_processingScale = 1.0; // 處理解析度縮放比例，由 targetProcessingWidth 計算
         int m_currentFrameCount = 0;
         int m_totalProcessedFrames = 0;
         int m_gateLineY = 0;

@@ -598,6 +598,15 @@ namespace basler
                 m_debugPanel, &DebugPanelWidget::updateYoloModelStatus);
         connect(m_detectionController.get(), &DetectionController::yoloInferenceTimeUpdated,
                 m_debugPanel, &DebugPanelWidget::updateYoloInferenceTime);
+
+        // 處理解析度（targetProcessingWidth）
+        connect(m_debugPanel, &DebugPanelWidget::processingWidthChanged,
+                [](int width)
+                {
+                    auto &cfg = Settings::instance().performance();
+                    // 0 = 原生解析度模式：設為一個不可能超過的大值，讓縮放邏輯跳過縮放
+                    cfg.targetProcessingWidth = (width > 0) ? width : 99999;
+                });
     }
 
     // ============================================================================

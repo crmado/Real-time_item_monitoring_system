@@ -268,12 +268,16 @@ QWidget* DebugPanelWidget::createPerformanceGroup()
     QGroupBox* group = new QGroupBox(tr("⚡ 性能"));
     QFormLayout* layout = new QFormLayout();
 
+    // 處理解析度：固定寬度選項，自動適應任何相機解析度
+    // 實際縮放比例 = min(1.0, 選定寬度 / 相機原生寬度)
     m_imageScaleCombo = new QComboBox();
-    m_imageScaleCombo->addItems({"100%", "75%", "50%", "30%"});
-    m_imageScaleCombo->setCurrentIndex(2);  // 默認 50%
+    m_imageScaleCombo->addItems({"原生解析度", "1280px", "640px ★", "480px", "320px"});
+    m_imageScaleCombo->setCurrentIndex(2);  // 默認 640px（與演算法調參基準一致）
+    m_imageScaleCombo->setToolTip(tr("檢測演算法使用的處理寬度。原始影像仍以全解析度顯示。\n"
+                                     "640px ★ = 演算法調參基準值，大多數場景建議使用。"));
     connect(m_imageScaleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &DebugPanelWidget::onImageScaleChanged);
-    layout->addRow(tr("圖像縮放:"), m_imageScaleCombo);
+            this, &DebugPanelWidget::onProcessingWidthChanged);
+    layout->addRow(tr("處理解析度:"), m_imageScaleCombo);
 
     m_skipFramesSpin = new QSpinBox();
     m_skipFramesSpin->setRange(0, 10);
@@ -615,12 +619,13 @@ void DebugPanelWidget::onGateLinePositionChanged(double value)
     emit paramChanged("gateLinePosition", value);
 }
 
-void DebugPanelWidget::onImageScaleChanged(int index)
+void DebugPanelWidget::onProcessingWidthChanged(int index)
 {
-    double scales[] = {1.0, 0.75, 0.5, 0.3};
-    if (index >= 0 && index < 4) {
-        emit imageScaleChanged(scales[index]);
-        emit paramChanged("imageScale", scales[index]);
+    // 0=原生(0表示不縮放), 1=1280, 2=640, 3=480, 4=320
+    int widths[] = {0, 1280, 640, 480, 320};
+    if (index >= 0 && index < 5) {
+        emit processingWidthChanged(widths[index]);
+        emit paramChanged("targetProcessingWidth", widths[index]);
     }
 }
 

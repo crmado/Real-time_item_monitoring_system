@@ -131,7 +131,10 @@ struct PackagingConfig {
  * @brief 性能優化配置
  */
 struct PerformanceConfig {
-    double imageScale = 0.5;
+    // 檢測處理時縮放目標寬度（px）。
+    // 實際縮放比例 = min(1.0, targetProcessingWidth / 實際幀寬度)，自動適應相機解析度。
+    // 640 → 640px 相機不縮放；2464px 相機縮放至 640px（scale≈0.26）。
+    int targetProcessingWidth = 640;
     int skipFrames = 0;
 
     bool showGray = false;
@@ -230,6 +233,23 @@ struct PartProfile {
 };
 
 /**
+ * @brief 相機硬體配置
+ *
+ * 解析度：永遠使用相機原生最大值，程式碼不覆寫。
+ * targetFps = 0 → 不限制幀率，讓相機以最大速度運行。
+ */
+struct CameraConfig {
+    // 0 = 不限制幀率（讓相機跑最大值）
+    double targetFps = 0.0;
+
+    // 曝光時間（微秒）
+    double exposureTimeUs = 1000.0;
+
+    QJsonObject toJson() const;
+    static CameraConfig fromJson(const QJsonObject& json);
+};
+
+/**
  * @brief 應用程序總配置
  *
  * 使用單例模式，確保全局唯一配置實例
@@ -245,6 +265,9 @@ public:
     AppConfig& operator=(const AppConfig&) = delete;
 
     // 配置訪問
+    CameraConfig& camera() { return m_camera; }
+    const CameraConfig& camera() const { return m_camera; }
+
     DetectionConfig& detection() { return m_detection; }
     const DetectionConfig& detection() const { return m_detection; }
 
@@ -297,6 +320,7 @@ private:
 
     void initDefaultPartProfiles();
 
+    CameraConfig m_camera;
     DetectionConfig m_detection;
     GateConfig m_gate;
     PackagingConfig m_packaging;

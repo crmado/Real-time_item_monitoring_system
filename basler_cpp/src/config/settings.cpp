@@ -68,6 +68,26 @@ DetectionConfig DetectionConfig::fromJson(const QJsonObject& json)
 }
 
 // ============================================================================
+// CameraConfig
+// ============================================================================
+
+QJsonObject CameraConfig::toJson() const
+{
+    return QJsonObject{
+        {"targetFps", targetFps},
+        {"exposureTimeUs", exposureTimeUs}
+    };
+}
+
+CameraConfig CameraConfig::fromJson(const QJsonObject& json)
+{
+    CameraConfig config;
+    config.targetFps = json.value("targetFps").toDouble(config.targetFps);
+    config.exposureTimeUs = json.value("exposureTimeUs").toDouble(config.exposureTimeUs);
+    return config;
+}
+
+// ============================================================================
 // GateConfig
 // ============================================================================
 
@@ -162,7 +182,7 @@ YoloConfig YoloConfig::fromJson(const QJsonObject& json)
 QJsonObject PerformanceConfig::toJson() const
 {
     return QJsonObject{
-        {"imageScale", imageScale},
+        {"targetProcessingWidth", targetProcessingWidth},
         {"skipFrames", skipFrames},
         {"showGray", showGray},
         {"showBinary", showBinary},
@@ -175,7 +195,7 @@ QJsonObject PerformanceConfig::toJson() const
 PerformanceConfig PerformanceConfig::fromJson(const QJsonObject& json)
 {
     PerformanceConfig config;
-    config.imageScale = json.value("imageScale").toDouble(config.imageScale);
+    config.targetProcessingWidth = json.value("targetProcessingWidth").toInt(config.targetProcessingWidth);
     config.skipFrames = json.value("skipFrames").toInt(config.skipFrames);
     return config;
 }
@@ -412,6 +432,7 @@ bool AppConfig::load(const QString& filePath)
 
     QJsonObject root = doc.object();
 
+    m_camera = CameraConfig::fromJson(root.value("camera").toObject());
     m_detection = DetectionConfig::fromJson(root.value("detection").toObject());
     m_gate = GateConfig::fromJson(root.value("gate").toObject());
     m_packaging = PackagingConfig::fromJson(root.value("packaging").toObject());
@@ -454,6 +475,7 @@ bool AppConfig::save(const QString& filePath) const
     }
 
     QJsonObject root;
+    root["camera"] = m_camera.toJson();
     root["detection"] = m_detection.toJson();
     root["gate"] = m_gate.toJson();
     root["packaging"] = m_packaging.toJson();
@@ -481,6 +503,7 @@ bool AppConfig::save(const QString& filePath) const
 
 void AppConfig::resetToDefault()
 {
+    m_camera = CameraConfig();
     m_detection = DetectionConfig();
     m_gate = GateConfig();
     m_packaging = PackagingConfig();

@@ -1,4 +1,5 @@
 #include "core/camera_controller.h"
+#include "config/settings.h"
 #include <QDebug>
 #include <QDateTime>
 #include <QtConcurrent>
@@ -638,49 +639,53 @@ namespace basler
         try
         {
             GenApi::INodeMap &nodemap = m_camera->GetNodeMap();
+            const auto& camCfg = Settings::instance().camera();
 
-            // ========== 圖像解析度設置（與 Python 版本一致）==========
-            // 使用低解析度，減少 GigE 傳輸負擔
-            GenApi::CIntegerPtr width(nodemap.GetNode("Width"));
-            GenApi::CIntegerPtr height(nodemap.GetNode("Height"));
-            if (width.IsValid() && height.IsValid())
+            // ========== 解析度：重置為相機硬體最大值 ==========
+            // Basler 相機的 Width/Height 儲存於相機 NVM，上次設定值會殘留。
+            // 必須明確 SetValue(GetMax()) 才能還原到出廠最大解析度。
+            // 順序：先把 Offset 歸零，再設 Width/Height，避免超出感測器邊界。
             {
-                width->SetValue(640);
-                height->SetValue(480);
-                qDebug() << "[CameraController] 解析度設置: 640x480";
+                GenApi::CIntegerPtr offsetX(nodemap.GetNode("OffsetX"));
+                GenApi::CIntegerPtr offsetY(nodemap.GetNode("OffsetY"));
+                if (offsetX.IsValid()) offsetX->SetValue(0);
+                if (offsetY.IsValid()) offsetY->SetValue(0);
+
+                GenApi::CIntegerPtr w(nodemap.GetNode("Width"));
+                GenApi::CIntegerPtr h(nodemap.GetNode("Height"));
+                if (w.IsValid() && h.IsValid())
+                {
+                    w->SetValue(w->GetMax());
+                    h->SetValue(h->GetMax());
+                    qDebug() << "[CameraController] 解析度已重置為硬體最大值:"
+                             << w->GetValue() << "x" << h->GetValue();
+                }
             }
 
             // ========== GigE 傳輸優化 ==========
-            // 先嘗試自動發現最佳封包大小（使用 Pylon 的 GigE 功能）
             GenApi::CIntegerPtr packetSize(nodemap.GetNode("GevSCPSPacketSize"));
             if (packetSize.IsValid())
             {
                 // 嘗試使用 1500 標準 MTU (大多數網卡都支援)
                 // 如果網卡支援 Jumbo frames，可以增加到 8000-9000
                 int64_t targetPacketSize = 1500;
-
-                // 檢查範圍
                 int64_t minSize = packetSize->GetMin();
                 int64_t maxSize = packetSize->GetMax();
                 qDebug() << "[CameraController] Packet Size 範圍:" << minSize << "-" << maxSize;
-
-                // 使用較小的安全值
-                if (targetPacketSize < minSize)
-                    targetPacketSize = minSize;
-                if (targetPacketSize > maxSize)
-                    targetPacketSize = maxSize;
-
+                if (targetPacketSize < minSize) targetPacketSize = minSize;
+                if (targetPacketSize > maxSize) targetPacketSize = maxSize;
                 packetSize->SetValue(targetPacketSize);
                 qDebug() << "[CameraController] GevSCPSPacketSize:" << packetSize->GetValue();
             }
 
-            // Inter-Packet Delay (增大延遲確保穩定傳輸)
+            // Inter-Packet Delay：設為 0，讓網卡自行處理傳輸速率。
+            // 在高解析度（2464x2056）下，5000 ticks 延遲會把 FPS 上限壓到 ~7。
+            // 前提：相機使用獨立 GigE 網卡，不與其他設備共享頻寬。
             GenApi::CIntegerPtr interPacketDelay(nodemap.GetNode("GevSCPD"));
             if (interPacketDelay.IsValid())
             {
-                // 增加到 5000 ticks 以確保穩定傳輸
-                interPacketDelay->SetValue(5000);
-                qDebug() << "[CameraController] GevSCPD:" << interPacketDelay->GetValue();
+                interPacketDelay->SetValue(0);
+                qDebug() << "[CameraController] GevSCPD: 0 (無延遲模式)";
             }
 
             // 設置像素格式為 Mono8
@@ -691,12 +696,13 @@ namespace basler
             }
 
             // ========== 曝光設置 ==========
+            // 從設定初始化 m_exposureTime（之後可由 setExposure() 覆蓋）
+            m_exposureTime = camCfg.exposureTimeUs;
             GenApi::CEnumerationPtr exposureAuto(nodemap.GetNode("ExposureAuto"));
             if (exposureAuto.IsValid())
             {
                 exposureAuto->FromString("Off");
             }
-
             GenApi::CFloatPtr exposureTime(nodemap.GetNode("ExposureTime"));
             if (exposureTime.IsValid())
             {
@@ -704,16 +710,52 @@ namespace basler
             }
 
             // ========== 幀率控制 ==========
-            GenApi::CBooleanPtr fpsEnable(nodemap.GetNode("AcquisitionFrameRateEnable"));
-            if (fpsEnable.IsValid())
+            // targetFps = 0 → 不限制，讓相機跑最大值
+            if (camCfg.targetFps > 0.0)
             {
-                fpsEnable->SetValue(true);
-            }
+                // 不同型號相機 node 名稱不同，依序嘗試
+                bool fpsEnabled = false;
+                GenApi::CBooleanPtr fpsEnable(nodemap.GetNode("AcquisitionFrameRateEnable"));
+                if (fpsEnable.IsValid())
+                {
+                    fpsEnable->SetValue(true);
+                    fpsEnabled = true;
+                }
+                else
+                {
+                    // 較新相機（GenICam 標準）使用此名稱
+                    GenApi::CBooleanPtr fpsCtrl(nodemap.GetNode("AcquisitionFrameRateControlEnable"));
+                    if (fpsCtrl.IsValid())
+                    {
+                        fpsCtrl->SetValue(true);
+                        fpsEnabled = true;
+                    }
+                }
 
-            GenApi::CFloatPtr fps(nodemap.GetNode("AcquisitionFrameRate"));
-            if (fps.IsValid())
+                if (fpsEnabled)
+                {
+                    GenApi::CFloatPtr fps(nodemap.GetNode("AcquisitionFrameRate"));
+                    if (fps.IsValid())
+                    {
+                        fps->SetValue(camCfg.targetFps);
+                        qDebug() << "[CameraController] 幀率限制設置:" << camCfg.targetFps << "fps"
+                                 << "（相機實際:" << fps->GetValue() << "fps）";
+                    }
+                }
+                else
+                {
+                    qWarning() << "[CameraController] 找不到 AcquisitionFrameRateEnable node，"
+                               << "幀率限制未生效，相機將以最大速度運行";
+                }
+            }
+            else
             {
-                fps->SetValue(m_targetFps);
+                // targetFps = 0：關閉 FPS 限制，讓相機以最大幀率運行
+                GenApi::CBooleanPtr fpsEnable(nodemap.GetNode("AcquisitionFrameRateEnable"));
+                if (fpsEnable.IsValid()) fpsEnable->SetValue(false);
+                GenApi::CBooleanPtr fpsCtrl(nodemap.GetNode("AcquisitionFrameRateControlEnable"));
+                if (fpsCtrl.IsValid()) fpsCtrl->SetValue(false);
+                qDebug() << "[CameraController] 幀率限制已停用（最大速度模式）";
             }
 
             qDebug() << "[CameraController] 相機配置完成";
