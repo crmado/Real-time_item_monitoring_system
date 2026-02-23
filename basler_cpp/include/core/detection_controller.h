@@ -154,6 +154,9 @@ namespace basler
         void setGateHistoryFrames(int frames);
         void setGateLinePositionRatio(double ratio);
         void setUltraHighSpeedMode(bool enabled, int targetFps = 280);
+        void setBgHistory(int history);
+        void setCannyThresholds(int low, int high);
+        void setMorphParams(int kernelSize, int iterations);
 
         // YOLO 偵測控制
         bool loadYoloModel(const QString &modelPath);

@@ -448,81 +448,102 @@ namespace basler
         // ROI 參數
         connect(m_debugPanel, &DebugPanelWidget::roiChanged,
                 this, &MainWindow::onRoiChanged);
+        connect(m_debugPanel, &DebugPanelWidget::roiEnabledChanged,
+                [this](bool enabled)
+                {
+                    Settings::instance().detection().roiEnabled = enabled;
+                    m_detectionController->setRoiEnabled(enabled);
+                });
 
         // 背景減除參數
         connect(m_debugPanel, &DebugPanelWidget::bgHistoryChanged,
-                [](int history)
+                [this](int history)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.bgHistory = history;
+                    Settings::instance().detection().bgHistory = history;
+                    m_detectionController->setBgHistory(history);
                 });
         connect(m_debugPanel, &DebugPanelWidget::bgVarThresholdChanged,
-                [](double threshold)
+                [this](double threshold)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.bgVarThreshold = threshold;
+                    Settings::instance().detection().bgVarThreshold = threshold;
+                    m_detectionController->setBgVarThreshold(threshold);
                 });
         connect(m_debugPanel, &DebugPanelWidget::bgLearningRateChanged,
-                [](double rate)
+                [this](double rate)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.bgLearningRate = rate;
+                    Settings::instance().detection().bgLearningRate = rate;
+                    m_detectionController->setBgLearningRate(rate);
                 });
 
         // 邊緣檢測參數
         connect(m_debugPanel, &DebugPanelWidget::cannyLowChanged,
-                [](int threshold)
+                [this](int threshold)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.cannyLowThreshold = threshold;
+                    auto &det = Settings::instance().detection();
+                    det.cannyLowThreshold = threshold;
+                    m_detectionController->setCannyThresholds(threshold, det.cannyHighThreshold);
                 });
         connect(m_debugPanel, &DebugPanelWidget::cannyHighChanged,
-                [](int threshold)
+                [this](int threshold)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.cannyHighThreshold = threshold;
+                    auto &det = Settings::instance().detection();
+                    det.cannyHighThreshold = threshold;
+                    m_detectionController->setCannyThresholds(det.cannyLowThreshold, threshold);
                 });
 
         // 形態學參數
         connect(m_debugPanel, &DebugPanelWidget::morphKernelSizeChanged,
-                [](int size)
+                [this](int size)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.morphKernelSize = size;
+                    auto &det = Settings::instance().detection();
+                    det.morphKernelSize = size;
+                    m_detectionController->setMorphParams(size, det.morphIterations);
                 });
         connect(m_debugPanel, &DebugPanelWidget::morphIterationsChanged,
-                [](int iterations)
+                [this](int iterations)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.morphIterations = iterations;
+                    auto &det = Settings::instance().detection();
+                    det.morphIterations = iterations;
+                    m_detectionController->setMorphParams(det.morphKernelSize, iterations);
                 });
 
         // 面積參數
         connect(m_debugPanel, &DebugPanelWidget::minAreaChanged,
-                [](int area)
+                [this](int area)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.minArea = area;
+                    Settings::instance().detection().minArea = area;
+                    m_detectionController->setMinArea(area);
                 });
         connect(m_debugPanel, &DebugPanelWidget::maxAreaChanged,
-                [](int area)
+                [this](int area)
                 {
-                    auto &config = Settings::instance().detection();
-                    config.maxArea = area;
+                    Settings::instance().detection().maxArea = area;
+                    m_detectionController->setMaxArea(area);
                 });
 
         // 虛擬閘門參數
         connect(m_debugPanel, &DebugPanelWidget::gateYPositionChanged,
                 [](int y)
                 {
-                    auto &config = Settings::instance().gate();
-                    config.yPosition = y;
+                    Settings::instance().gate().yPosition = y;
                 });
         connect(m_debugPanel, &DebugPanelWidget::gateTriggerRadiusChanged,
-                [](int radius)
+                [this](int radius)
                 {
-                    auto &config = Settings::instance().gate();
-                    config.triggerRadius = radius;
+                    Settings::instance().gate().triggerRadius = radius;
+                    m_detectionController->setGateTriggerRadius(radius);
+                });
+        connect(m_debugPanel, &DebugPanelWidget::gateHistoryFramesChanged,
+                [this](int frames)
+                {
+                    Settings::instance().gate().gateHistoryFrames = frames;
+                    m_detectionController->setGateHistoryFrames(frames);
+                });
+        connect(m_debugPanel, &DebugPanelWidget::gateLinePositionChanged,
+                [this](double ratio)
+                {
+                    Settings::instance().gate().gateLinePositionRatio = ratio;
+                    m_detectionController->setGateLinePositionRatio(ratio);
                 });
 
         // 測試影片載入
@@ -607,6 +628,16 @@ namespace basler
                     // 0 = 原生解析度模式：設為一個不可能超過的大值，讓縮放邏輯跳過縮放
                     cfg.targetProcessingWidth = (width > 0) ? width : 99999;
                 });
+
+        // ===== 操作按鈕信號（原先未連接） =====
+        connect(m_debugPanel, &DebugPanelWidget::resetTotalCount,
+                m_detectionController.get(), &DetectionController::reset);
+        connect(m_debugPanel, &DebugPanelWidget::resetParams,
+                [](){ Settings::instance().resetToDefault(); });
+        connect(m_debugPanel, &DebugPanelWidget::saveConfig,
+                [](){ Settings::instance().save(); });
+        connect(m_debugPanel, &DebugPanelWidget::loadConfig,
+                [](){ Settings::instance().load(); });
     }
 
     // ============================================================================
@@ -720,12 +751,6 @@ namespace basler
     {
         m_statusLabel->setText(QString("錯誤: %1").arg(error));
         QMessageBox::warning(this, "相機錯誤", error);
-    }
-
-    void MainWindow::onCameraStateChanged(CameraState state)
-    {
-        updateButtonStates();
-        Q_UNUSED(state);
     }
 
     // ============================================================================
@@ -1047,42 +1072,7 @@ namespace basler
         config.roiX = x;
         config.roiY = y;
         config.roiHeight = height;
-    }
-
-    void MainWindow::onBgParamsChanged(int history, double varThreshold, double learningRate)
-    {
-        auto &config = Settings::instance().detection();
-        config.bgHistory = history;
-        config.bgVarThreshold = varThreshold;
-        config.bgLearningRate = learningRate;
-    }
-
-    void MainWindow::onEdgeParamsChanged(int lowThreshold, int highThreshold)
-    {
-        auto &config = Settings::instance().detection();
-        config.cannyLowThreshold = lowThreshold;
-        config.cannyHighThreshold = highThreshold;
-    }
-
-    void MainWindow::onMorphParamsChanged(int kernelSize, int iterations)
-    {
-        auto &config = Settings::instance().detection();
-        config.morphKernelSize = kernelSize;
-        config.morphIterations = iterations;
-    }
-
-    void MainWindow::onAreaParamsChanged(int minArea, int maxArea)
-    {
-        auto &config = Settings::instance().detection();
-        config.minArea = minArea;
-        config.maxArea = maxArea;
-    }
-
-    void MainWindow::onGateParamsChanged(int yPosition, int triggerRadius)
-    {
-        auto &config = Settings::instance().gate();
-        config.yPosition = yPosition;
-        config.triggerRadius = triggerRadius;
+        m_detectionController->setRoiHeight(height);
     }
 
     // ============================================================================

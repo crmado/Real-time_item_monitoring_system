@@ -63,7 +63,6 @@ namespace basler
         void onGrabbingStarted();
         void onGrabbingStopped();
         void onCameraError(const QString &error);
-        void onCameraStateChanged(CameraState state);
 
         // ========== 幀處理 ==========
         void onFrameReady(const cv::Mat &frame);
@@ -101,11 +100,6 @@ namespace basler
 
         // ========== Debug 參數 ==========
         void onRoiChanged(int x, int y, int width, int height);
-        void onBgParamsChanged(int history, double varThreshold, double learningRate);
-        void onEdgeParamsChanged(int lowThreshold, int highThreshold);
-        void onMorphParamsChanged(int kernelSize, int iterations);
-        void onAreaParamsChanged(int minArea, int maxArea);
-        void onGateParamsChanged(int yPosition, int triggerRadius);
 
         // ========== 選單動作 ==========
         void onLoadVideo();

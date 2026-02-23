@@ -831,6 +831,24 @@ namespace basler
         resetBackgroundSubtractor();
     }
 
+    void DetectionController::setBgHistory(int history)
+    {
+        m_bgHistory = history;
+        resetBackgroundSubtractor();
+    }
+
+    void DetectionController::setCannyThresholds(int low, int high)
+    {
+        m_cannyLowThreshold = low;
+        m_cannyHighThreshold = high;
+    }
+
+    void DetectionController::setMorphParams(int kernelSize, int iterations)
+    {
+        m_dilateKernelSize = kernelSize;
+        m_dilateIterations = iterations;
+    }
+
     void DetectionController::enablePackagingMode(bool enabled)
     {
         m_packagingEnabled = enabled;
