@@ -66,11 +66,6 @@ public slots:
     bool useVideo(const QString& videoPath);
 
     /**
-     * @brief 載入視頻檔案 (別名)
-     */
-    bool loadVideo(const QString& videoPath) { return useVideo(videoPath); }
-
-    /**
      * @brief 連接相機
      * @param index 相機索引
      */

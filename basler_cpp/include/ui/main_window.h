@@ -5,7 +5,6 @@
 #include <QTimer>
 #include <QLabel>
 #include <QSplitter>
-#include <QTabWidget>
 #include <QMutex>
 #include <memory>
 
@@ -135,7 +134,6 @@ namespace basler
 
         // ========== UI 組件 ==========
         QSplitter *m_mainSplitter;
-        QTabWidget *m_tabWidget;
 
         // 控制面板組件
         CameraControlWidget *m_cameraControl;
@@ -165,8 +163,6 @@ namespace basler
         // ========== 運行狀態 ==========
         bool m_isDetecting = false;
         bool m_isRecording = false;
-        bool m_isPackaging = false;
-        QString m_currentMethodId;
     };
 
 } // namespace basler

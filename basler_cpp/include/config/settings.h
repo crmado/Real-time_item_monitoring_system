@@ -56,7 +56,6 @@ struct DetectionConfig {
     bool roiEnabled = true;
     int roiX = 0;
     int roiY = 0;
-    int roiWidth = 640;
     int roiHeight = 120;           // Python basler_mvc 驗證值 (原 150)
     double roiPositionRatio = 0.12; // Python basler_mvc 驗證值 (原 0.10)
 
@@ -190,9 +189,6 @@ struct UIConfig {
     int bgVarThresholdRangeMin = 1;
     int bgVarThresholdRangeMax = 20;
     int bgVarThresholdDefault = 3;
-
-    // 圖像縮放
-    QString imageScaleDefault = "50%";
 
     QJsonObject toJson() const;
     static UIConfig fromJson(const QJsonObject& json);

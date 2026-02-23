@@ -880,7 +880,6 @@ namespace basler
     void MainWindow::onStartPackaging()
     {
         m_isDetecting = true;
-        m_isPackaging = true;
         m_detectionController->enable();
         m_detectionController->enablePackagingMode(true);
         m_vibratorManager->start();
@@ -894,7 +893,6 @@ namespace basler
 
     void MainWindow::onPausePackaging()
     {
-        m_isPackaging = false;
         m_isDetecting = false;
         m_detectionController->disable();
         m_detectionController->enablePackagingMode(false);
@@ -910,7 +908,6 @@ namespace basler
     void MainWindow::onResetCount()
     {
         // 停止所有操作
-        m_isPackaging = false;
         m_isDetecting = false;
         m_detectionController->disable();
         m_detectionController->resetPackaging();
@@ -953,7 +950,6 @@ namespace basler
 
     void MainWindow::onDetectionMethodChanged(const QString &methodId)
     {
-        m_currentMethodId = methodId;
         qDebug() << "[MainWindow] 檢測方法變更:" << methodId;
 
         // 更新狀態顯示
@@ -1020,7 +1016,6 @@ namespace basler
     {
         // 停止所有操作
         m_vibratorManager->stop();
-        m_isPackaging = false;
         m_isDetecting = false;
         m_detectionController->disable();
         m_detectionLabel->setText("包裝完成");
@@ -1046,12 +1041,11 @@ namespace basler
     // Debug 參數
     // ============================================================================
 
-    void MainWindow::onRoiChanged(int x, int y, int width, int height)
+    void MainWindow::onRoiChanged(int x, int y, int /*width*/, int height)
     {
         auto &config = Settings::instance().detection();
         config.roiX = x;
         config.roiY = y;
-        config.roiWidth = width;
         config.roiHeight = height;
     }
 
@@ -1121,7 +1115,7 @@ namespace basler
         }
 
         // 切換到影片源
-        if (m_sourceManager->loadVideo(filePath))
+        if (m_sourceManager->useVideo(filePath))
         {
             // 更新 UI 狀態
             m_cameraControl->setVideoMode(true);

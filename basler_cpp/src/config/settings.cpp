@@ -227,16 +227,13 @@ QJsonObject UIConfig::toJson() const
         {"maxAreaRangeMin", maxAreaRangeMin},
         {"maxAreaRangeMax", maxAreaRangeMax},
         {"maxAreaDefault", maxAreaDefault},
-        {"bgVarThresholdDefault", bgVarThresholdDefault},
-        {"imageScaleDefault", imageScaleDefault}
+        {"bgVarThresholdDefault", bgVarThresholdDefault}
     };
 }
 
-UIConfig UIConfig::fromJson(const QJsonObject& json)
+UIConfig UIConfig::fromJson(const QJsonObject& /*json*/)
 {
-    UIConfig config;
-    config.imageScaleDefault = json.value("imageScaleDefault").toString(config.imageScaleDefault);
-    return config;
+    return UIConfig{};
 }
 
 // ============================================================================
