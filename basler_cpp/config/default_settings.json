@@ -1,0 +1,31 @@
+{
+  "app": {
+    "name": "Basler Vision System",
+    "version": "2.0.0",
+    "language": "zh-TW"
+  },
+  "camera": {
+    "exposure_time": 10000,
+    "gain": 1.0,
+    "fps": 30,
+    "auto_connect": true
+  },
+  "detection": {
+    "method": "counting",
+    "threshold": 128,
+    "min_area": 100,
+    "max_area": 10000,
+    "enabled": true
+  },
+  "recording": {
+    "output_dir": "recordings",
+    "format": "mp4",
+    "fps": 30,
+    "quality": 90
+  },
+  "ui": {
+    "theme": "dark",
+    "show_fps": true,
+    "show_debug_panel": false
+  }
+}

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_TW</string>
+    
+    <key>CFBundleExecutable</key>
+    <string>BaslerVisionSystem</string>
+    
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    
+    <key>CFBundleIdentifier</key>
+    <string>com.industrial.basler-vision</string>
+    
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    
+    <key>CFBundleName</key>
+    <string>Basler Vision System</string>
+    
+    <key>CFBundleDisplayName</key>
+    <string>Basler Vision System</string>
+    
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    
+    <key>CFBundleShortVersionString</key>
+    <string>2.0.0</string>
+    
+    <key>CFBundleVersion</key>
+    <string>2.0.0</string>
+    
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <key>NSCameraUsageDescription</key>
+    <string>此應用需要存取相機以進行工業視覺檢測</string>
+    
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2024 Industrial Vision. All rights reserved.</string>
+    
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+</dict>
+</plist>

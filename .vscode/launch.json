@@ -1,0 +1,62 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(MSVC) 啟動 C++ 專案",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/basler_cpp/build/Release/BaslerVisionSystem.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/basler_cpp/build/Release",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: Build C++ Project"
+        },
+        {
+            "name": "(MSVC) 偵錯模式",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/basler_cpp/build/Debug/BaslerVisionSystem.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/basler_cpp/build/Debug",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "(MSVC) 附加到執行中的程序",
+            "type": "cppvsdbg",
+            "request": "attach",
+            "processId": "${command:pickProcess}"
+        },
+        {
+            "name": "(lldb) 啟動 C++ 專案 (macOS)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/basler_cpp/build/BaslerVisionSystem.app/Contents/MacOS/BaslerVisionSystem",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/basler_cpp",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "CMake: Build C++ Project (macOS)",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "(lldb) 附加到執行中的程序 (macOS)",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/basler_cpp/build/BaslerVisionSystem.app/Contents/MacOS/BaslerVisionSystem",
+            "MIMode": "lldb"
+        }
+    ]
+}

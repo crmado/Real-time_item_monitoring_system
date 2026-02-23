@@ -1,0 +1,548 @@
+name: Build C++ Multi-Platform Release
+
+# 觸發條件
+on:
+  # 手動觸發
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本號 (例如: 2.0.3)"
+        required: true
+        type: string
+      create_release:
+        description: "是否創建 GitHub Release"
+        required: true
+        type: boolean
+        default: false
+
+  # 推送標籤時自動觸發 (例如: cpp-v2.0.3)
+  push:
+    tags:
+      - "cpp-v*.*.*"
+
+env:
+  BUILD_TYPE: Release
+  QT_VERSION: "6.6.2"
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 打包
+          - os: windows-latest
+            platform: windows
+            artifact_name: BaslerVisionSystem-Windows
+            cmake_generator: "Visual Studio 17 2022"
+            qt_arch: win64_msvc2019_64
+            arch: x86_64
+
+          # macOS 打包
+          - os: macos-latest
+            platform: macos
+            artifact_name: BaslerVisionSystem-macOS
+            cmake_generator: "Unix Makefiles"
+            qt_arch: clang_64
+            arch: universal
+
+          # Linux x86_64 打包
+          - os: ubuntu-22.04
+            platform: linux
+            artifact_name: BaslerVisionSystem-Linux-x86_64
+            cmake_generator: "Unix Makefiles"
+            qt_arch: gcc_64
+            arch: x86_64
+
+          # Linux ARM64 打包（使用 GitHub 原生 ARM runner）
+          - os: ubuntu-24.04-arm
+            platform: linux
+            artifact_name: BaslerVisionSystem-Linux-arm64
+            cmake_generator: "Unix Makefiles"
+            qt_arch: linux_gcc_arm64
+            arch: aarch64
+
+    steps:
+      - name: 📥 檢出代碼
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 安裝 Qt (Windows / Linux x86_64)
+        if: matrix.platform == 'windows' || (matrix.platform == 'linux' && matrix.arch == 'x86_64')
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          modules: "qtmultimedia"
+          cache: true
+
+      - name: 🔧 安裝 Qt (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install qt@6
+          echo "Qt6_DIR=$(brew --prefix qt@6)/lib/cmake/Qt6" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> $GITHUB_ENV
+
+      - name: 🔧 安裝 Qt (Linux ARM64 - 從 apt 安裝)
+        if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-multimedia-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev
+          # 設定 Qt6 CMake 路徑
+          QT6_CMAKE_DIR=$(find /usr/lib -path "*/cmake/Qt6/Qt6Config.cmake" -printf "%h" -quit 2>/dev/null)
+          if [ -n "$QT6_CMAKE_DIR" ]; then
+            echo "Qt6_DIR=${QT6_CMAKE_DIR}" >> $GITHUB_ENV
+            echo "找到 Qt6: ${QT6_CMAKE_DIR}"
+          fi
+
+      - name: 📦 安裝 OpenCV (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          choco install opencv -y
+          echo "OpenCV_DIR=C:/tools/opencv/build" >> $env:GITHUB_ENV
+
+      - name: 📦 安裝 OpenCV (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install opencv
+
+      - name: 📦 安裝 OpenCV (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopencv-dev \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libxkbcommon-x11-0 \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libfuse2
+
+      - name: 📦 安裝 Pylon SDK (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          # 下載並安裝 Pylon SDK
+          $PYLON_VERSION = "7.4.0"
+          $PYLON_URL = "https://www.baslerweb.com/fp-1726735999/media/downloads/software/pylon_software/Basler_pylon_${PYLON_VERSION}.exe"
+          curl -L -o pylon_installer.exe $PYLON_URL
+          Start-Process -Wait -FilePath .\pylon_installer.exe -ArgumentList "/quiet", "/norestart"
+          echo "PYLON_ROOT=C:/Program Files/Basler/pylon 7/Development" >> $env:GITHUB_ENV
+        continue-on-error: true
+
+      - name: 📦 模擬 Pylon SDK (無相機環境)
+        run: |
+          # 在 CI 環境中創建模擬 Pylon 頭文件
+          mkdir -p basler_cpp/mock_pylon/include/pylon
+          echo "// Mock Pylon SDK for CI" > basler_cpp/mock_pylon/include/pylon/PylonIncludes.h
+        shell: bash
+
+      - name: 📝 生成版本信息
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/cpp-v* ]]; then
+            # 從 tag 獲取版本號
+            VERSION="${GITHUB_REF#refs/tags/cpp-v}"
+          else
+            # branch push 或其他情況使用 dev + 短 SHA
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          # 確保版本號不含 / 等非法字符（用於文件名）
+          VERSION_SAFE=$(echo "$VERSION" | tr '/' '-' | tr ':' '-')
+          echo "VERSION=$VERSION_SAFE" >> $GITHUB_OUTPUT
+          echo "📌 版本號: $VERSION_SAFE"
+
+      - name: 🔨 CMake 配置 (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          cd basler_cpp
+          # 設置 PYLON_ROOT 默認值（如果未設置）
+          if (-not $env:PYLON_ROOT) {
+            $env:PYLON_ROOT = "C:/Program Files/Basler/pylon 7/Development"
+          }
+          cmake -B build -G "${{ matrix.cmake_generator }}" `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DPYLON_ROOT="$env:PYLON_ROOT" `
+            -DSKIP_PYLON=ON
+        shell: pwsh
+
+      - name: 🔨 CMake 配置 (macOS/Linux)
+        if: matrix.platform != 'windows'
+        run: |
+          cd basler_cpp
+          cmake -B build -G "${{ matrix.cmake_generator }}" \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DSKIP_PYLON=ON
+
+      - name: 🔨 編譯專案
+        run: |
+          cmake --build basler_cpp/build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: 📁 準備發布目錄
+        run: |
+          mkdir -p release_output
+        shell: bash
+
+      - name: 🎁 打包 Windows 安裝程序
+        if: matrix.platform == 'windows'
+        run: |
+          # 設置環境變量供 Inno Setup 使用
+          $env:APP_VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # 調試：顯示 Qt 相關環境變數
+          Write-Host "=== Qt 環境變數 ==="
+          Write-Host "Qt6_DIR: $env:Qt6_DIR"
+          Write-Host "QT_ROOT_DIR: $env:QT_ROOT_DIR"
+
+          # 確定 Qt 根目錄 (install-qt-action 設置)
+          # Qt6_DIR 是: D:/a/.../Qt/6.6.2/msvc2019_64 (msvc2019_64 目錄)
+          # 注意: jurplel/install-qt-action 設置的 Qt6_DIR 直接指向 msvc2019_64 目錄
+          $QT_INSTALL_ROOT = $env:Qt6_DIR
+          $QT_BIN = Join-Path $QT_INSTALL_ROOT "bin"
+
+          Write-Host "Qt 安裝根目錄: $QT_INSTALL_ROOT"
+          Write-Host "Qt bin 路徑: $QT_BIN"
+
+          # 驗證 windeployqt 存在
+          $WINDEPLOYQT = Join-Path $QT_BIN "windeployqt.exe"
+          if (-not (Test-Path $WINDEPLOYQT)) {
+            Write-Host "::error::找不到 windeployqt.exe at $WINDEPLOYQT"
+          }
+
+          Write-Host "windeployqt 路徑: $WINDEPLOYQT"
+          Write-Host "windeployqt 存在: $(Test-Path $WINDEPLOYQT)"
+
+          # 運行 windeployqt
+          if (Test-Path $WINDEPLOYQT) {
+            Write-Host "=== 執行 windeployqt ==="
+            & $WINDEPLOYQT --release --no-translations --verbose 2 "basler_cpp\build\Release\BaslerVisionSystem.exe"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::warning::windeployqt 返回非零狀態碼: $LASTEXITCODE"
+            }
+          } else {
+            Write-Host "::error::找不到 windeployqt.exe，手動複製 Qt DLLs"
+            # 手動複製 Qt DLLs
+            $QT_DLL_DIR = Join-Path $QT_INSTALL_ROOT "bin"
+            if (Test-Path $QT_DLL_DIR) {
+              Copy-Item "$QT_DLL_DIR\Qt6Core.dll" "basler_cpp\build\Release\" -Force
+              Copy-Item "$QT_DLL_DIR\Qt6Gui.dll" "basler_cpp\build\Release\" -Force
+              Copy-Item "$QT_DLL_DIR\Qt6Widgets.dll" "basler_cpp\build\Release\" -Force
+              Copy-Item "$QT_DLL_DIR\Qt6Network.dll" "basler_cpp\build\Release\" -Force
+              # 複製 platforms 插件
+              New-Item -ItemType Directory -Force -Path "basler_cpp\build\Release\platforms" | Out-Null
+              Copy-Item (Join-Path $QT_INSTALL_ROOT "plugins\platforms\qwindows.dll") "basler_cpp\build\Release\platforms\" -Force
+              # 複製 styles 插件
+              New-Item -ItemType Directory -Force -Path "basler_cpp\build\Release\styles" | Out-Null
+              Copy-Item (Join-Path $QT_INSTALL_ROOT "plugins\styles\*") "basler_cpp\build\Release\styles\" -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          # 複製 OpenCV DLLs
+          $OPENCV_BIN = "C:\tools\opencv\build\x64\vc16\bin"
+          if (Test-Path $OPENCV_BIN) {
+            Write-Host "=== 複製 OpenCV DLLs ==="
+            Get-ChildItem "$OPENCV_BIN\opencv_world4*.dll" | ForEach-Object {
+              Write-Host "  複製: $($_.Name)"
+              Copy-Item $_.FullName "basler_cpp\build\Release\" -Force
+            }
+          }
+
+          # 下載 Visual C++ Redistributable
+          Write-Host "=== 下載 VC++ Redistributable ==="
+          $VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+          $VC_REDIST_PATH = "basler_cpp\installer\vcredist\vc_redist.x64.exe"
+          New-Item -ItemType Directory -Force -Path "basler_cpp\installer\vcredist" | Out-Null
+          Invoke-WebRequest -Uri $VC_REDIST_URL -OutFile $VC_REDIST_PATH -UseBasicParsing
+          Write-Host "VC++ Redistributable 下載完成: $(Test-Path $VC_REDIST_PATH)"
+
+          # 列出 build/Release 目錄內容
+          Write-Host "=== build/Release 目錄內完整內容 ==="
+          Get-ChildItem "basler_cpp\build\Release" -Recurse | ForEach-Object {
+            $rel = $_.FullName.Substring((Get-Location).Path.Length + 1)
+            $size = if ($_.PSIsContainer) { "[DIR]" } else { "{0:N0} KB" -f ($_.Length/1KB) }
+            Write-Host "  $rel - $size"
+          }
+
+          # 驗證必要的文件存在
+          Write-Host "=== 驗證必要文件 ==="
+          $REQUIRED_FILES = @(
+            "basler_cpp\build\Release\BaslerVisionSystem.exe",
+            "basler_cpp\build\Release\Qt6Core.dll",
+            "basler_cpp\build\Release\Qt6Gui.dll",
+            "basler_cpp\build\Release\Qt6Widgets.dll",
+            "basler_cpp\build\Release\platforms\qwindows.dll"
+          )
+          $missing = $false
+          foreach ($file in $REQUIRED_FILES) {
+            if (Test-Path $file) {
+              Write-Host "✓ $file"
+            } else {
+              Write-Host "::error::✗ $file 缺失！"
+              $missing = $true
+            }
+          }
+          if ($missing) {
+            Write-Host "::error::必要文件缺失，無法繼續！"
+            exit 1
+          }
+
+          # 創建發布目錄結構
+          New-Item -ItemType Directory -Force -Path "release_output" | Out-Null
+
+          # 安裝 Inno Setup
+          Write-Host "=== 安裝 Inno Setup ==="
+          choco install innosetup -y
+
+          # 確保 releases 目錄存在
+          New-Item -ItemType Directory -Force -Path "releases" | Out-Null
+
+          # 切換到 installer 目錄並編譯 (確保相對路徑正確)
+          Write-Host "=== 編譯 Inno Setup 安裝程序 ==="
+          Push-Location "basler_cpp\installer"
+          iscc install.iss
+          $iscc_result = $LASTEXITCODE
+          Pop-Location
+
+          if ($iscc_result -ne 0) {
+            Write-Host "::error::Inno Setup 編譯失敗！退出碼: $iscc_result"
+            exit 1
+          }
+
+          # 列出 releases 目錄內容
+          Write-Host "=== releases 目錄內容 ==="
+          if (Test-Path "releases") {
+            Get-ChildItem -Path "releases" -Filter "*.exe" | ForEach-Object {
+              Write-Host "  $($_.Name) - $([math]::Round($_.Length/1MB, 2)) MB"
+            }
+          } else {
+            Write-Host "::error::releases 目錄不存在"
+            exit 1
+          }
+
+          # 複製安裝程序到 release_output
+          Write-Host "=== 複製安裝程序到 release_output ==="
+          Get-ChildItem -Path "releases" -Filter "*.exe" | ForEach-Object {
+            Write-Host "→ 複製: $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
+            Copy-Item $_.FullName -Destination "release_output\"
+          }
+
+          # 最終驗證
+          Write-Host "=== 最終驗證 ==="
+          $installers = Get-ChildItem -Path "release_output" -Filter "*Setup*.exe"
+          if ($installers.Count -eq 0) {
+            Write-Host "::error::未找到安裝程序！"
+            exit 1
+          }
+          foreach ($installer in $installers) {
+            Write-Host "✓ 安裝程序: $($installer.Name) - $([math]::Round($installer.Length/1MB, 2)) MB"
+            if ($installer.Length -lt 5MB) {
+              Write-Host "::warning::安裝程序大小異常小 (< 5MB)，可能缺少 DLLs"
+            }
+          }
+        shell: pwsh
+
+      - name: 🎁 打包 macOS DMG
+        if: matrix.platform == 'macos'
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          APP_NAME="BaslerVisionSystem"
+          DMG_NAME="BaslerVisionSystem_v${VERSION}_macOS.dmg"
+
+          # 複製 assets 到 app bundle
+          if [ -d "basler_cpp/assets" ]; then
+            mkdir -p "basler_cpp/build/${APP_NAME}.app/Contents/Resources/"
+            cp -R basler_cpp/assets "basler_cpp/build/${APP_NAME}.app/Contents/Resources/"
+          fi
+
+          # 部署 Qt 依賴
+          $(brew --prefix qt@6)/bin/macdeployqt "basler_cpp/build/${APP_NAME}.app"
+
+          # Ad-hoc code signing（防止 macOS Gatekeeper 顯示「檔案已損壞」錯誤）
+          echo "=== Ad-hoc Code Signing ==="
+          codesign --force --deep --sign - "basler_cpp/build/${APP_NAME}.app"
+          echo "簽名驗證:"
+          codesign --verify --verbose "basler_cpp/build/${APP_NAME}.app" || true
+
+          # 創建 DMG
+          brew install create-dmg
+          create-dmg \
+            --volname "Basler Vision System" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --app-drop-link 600 185 \
+            "release_output/${DMG_NAME}" \
+            "basler_cpp/build/${APP_NAME}.app"
+
+          # 驗證 DMG 生成（create-dmg 可能因缺少圖標等非關鍵原因失敗）
+          if [ ! -f "release_output/${DMG_NAME}" ]; then
+            echo "::warning::create-dmg 失敗，使用 hdiutil 建立基本 DMG"
+            hdiutil create -volname "Basler Vision System" \
+              -srcfolder "basler_cpp/build/${APP_NAME}.app" \
+              -ov -format UDZO \
+              "release_output/${DMG_NAME}"
+          fi
+          echo "✓ DMG: $(ls -lh "release_output/${DMG_NAME}")"
+
+      - name: 🎁 打包 Linux AppImage (${{ matrix.arch }})
+        if: matrix.platform == 'linux'
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          ARCH="${{ matrix.arch }}"
+          APP_NAME="BaslerVisionSystem"
+          APPIMAGE_NAME="BaslerVisionSystem_v${VERSION}_Linux-${ARCH}.AppImage"
+
+          echo "=== 構建 ${ARCH} AppImage ==="
+
+          # 下載對應架構的 linuxdeploy
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage"
+          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${ARCH}.AppImage"
+          chmod +x linuxdeploy-*.AppImage
+
+          # 創建 AppDir 結構
+          mkdir -p AppDir/usr/bin AppDir/usr/lib
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          # 複製執行文件
+          cp "basler_cpp/build/${APP_NAME}" AppDir/usr/bin/
+
+          # 複製 assets
+          if [ -d "basler_cpp/assets" ]; then
+            cp -R basler_cpp/assets AppDir/usr/share/
+          fi
+
+          # 創建 .desktop 文件（用 printf 避免 heredoc 破壞 YAML 縮排）
+          printf '%s\n' \
+            "[Desktop Entry]" \
+            "Type=Application" \
+            "Name=Basler Vision System" \
+            "Comment=Industrial Vision Detection System" \
+            "Exec=BaslerVisionSystem" \
+            "Icon=BaslerVisionSystem" \
+            "Categories=Utility;Development;" \
+            "Terminal=false" \
+            > "AppDir/usr/share/applications/${APP_NAME}.desktop"
+          cp "AppDir/usr/share/applications/${APP_NAME}.desktop" AppDir/
+
+          # 創建簡易圖標（用 ImageMagick 或建立佔位 PNG）
+          if [ -f "basler_cpp/assets/icon.png" ]; then
+            cp basler_cpp/assets/icon.png "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+          else
+            convert -size 256x256 xc:steelblue -gravity center -fill white -pointsize 40 -annotate 0 "BVS" \
+              "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" 2>/dev/null || \
+            python3 -c "
+          import struct,zlib,sys;w=h=256;r,g,b=70,130,180
+          raw=b''.join(b'\x00'+bytes([r,g,b])*w for _ in range(h))
+          c=lambda t,d:struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
+          sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n'+c(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+c(b'IDAT',zlib.compress(raw))+c(b'IEND',b''))
+          " > "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+          fi
+          cp "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" AppDir/ 2>/dev/null || true
+
+          # 生成 AppImage（APPIMAGE_EXTRACT_AND_RUN=1 繞過 FUSE 限制）
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE="$(which qmake6 2>/dev/null || which qmake 2>/dev/null || echo "")"
+          "./linuxdeploy-${ARCH}.AppImage" \
+            --appdir AppDir \
+            --plugin qt \
+            --desktop-file "AppDir/usr/share/applications/${APP_NAME}.desktop" \
+            --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png" \
+            --output appimage
+
+          # 移動到輸出目錄（appimagetool 根據 .desktop Name 欄位命名，
+          # 需排除 linuxdeploy 工具本身的 AppImage）
+          GENERATED=$(find . -maxdepth 1 -name "*.AppImage" ! -name "linuxdeploy*" -print -quit)
+          if [ -n "$GENERATED" ]; then
+            mv "$GENERATED" "release_output/${APPIMAGE_NAME}"
+            echo "✓ AppImage (${ARCH}): $(ls -lh "release_output/${APPIMAGE_NAME}")"
+          else
+            echo "::error::找不到生成的 AppImage 文件！"
+            ls -la *.AppImage 2>/dev/null || echo "目錄中沒有任何 .AppImage 文件"
+            exit 1
+          fi
+
+      - name: 📤 上傳工件
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-${{ steps.version.outputs.VERSION }}
+          path: release_output/*
+          retention-days: 30
+
+  # 創建 Release
+  create-release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cpp-v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+
+    steps:
+      - name: 📥 下載所有工件
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 📋 列出工件
+        run: |
+          echo "📦 已下載的工件:"
+          find artifacts -type f | head -50
+
+      - name: 📝 生成版本信息
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/cpp-v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🎉 創建 GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: cpp-v${{ steps.version.outputs.VERSION }}
+          name: "Basler Vision System (C++) v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Basler Vision System (C++ 版本) v${{ steps.version.outputs.VERSION }}
+
+            ### 🆕 版本說明
+            C++ 原生版本，提供更高的性能和更低的資源佔用。
+
+            ### 📦 安裝包
+            - **Windows**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Setup.exe`
+            - **macOS**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_macOS.dmg`
+            - **Linux x86_64**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-x86_64.AppImage`
+            - **Linux ARM64**: `BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-aarch64.AppImage`
+
+            ### 📋 系統需求
+            - **Windows**: Windows 10/11 (64-bit)
+            - **macOS**: macOS 11.0 (Big Sur) 或更高
+            - **Linux x86_64**: Ubuntu 20.04+ 或相容發行版
+            - **Linux ARM64**: Ubuntu 22.04+ (aarch64)、Raspberry Pi OS 64-bit
+
+            ### 📦 依賴
+            - Qt 6.6+
+            - OpenCV 4.x
+            - Basler Pylon SDK 7.x (如使用相機)
+
+            ### 📝 變更記錄
+            - 請參閱 [CHANGELOG.md](CHANGELOG.md)
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
