@@ -44,14 +44,14 @@ MainWindow
   但 `connectDetectionSignals()` 從未連接，`DefectDetectionMethodPanel::updateStats()` 永遠不會被呼叫。
   → 修正：在 `connectDetectionSignals()` 補上信號連接（需先確認 `DetectionController` 有對應信號）
 
-- [ ] **System Monitor 在 Windows 未實作**
+- [x] **System Monitor 在 Windows 未實作**（2026-02-23）
   `system_monitor.cpp` 的 CPU/記憶體讀取只有 macOS/Linux 實作，Windows 會顯示 0%。
-  → 修正：加入 `#ifdef Q_OS_WIN` 分支，使用 `GetSystemTimes()` / `GlobalMemoryStatusEx()`
+  → 已加入 `#define NOMINMAX` + `GetSystemTimes()` / `GlobalMemoryStatusEx()` 分支
 
-- [ ] **調試視圖（二值化預覽）永遠空白**
+- [x] **調試視圖（二值化預覽）永遠空白**（2026-02-23）
   `DebugPanelWidget::updateDebugImage()` 已實作，但 `MainWindow::updateDisplay()` 中有
   `// TODO: 偵錯圖像功能尚未實現`，從未呼叫。
-  → 修正：在 `processFrame()` 後，若啟用調試視圖，將中間結果傳給 `m_debugPanel->updateDebugImage()`
+  → 已在 `processFrame()` 後，若啟用調試視圖，將 `lastDebugFrame()` 傳給 `m_debugPanel->updateDebugImage()`
 
 ---
 
@@ -59,26 +59,28 @@ MainWindow
 
 ### P1 — 交互體驗
 
-- [ ] **Debug Panel 參數缺少數值顯示**
+- [x] **Debug Panel 參數缺少數值顯示**（2026-02-23）
   目前所有 SpinBox 已能調整，但沒有「當前值已生效」的視覺反饋。
-  → 建議：調整後短暫在 StatusBar 顯示 `"minArea = 5 已套用"` 之類的提示
+  → 已在 `connectDebugSignals()` 中，對 minArea/maxArea/bgVarThreshold/cannyLow/cannyHigh 調整後
+    在 StatusBar 顯示 `"xxx = N 已套用"` 提示
 
-- [ ] **影片載入後 Debug Panel 應自動同步當前配置值**
+- [x] **影片載入後 Debug Panel 應自動同步當前配置值**（2026-02-23）
   載入影片後 `m_isDetecting = true`，但 Debug Panel 的 SpinBox 值是 UI 初始值，
   不一定反映 `DetectionController` 實際使用的值（特別是從 JSON 載入後）。
-  → 修正：`onLoadVideo()` 後呼叫 `m_debugPanel->syncFromConfig()`（方法已存在）
+  → 已在 `onLoadVideo()` 成功載入後呼叫 `m_debugPanel->syncFromConfig()`
 
-- [ ] **計數面板：包裝完成後缺少明顯視覺提示**
+- [x] **計數面板：包裝完成後缺少明顯視覺提示**（2026-02-23）
   目前只彈 `QMessageBox`，操作體驗不好。
-  → 建議：在 `CountingMethodPanel` 加入「完成！」的大字彩色提示，並有計時自動消失
+  → 已在 `CountingMethodPanel` 加入 `m_completionOverlay` QLabel，顯示「✅ 包裝完成！」，4 秒後自動消失
 
-- [ ] **錄影統計（幀數/時長）未即時更新**
+- [x] **錄影統計（幀數/時長）未即時更新**（2026-02-23）
   `RecordingControlWidget::updateStats()` 已實作，但 `MainWindow` 從未呼叫它。
-  → 修正：`VideoRecorder` 每 N 幀 emit 一個 `statsUpdated(frames, duration)` 信號，連接到 widget
+  → 已在 `connectRecordingSignals()` 連接 `VideoRecorder::frameWritten` →
+    `m_recordingControl->updateStats(frames, duration)`
 
-- [ ] **載入設定後 UI 不刷新**
+- [x] **載入設定後 UI 不刷新**（2026-02-23）
   `onLoadConfig()` 只更新 `Settings`，但所有 SpinBox/Slider 仍顯示舊值。
-  → 修正：`onLoadConfig()` 後呼叫 `m_debugPanel->syncFromConfig()` 以及各 widget 的 `syncFromConfig()`
+  → 已在 `onLoadConfig()` 後呼叫 `m_debugPanel->syncFromConfig()`
 
 ---
 
@@ -188,7 +190,19 @@ MainWindow
 
 ## ✅ 已完成
 
-- [x] Debug Panel 所有參數即時同步到 DetectionController（2026-02-23）
+### 2026-02-23（Session 2）
+
+- [x] P0: System Monitor Windows CPU/RAM 實作（`GetSystemTimes` / `GlobalMemoryStatusEx`，`NOMINMAX` 修正）
+- [x] P0: 調試視圖二值化預覽（`lastDebugFrame()` → `processFrame()` 中傳給 `m_debugPanel`）
+- [x] P1: Debug Panel 關鍵參數調整後在 StatusBar 顯示「已套用」反饋
+- [x] P1: 影片載入後 `syncFromConfig()` 自動同步 Debug Panel
+- [x] P1: `onLoadConfig()` 後 `syncFromConfig()` 刷新 UI
+- [x] P1: 錄影統計即時更新（連接 `frameWritten` → `updateStats`）
+- [x] P1: 計數完成大字提示（`m_completionOverlay` QLabel，4 秒自動消失）
+
+### 2026-02-23（Session 1）
+
+- [x] Debug Panel 所有參數即時同步到 DetectionController
 - [x] 補連 roiEnabledChanged / gateHistoryFramesChanged / gateLinePositionChanged
 - [x] 補連 resetTotalCount / resetParams / saveConfig / loadConfig 按鈕
 - [x] 移除 6 個 dead private slot

@@ -123,6 +123,13 @@ namespace basler
         DetectionMode detectionMode() const { return m_detectionMode; }
         bool isYoloModelLoaded() const;
 
+        // 調試用：取得最後一次 standardProcessing 的二值化遮罩
+        cv::Mat lastDebugFrame() const
+        {
+            QMutexLocker locker(&m_mutex);
+            return m_lastDebugFrame.clone();
+        }
+
         // ===== 幀處理 =====
         /**
          * @brief 處理幀並執行小零件檢測
@@ -217,6 +224,9 @@ namespace basler
         void resetBackgroundSubtractor();
         cv::Ptr<cv::BackgroundSubtractorMOG2> m_bgSubtractor;
         double m_currentLearningRate = 0.001;
+
+        // 調試視圖：保存最後的二值化遮罩供 UI 顯示
+        cv::Mat m_lastDebugFrame;
 
         // 狀態
         bool m_enabled = false;

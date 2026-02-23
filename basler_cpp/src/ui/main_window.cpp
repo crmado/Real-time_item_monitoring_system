@@ -391,6 +391,14 @@ namespace basler
                 this, &MainWindow::onRecordingStopped);
         connect(m_videoRecorder.get(), &VideoRecorder::recordingError,
                 this, &MainWindow::onRecordingError);
+
+        // 錄影幀數/時長即時更新
+        connect(m_videoRecorder.get(), &VideoRecorder::frameWritten,
+                [this](int totalFrames)
+                {
+                    double duration = m_videoRecorder->recordingDuration();
+                    m_recordingControl->updateStats(totalFrames, duration);
+                });
     }
 
     void MainWindow::connectPackagingSignals()
@@ -467,6 +475,7 @@ namespace basler
                 {
                     Settings::instance().detection().bgVarThreshold = threshold;
                     m_detectionController->setBgVarThreshold(threshold);
+                    m_statusLabel->setText(QString("bgVarThreshold = %1 已套用").arg(threshold));
                 });
         connect(m_debugPanel, &DebugPanelWidget::bgLearningRateChanged,
                 [this](double rate)
@@ -482,6 +491,7 @@ namespace basler
                     auto &det = Settings::instance().detection();
                     det.cannyLowThreshold = threshold;
                     m_detectionController->setCannyThresholds(threshold, det.cannyHighThreshold);
+                    m_statusLabel->setText(QString("Canny = %1/%2 已套用").arg(threshold).arg(det.cannyHighThreshold));
                 });
         connect(m_debugPanel, &DebugPanelWidget::cannyHighChanged,
                 [this](int threshold)
@@ -489,6 +499,7 @@ namespace basler
                     auto &det = Settings::instance().detection();
                     det.cannyHighThreshold = threshold;
                     m_detectionController->setCannyThresholds(det.cannyLowThreshold, threshold);
+                    m_statusLabel->setText(QString("Canny = %1/%2 已套用").arg(det.cannyLowThreshold).arg(threshold));
                 });
 
         // 形態學參數
@@ -513,12 +524,14 @@ namespace basler
                 {
                     Settings::instance().detection().minArea = area;
                     m_detectionController->setMinArea(area);
+                    m_statusLabel->setText(QString("minArea = %1 已套用").arg(area));
                 });
         connect(m_debugPanel, &DebugPanelWidget::maxAreaChanged,
                 [this](int area)
                 {
                     Settings::instance().detection().maxArea = area;
                     m_detectionController->setMaxArea(area);
+                    m_statusLabel->setText(QString("maxArea = %1 已套用").arg(area));
                 });
 
         // 虛擬閘門參數
@@ -787,6 +800,14 @@ namespace basler
         // 送入檢測控制器
         std::vector<DetectedObject> detectedObjects;
         cv::Mat processedFrame = m_detectionController->processFrame(frame, detectedObjects);
+
+        // 調試視圖：將二值化遮罩傳給 Debug Panel 顯示
+        if (m_debugPanel && m_debugPanel->isShowingDebugView())
+        {
+            cv::Mat debugFrame = m_detectionController->lastDebugFrame();
+            if (!debugFrame.empty())
+                m_debugPanel->updateDebugImage(debugFrame);
+        }
 
         // 儲存處理後的幀用於顯示
         {
@@ -1118,6 +1139,8 @@ namespace basler
             m_isDetecting = true;
             m_detectionController->enable();
             m_detectionLabel->setText("檢測中（影片模式）");
+            // 同步 Debug Panel 的 SpinBox 顯示值與當前設定
+            m_debugPanel->syncFromConfig();
         }
         else
         {
@@ -1136,8 +1159,8 @@ namespace basler
         Settings::instance().load();
         m_statusLabel->setText("設定已載入");
 
-        // 更新 UI 以反映載入的設定
-        // TODO: 刷新各個 widget 的顯示
+        // 刷新 Debug Panel 的 SpinBox 顯示值
+        m_debugPanel->syncFromConfig();
     }
 
     void MainWindow::updateButtonStates()

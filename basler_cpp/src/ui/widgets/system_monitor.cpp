@@ -13,6 +13,11 @@
 #include <string>
 #endif
 
+#ifdef Q_OS_WIN
+#define NOMINMAX  // 防止 windows.h 定義 min/max 宏，避免與 std::max 衝突
+#include <windows.h>
+#endif
+
 namespace basler
 {
 
@@ -145,14 +150,42 @@ namespace basler
         return 0.0;
 
 #elif defined(Q_OS_LINUX)
-        // Linux 實現
+        // Linux 實現：解析 /proc/stat
         std::ifstream statFile("/proc/stat");
         std::string line;
         if (std::getline(statFile, line))
         {
-            // 解析 CPU 行
-            // cpu  user nice system idle iowait irq softirq
-            // ... 簡化實現
+            quint64 user, nice, sys, idle, iowait, irq, softirq;
+            if (std::sscanf(line.c_str(), "cpu %llu %llu %llu %llu %llu %llu %llu",
+                            &user, &nice, &sys, &idle, &iowait, &irq, &softirq) == 7)
+            {
+                quint64 total = user + nice + sys + idle + iowait + irq + softirq;
+                static quint64 s_lastTotal = 0, s_lastIdle = 0;
+                quint64 totalDiff = (total > s_lastTotal) ? (total - s_lastTotal) : 1;
+                quint64 idleDiff  = (idle  > s_lastIdle)  ? (idle  - s_lastIdle)  : 0;
+                s_lastTotal = total;
+                s_lastIdle  = idle;
+                return 100.0 * (1.0 - double(idleDiff) / double(totalDiff));
+            }
+        }
+        return 0.0;
+
+#elif defined(Q_OS_WIN)
+        // Windows 實現
+        static quint64 s_lastTotal = 0, s_lastIdle = 0;
+        FILETIME idleTime, kernelTime, userTime;
+        if (GetSystemTimes(&idleTime, &kernelTime, &userTime))
+        {
+            auto ft2u = [](const FILETIME &ft) -> quint64 {
+                return (quint64(ft.dwHighDateTime) << 32) | quint64(ft.dwLowDateTime);
+            };
+            quint64 idle  = ft2u(idleTime);
+            quint64 total = ft2u(kernelTime) + ft2u(userTime);
+            quint64 totalDiff = (total > s_lastTotal) ? (total - s_lastTotal) : 1;
+            quint64 idleDiff  = (idle  > s_lastIdle)  ? (idle  - s_lastIdle)  : 0;
+            s_lastTotal = total;
+            s_lastIdle  = idle;
+            return std::max(0.0, 100.0 * (1.0 - double(idleDiff) / double(totalDiff)));
         }
         return 0.0;
 
@@ -190,9 +223,27 @@ namespace basler
         return 0.0;
 
 #elif defined(Q_OS_LINUX)
-        // Linux 實現
+        // Linux 實現：解析 /proc/meminfo
         std::ifstream memFile("/proc/meminfo");
-        // ... 解析 MemTotal, MemFree, etc.
+        std::string line;
+        quint64 memTotal = 0, memAvail = 0;
+        while (std::getline(memFile, line))
+        {
+            if (line.rfind("MemTotal:", 0) == 0)
+                std::sscanf(line.c_str(), "MemTotal: %llu", &memTotal);
+            else if (line.rfind("MemAvailable:", 0) == 0)
+                std::sscanf(line.c_str(), "MemAvailable: %llu", &memAvail);
+        }
+        if (memTotal > 0)
+            return 100.0 * double(memTotal - memAvail) / double(memTotal);
+        return 0.0;
+
+#elif defined(Q_OS_WIN)
+        // Windows 實現
+        MEMORYSTATUSEX ms;
+        ms.dwLength = sizeof(ms);
+        if (GlobalMemoryStatusEx(&ms))
+            return double(ms.dwMemoryLoad);
         return 0.0;
 
 #else

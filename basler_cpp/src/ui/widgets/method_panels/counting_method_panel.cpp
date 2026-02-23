@@ -3,6 +3,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
+#include <QTimer>
 
 namespace basler {
 
@@ -61,6 +62,20 @@ void CountingMethodPanel::initUi()
     m_progressBar->setTextVisible(true);
     m_progressBar->setFormat("%v%");
     progressLayout->addWidget(m_progressBar);
+
+    // 包裝完成覆蓋提示（預設隱藏）
+    m_completionOverlay = new QLabel(tr("✅ 包裝完成！"));
+    m_completionOverlay->setStyleSheet(
+        "font-size: 28px; font-weight: bold; color: #00ff80;"
+        "background-color: rgba(0,30,0,200); border-radius: 8px; padding: 10px;");
+    m_completionOverlay->setAlignment(Qt::AlignCenter);
+    m_completionOverlay->hide();
+    progressLayout->insertWidget(0, m_completionOverlay);
+
+    m_completionTimer = new QTimer(this);
+    m_completionTimer->setSingleShot(true);
+    connect(m_completionTimer, &QTimer::timeout,
+            this, [this]() { m_completionOverlay->hide(); });
 
     m_progressGroup->setLayout(progressLayout);
     mainLayout->addWidget(m_progressGroup);
@@ -198,8 +213,12 @@ void CountingMethodPanel::setPackagingState(bool running)
 
 void CountingMethodPanel::showPackagingCompleted()
 {
-    m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff00;");
+    m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff80;");
     setPackagingState(false);
+
+    // 顯示大字完成提示，4 秒後自動消失
+    m_completionOverlay->show();
+    m_completionTimer->start(4000);
 }
 
 void CountingMethodPanel::onTargetCountChanged(int value)

@@ -398,6 +398,9 @@ namespace basler
             cv::morphologyEx(postProcessed, postProcessed, cv::MORPH_CLOSE, closeK);
         }
 
+        // 儲存最終二值化遮罩供調試視圖使用（無需加鎖，processFrame 在主線程）
+        m_lastDebugFrame = postProcessed.clone();
+
         return postProcessed;
     }
 

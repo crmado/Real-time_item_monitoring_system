@@ -8,6 +8,7 @@
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QProgressBar>
+#include <QTimer>
 
 namespace basler {
 
@@ -98,6 +99,10 @@ private:
     bool m_isRunning = false;
     int m_currentCount = 0;
     int m_targetCount = 150;
+
+    // 包裝完成視覺提示
+    QLabel* m_completionOverlay = nullptr;
+    QTimer* m_completionTimer = nullptr;
 };
 
 } // namespace basler
