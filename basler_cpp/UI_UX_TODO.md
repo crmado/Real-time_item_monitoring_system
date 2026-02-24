@@ -211,20 +211,31 @@ MainWindow
     `warningBtn()` / `secondaryBtn()` / `toolBtn()` + 色票常量（BG_DARK/SUCCESS/etc.）
   → 新 Widget 可直接 `#include "ui/style.h"` 並呼叫 `Style::primaryBtn()` 取得一致樣式
 
-- [ ] **響應式佈局**
+- [x] **響應式佈局**（2026-02-24）
   視窗縮小到 1400px 以下時，右側面板可自動摺疊成更緊湊的版本
+  → 已覆寫 `MainWindow::resizeEvent()`：寬度 < 1200px 時自動隱藏 `m_controlPanel`，
+    全螢幕模式下不觸發（`m_isFullscreenMode` 保護）
 
-- [ ] **Dark / Light 主題切換**
+- [x] **Dark / Light 主題切換**（2026-02-24）
   目前硬編碼深藍色主題，工廠環境有時需要高對比度白色背景
-  → 建議：定義 2 套 QPalette，選單可切換
+  → 已在「檢視(&V)」選單加入「主題」子選單（深色/淺色，QActionGroup 互斥）
+  → 淺色：`qApp->setStyleSheet()` 覆蓋主框架元素（QMainWindow/MenuBar/TabWidget/StatusBar 等）
+  → 偏好儲存於 QSettings，啟動時自動套用；注意 widget 層級 StyleSheet 有優先權
 
-- [ ] **字體大小設定**
+- [x] **字體大小設定**（2026-02-24）
   工業環境有時要求大字體（操作員距離螢幕較遠）
-  → 建議：在設定中加入 font scale 選項（100% / 125% / 150%）
+  → 已在「檢視(&V)」選單加入「字體大小」子選單（100% / 125% / 150%，QActionGroup 互斥）
+  → 透過 `QApplication::setFont()` 縮放全局字體；偏好儲存於 QSettings，啟動時自動套用
 
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 9）
+
+- [x] Style: 響應式佈局（`resizeEvent()` 覆寫，< 1200px 自動隱藏右側面板）
+- [x] Style: Dark/Light 主題切換（「檢視」選單 → 主題子選單，`qApp->setStyleSheet()`，QSettings 持久化）
+- [x] Style: 字體大小設定（「檢視」選單 → 字體大小子選單，100%/125%/150%，`QApplication::setFont()`，QSettings 持久化）
 
 ### 2026-02-24（Session 8）
 

@@ -29,6 +29,10 @@
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include <QResizeEvent>
+#include <QSettings>
+#include <QApplication>
+#include <QActionGroup>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 
@@ -40,6 +44,17 @@ namespace basler
     {
         setWindowTitle("Basler 工業視覺系統 v2.0 (C++)");
         setMinimumSize(1400, 800);
+
+        // 載入使用者偏好（主題 / 字體），在 UI 建立前套用以避免閃爍
+        m_baseFontPt = QApplication::font().pointSize();
+        if (m_baseFontPt <= 0) m_baseFontPt = 10;
+        {
+            QSettings prefs("BaslerVision", "BaslerVisionSystem");
+            m_isDarkTheme = prefs.value("isDarkTheme", true).toBool();
+            m_fontScale   = prefs.value("fontScale", 1.0).toDouble();
+        }
+        applyTheme(m_isDarkTheme);
+        applyFontScale(m_fontScale);
 
         // 初始化核心控制器
         m_sourceManager = std::make_unique<SourceManager>(this);
@@ -147,6 +162,64 @@ namespace basler
         }
 
         event->accept();
+    }
+
+    // ============================================================================
+    // 響應式佈局：視窗寬度 < 1200px 時自動摺疊右側面板
+    // ============================================================================
+    void MainWindow::resizeEvent(QResizeEvent *event)
+    {
+        QMainWindow::resizeEvent(event);
+        if (m_controlPanel && !m_isFullscreenMode)
+        {
+            bool narrow = event->size().width() < 1200;
+            if (m_controlPanel->isVisible() == narrow)  // 狀態需要切換
+                m_controlPanel->setVisible(!narrow);
+        }
+    }
+
+    // ============================================================================
+    // 深色/淺色主題切換
+    // ============================================================================
+    void MainWindow::applyTheme(bool isDark)
+    {
+        if (isDark)
+        {
+            // 深色：清除全局 QSS（各 widget 自帶深色 StyleSheet）
+            qApp->setStyleSheet("");
+        }
+        else
+        {
+            // 淺色：覆蓋主框架元素（widget 層級的 StyleSheet 仍有優先權）
+            qApp->setStyleSheet(
+                "QMainWindow { background-color: #f0f2f5; }"
+                "QMenuBar { background-color: #e8eaed; color: #2c3e50; }"
+                "QMenuBar::item:selected { background-color: #bdc3c7; }"
+                "QMenu { background-color: #ffffff; color: #2c3e50; border: 1px solid #bdc3c7; }"
+                "QMenu::item:selected { background-color: #d5dbdb; }"
+                "QTabWidget::pane { background-color: #ecf0f1; border: 1px solid #bdc3c7; }"
+                "QTabBar::tab { background-color: #d0d3d4; color: #2c3e50; padding: 6px 12px; }"
+                "QTabBar::tab:selected { background-color: #ecf0f1; font-weight: bold; }"
+                "QStatusBar { background-color: #e8eaed; color: #2c3e50; }"
+                "QDialog { background-color: #f0f2f5; color: #2c3e50; }"
+                "QWizard { background-color: #f0f2f5; color: #2c3e50; }"
+                "QScrollBar:vertical { background-color: #d0d3d4; width: 10px; }"
+                "QScrollBar::handle:vertical { background-color: #909497; border-radius: 4px; }"
+                "QScrollBar:horizontal { background-color: #d0d3d4; height: 10px; }"
+                "QScrollBar::handle:horizontal { background-color: #909497; border-radius: 4px; }"
+            );
+        }
+    }
+
+    // ============================================================================
+    // 字體縮放（100% / 125% / 150%）
+    // ============================================================================
+    void MainWindow::applyFontScale(double scale)
+    {
+        if (m_baseFontPt <= 0) return;
+        QFont f = QApplication::font();
+        f.setPointSizeF(m_baseFontPt * scale);
+        QApplication::setFont(f);
     }
 
     void MainWindow::setupUi()
@@ -342,6 +415,60 @@ namespace basler
         QAction *exitAction = fileMenu->addAction("退出(&X)");
         exitAction->setShortcut(QKeySequence::Quit);
         connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
+
+        // ========== 檢視選單（主題 / 字體） ==========
+        QMenu *viewMenu = menuBar()->addMenu("檢視(&V)");
+
+        // 主題切換（互斥 QActionGroup）
+        QMenu *themeMenu = viewMenu->addMenu("主題(&T)");
+        QActionGroup *themeGroup = new QActionGroup(this);
+        themeGroup->setExclusive(true);
+
+        QAction *darkAction  = themeGroup->addAction(themeMenu->addAction("深色主題(&D)"));
+        QAction *lightAction = themeGroup->addAction(themeMenu->addAction("淺色主題(&L)"));
+        darkAction->setCheckable(true);
+        lightAction->setCheckable(true);
+        darkAction->setChecked(m_isDarkTheme);
+        lightAction->setChecked(!m_isDarkTheme);
+
+        connect(darkAction,  &QAction::triggered, [this]()
+        {
+            m_isDarkTheme = true;
+            applyTheme(true);
+            QSettings("BaslerVision", "BaslerVisionSystem").setValue("isDarkTheme", true);
+        });
+        connect(lightAction, &QAction::triggered, [this]()
+        {
+            m_isDarkTheme = false;
+            applyTheme(false);
+            QSettings("BaslerVision", "BaslerVisionSystem").setValue("isDarkTheme", false);
+        });
+
+        // 字體大小（互斥 QActionGroup）
+        viewMenu->addSeparator();
+        QMenu *fontMenu = viewMenu->addMenu("字體大小(&F)");
+        QActionGroup *fontGroup = new QActionGroup(this);
+        fontGroup->setExclusive(true);
+
+        struct FontOption { const char* label; double scale; };
+        const FontOption fontOptions[] = {
+            { "100%（標準）", 1.00 },
+            { "125%（中等）", 1.25 },
+            { "150%（大字）", 1.50 },
+        };
+        for (const auto& opt : fontOptions)
+        {
+            QAction *act = fontGroup->addAction(fontMenu->addAction(opt.label));
+            act->setCheckable(true);
+            act->setChecked(qAbs(m_fontScale - opt.scale) < 0.01);
+            double scaleCapture = opt.scale;
+            connect(act, &QAction::triggered, [this, scaleCapture]()
+            {
+                m_fontScale = scaleCapture;
+                applyFontScale(scaleCapture);
+                QSettings("BaslerVision", "BaslerVisionSystem").setValue("fontScale", scaleCapture);
+            });
+        }
 
         // ========== 幫助選單 ==========
         QMenu *helpMenu = menuBar()->addMenu("幫助(&H)");

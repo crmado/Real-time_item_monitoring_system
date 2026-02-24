@@ -48,6 +48,7 @@ namespace basler
 
     protected:
         void closeEvent(QCloseEvent *event) override;
+        void resizeEvent(QResizeEvent *event) override;  // 響應式佈局：自動摺疊右側面板
 
     private slots:
         // ========== Camera Control ==========
@@ -125,6 +126,8 @@ namespace basler
         void processFrame(const cv::Mat &frame);
         void updateButtonStates();
         void exportPackagingReport(int target, int actual, double elapsedSec);
+        void applyTheme(bool isDark);       // 套用 Dark/Light 主題（全局 QSS）
+        void applyFontScale(double scale);  // 套用字體縮放比例
 
         // ========== 核心控制器 ==========
         std::unique_ptr<SourceManager> m_sourceManager;
@@ -181,6 +184,11 @@ namespace basler
 
         // ========== 分割顯示狀態 ==========
         bool m_isSplitView = false;  // 是否為分割顯示模式（左：選定視圖，右：互補幀）
+
+        // ========== 主題 / 字體 ==========
+        bool m_isDarkTheme = true;    // true=深色（預設），false=淺色
+        double m_fontScale = 1.0;     // 字體縮放比例（1.0/1.25/1.5）
+        int m_baseFontPt  = 0;        // 啟動時原始字體 point size
     };
 
 } // namespace basler
