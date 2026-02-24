@@ -272,7 +272,22 @@ QWidget* DebugPanelWidget::createGateGroup()
             this, &DebugPanelWidget::onGateLinePositionChanged);
     layout->addRow(tr("線位置比:"), m_gateLinePositionSpin);
 
-    group->setLayout(layout);
+    // 點擊畫面設定光柵線按鈕
+    QVBoxLayout* outerLayout = new QVBoxLayout();
+    outerLayout->addLayout(layout);
+
+    m_gateLineEditBtn = new QPushButton(tr("🎯 點擊畫面設定光柵線"));
+    m_gateLineEditBtn->setStyleSheet(
+        "QPushButton { background-color: #2a2a1a; color: #ffcc00; border: 1px solid #ffcc00;"
+        "              border-radius: 4px; padding: 5px; }"
+        "QPushButton:hover { background-color: #3a3a1a; }"
+        "QPushButton:pressed { background-color: #1a1a0a; }"
+    );
+    connect(m_gateLineEditBtn, &QPushButton::clicked,
+            this, &DebugPanelWidget::gateLineEditModeRequested);
+    outerLayout->addWidget(m_gateLineEditBtn);
+
+    group->setLayout(outerLayout);
     return group;
 }
 
@@ -736,6 +751,16 @@ void DebugPanelWidget::setRoiValues(int x, int y, int w, int h)
     m_roiYSpin->blockSignals(false);
     m_roiWidthSpin->blockSignals(false);
     m_roiHeightSpin->blockSignals(false);
+}
+
+void DebugPanelWidget::setGateLineRatio(double ratio)
+{
+    // 靜默更新 SpinBox，再手動 emit 信號（保持與 DetectionController 同步）
+    m_gateLinePositionSpin->blockSignals(true);
+    m_gateLinePositionSpin->setValue(ratio);
+    m_gateLinePositionSpin->blockSignals(false);
+    // 明確 emit 讓 MainWindow 的連接生效（不觸發重複 blockSignals 迴圈）
+    emit gateLinePositionChanged(ratio);
 }
 
 } // namespace basler

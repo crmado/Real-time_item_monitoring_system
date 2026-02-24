@@ -668,6 +668,16 @@ namespace basler
                     cfg.targetProcessingWidth = (width > 0) ? width : 99999;
                 });
 
+        // 光柵線點擊設定：按鈕 → 啟動點擊模式，VideoDisplay 點擊完成 → 更新設定
+        connect(m_debugPanel, &DebugPanelWidget::gateLineEditModeRequested,
+                [this]()
+                {
+                    m_videoDisplay->setGateLineEditMode(true);
+                    m_statusLabel->setText("光柵線設定模式：點擊畫面指定光柵線位置，ESC 取消");
+                });
+        connect(m_videoDisplay, &VideoDisplayWidget::gateLinePositionSelected,
+                this, &MainWindow::onGateLineFromClick);
+
         // ===== 操作按鈕信號（原先未連接） =====
         connect(m_debugPanel, &DebugPanelWidget::resetTotalCount,
                 m_detectionController.get(), &DetectionController::reset);
@@ -724,7 +734,15 @@ namespace basler
             else showFullScreen();
         });
 
-        qDebug() << "[MainWindow] 鍵盤快捷鍵已設定 (Space/←/→/Ctrl+R/F5/F11)";
+        // ESC：取消 ROI 框選模式或光柵線點擊設定模式
+        new QShortcut(Qt::Key_Escape, this, [this]()
+        {
+            m_videoDisplay->setRoiEditMode(false);
+            m_videoDisplay->setGateLineEditMode(false);
+            m_statusLabel->setText("已取消編輯模式");
+        });
+
+        qDebug() << "[MainWindow] 鍵盤快捷鍵已設定 (Space/←/→/Ctrl+R/F5/F11/ESC)";
     }
 
     // ============================================================================
@@ -1211,6 +1229,19 @@ namespace basler
 
         m_statusLabel->setText(
             QString("ROI 已更新：(%1, %2)  %3 × %4 px").arg(x).arg(y).arg(w).arg(h));
+    }
+
+    void MainWindow::onGateLineFromClick(double ratio)
+    {
+        // 更新 Settings 與 DetectionController
+        Settings::instance().gate().gateLinePositionRatio = ratio;
+        m_detectionController->setGateLinePositionRatio(ratio);
+
+        // 同步 Debug Panel SpinBox（setGateLineRatio 會 blockSignals 後 emit，不造成迴圈）
+        m_debugPanel->setGateLineRatio(ratio);
+
+        m_statusLabel->setText(
+            QString("光柵線已更新：ratio = %1").arg(ratio, 0, 'f', 2));
     }
 
     // ============================================================================

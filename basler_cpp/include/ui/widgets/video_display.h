@@ -69,12 +69,23 @@ public slots:
      */
     void setRoiEditMode(bool enabled);
 
+    /**
+     * @brief 啟用/停用 光柵線點擊設定模式
+     * @param enabled true = 進入點擊模式（游標變十字，點擊影像設定光柵線位置）
+     */
+    void setGateLineEditMode(bool enabled);
+
 signals:
     void clicked(const QPoint& pos);  // 點擊事件（圖像座標）
     /**
      * @brief 用戶拖拽框選完成後發出（影像原始座標）
      */
     void roiSelected(int x, int y, int w, int h);
+    /**
+     * @brief 用戶點擊設定光柵線位置後發出
+     * @param ratio Y 位置比例（0.0 = 頂部，1.0 = 底部，相對於原始影像高度）
+     */
+    void gateLinePositionSelected(double ratio);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -99,6 +110,10 @@ private:
     bool m_isDragging = false;
     QPoint m_dragStart;  // 拖拽起點（widget 座標）
     QPoint m_dragEnd;    // 拖拽終點（widget 座標，即時更新）
+
+    // 光柵線點擊設定狀態
+    bool m_gateLineEditMode = false;
+    int m_gateLineMouseY = -1;  // 滑鼠當前 Y 座標（widget 座標，-1 表示未在影像範圍內）
 };
 
 } // namespace basler

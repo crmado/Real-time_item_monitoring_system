@@ -98,9 +98,13 @@ MainWindow
   → 拖拽完成後自動退出框選模式，更新 Settings / DetectionController / SpinBox
   → `roiSelected(x,y,w,h)` 信號在影像原始座標系發出，完整信號鏈閉合
 
-- [ ] **光柵線位置可視化拖拽**
+- [x] **光柵線位置可視化點擊設定**（2026-02-24）
   目前光柵線只能輸入 ratio（0.0-1.0）數字，不直覺。
-  → 建議：在影像上顯示水平線時，讓用戶點擊拖拽線的位置來調整
+  → Debug Panel 光柵組加入「🎯 點擊畫面設定光柵線」按鈕
+  → 點擊後主畫面進入點擊模式（黃色虛線邊框提示、游標變十字）
+  → 滑鼠懸停時顯示水平預覽線（黃色虛線）並即時顯示 ratio 數值
+  → 點擊完成後自動退出模式，更新 Settings / DetectionController / SpinBox
+  → ESC 可取消（與 ROI 框選模式共用 ESC 快捷鍵）
 
 - [ ] **參數預設模板（Profile）**
   不同零件/場景需要完全不同的一組參數，切換很麻煩。
@@ -195,6 +199,10 @@ MainWindow
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 4）
+
+- [x] P2: 光柵線位置可視化點擊設定（VideoDisplayWidget 新增點擊模式 + 黃色水平預覽線，Debug Panel 加點擊按鈕，ESC 取消，兩種編輯模式互斥）
 
 ### 2026-02-24（Session 3）
 

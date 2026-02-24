@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QMouseEvent>
+#include <algorithm>
 #include <opencv2/imgproc.hpp>
 
 namespace basler {
@@ -154,6 +155,42 @@ void VideoDisplayWidget::paintEvent(QPaintEvent* event)
                          tr("拖拽以框選 ROI  |  ESC 取消"));
     }
 
+    // ===== 光柵線點擊設定模式 overlay =====
+    if (m_gateLineEditMode) {
+        // 黃色虛線邊框提示
+        painter.setPen(QPen(QColor(255, 204, 0), 2, Qt::DashLine));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(rect().adjusted(1, 1, -1, -1));
+
+        painter.setPen(QColor(255, 204, 0));
+        painter.setFont(QFont("Arial", 11, QFont::Bold));
+        painter.drawText(rect().adjusted(0, 6, 0, 0),
+                         Qt::AlignTop | Qt::AlignHCenter,
+                         tr("點擊影像設定光柵線位置  |  ESC 取消"));
+
+        // 水平預覽線（跟隨滑鼠 Y 軸）
+        if (m_gateLineMouseY >= 0 && scaledW > 0) {
+            painter.setPen(QPen(QColor(255, 204, 0), 2, Qt::DashLine));
+            int lineY = m_gateLineMouseY;
+            painter.drawLine(imageOffset.x(), lineY,
+                             imageOffset.x() + scaledW, lineY);
+
+            // 顯示 ratio 數值
+            if (scaledH > 0) {
+                double ratio = static_cast<double>(lineY - imageOffset.y()) / scaledH;
+                ratio = std::max(0.0, std::min(1.0, ratio));
+                QString ratioText = QString("ratio = %1").arg(ratio, 0, 'f', 2);
+                painter.setBrush(QColor(0, 0, 0, 140));
+                painter.setPen(Qt::NoPen);
+                QRect badge(imageOffset.x() + scaledW - 110, lineY - 22, 108, 20);
+                painter.drawRect(badge);
+                painter.setPen(QColor(255, 204, 0));
+                painter.setFont(QFont("Arial", 9));
+                painter.drawText(badge, Qt::AlignCenter, ratioText);
+            }
+        }
+    }
+
     // 拖拽中：繪製 rubber-band 矩形
     if (m_isDragging && scaledW > 0 && origW > 0) {
         QRect dragRect = QRect(m_dragStart, m_dragEnd).normalized();
@@ -202,6 +239,22 @@ void VideoDisplayWidget::mousePressEvent(QMouseEvent* event)
         return;
     }
 
+    if (m_gateLineEditMode && event->button() == Qt::LeftButton) {
+        // 光柵線點擊模式：計算 Y ratio 並發出信號
+        QMutexLocker locker(&m_mutex);
+        if (!m_scaledImage.isNull() && m_scaledImage.height() > 0) {
+            int offsetY = (height() - m_scaledImage.height()) / 2;
+            int scaledH = m_scaledImage.height();
+            locker.unlock();
+
+            double ratio = static_cast<double>(event->pos().y() - offsetY) / scaledH;
+            ratio = std::max(0.0, std::min(1.0, ratio));
+            emit gateLinePositionSelected(ratio);
+        }
+        setGateLineEditMode(false);
+        return;
+    }
+
     // 一般模式：發出 clicked 信號（影像原始座標）
     int offsetX = (width() - m_scaledImage.width()) / 2;
     int offsetY = (height() - m_scaledImage.height()) / 2;
@@ -223,6 +276,11 @@ void VideoDisplayWidget::mouseMoveEvent(QMouseEvent* event)
     if (m_isDragging) {
         m_dragEnd = event->pos();
         update();  // 觸發 paintEvent 重繪 rubber-band
+    }
+
+    if (m_gateLineEditMode) {
+        m_gateLineMouseY = event->pos().y();
+        update();  // 觸發 paintEvent 重繪水平預覽線
     }
 }
 
@@ -268,11 +326,33 @@ void VideoDisplayWidget::setRoiEditMode(bool enabled)
 {
     m_roiEditMode = enabled;
     m_isDragging = false;
-
     if (enabled) {
+        m_gateLineEditMode = false;  // 兩種模式互斥
         setCursor(Qt::CrossCursor);
+        setMouseTracking(true);
     } else {
-        unsetCursor();
+        if (!m_gateLineEditMode) {
+            unsetCursor();
+            setMouseTracking(false);
+        }
+    }
+    update();
+}
+
+void VideoDisplayWidget::setGateLineEditMode(bool enabled)
+{
+    m_gateLineEditMode = enabled;
+    m_gateLineMouseY = -1;
+    if (enabled) {
+        m_roiEditMode = false;  // 兩種模式互斥
+        m_isDragging = false;
+        setCursor(Qt::CrossCursor);
+        setMouseTracking(true);  // 需要 mouseMoveEvent 才能更新預覽線
+    } else {
+        if (!m_roiEditMode) {
+            unsetCursor();
+            setMouseTracking(false);
+        }
     }
     update();
 }

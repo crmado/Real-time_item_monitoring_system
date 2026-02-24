@@ -100,6 +100,7 @@ namespace basler
         // ========== Debug 參數 ==========
         void onRoiChanged(int x, int y, int width, int height);
         void onRoiSelectedFromDrag(int x, int y, int w, int h);
+        void onGateLineFromClick(double ratio);
 
         // ========== 選單動作 ==========
         void onLoadVideo();
