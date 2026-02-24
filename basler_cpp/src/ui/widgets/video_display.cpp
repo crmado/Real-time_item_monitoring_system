@@ -191,6 +191,34 @@ void VideoDisplayWidget::paintEvent(QPaintEvent* event)
         }
     }
 
+    // ===== HUD overlay（全螢幕模式下疊加計數/FPS/光柵線）=====
+    if (m_hudEnabled && scaledW > 0) {
+        // 半透明背景面板（左上角）
+        QRect hudBg(imageOffset.x() + 8, imageOffset.y() + 8, 180, 64);
+        painter.setBrush(QColor(0, 0, 0, 160));
+        painter.setPen(Qt::NoPen);
+        painter.drawRoundedRect(hudBg, 6, 6);
+
+        // 計數
+        painter.setPen(QColor(0, 255, 128));
+        painter.setFont(QFont("Arial", 22, QFont::Bold));
+        painter.drawText(QRect(hudBg.left() + 8, hudBg.top() + 4, hudBg.width() - 16, 32),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         QString::number(m_hudCount));
+        painter.setPen(QColor(160, 160, 160));
+        painter.setFont(QFont("Arial", 9));
+        painter.drawText(QRect(hudBg.left() + 8, hudBg.top() + 36, hudBg.width() - 16, 20),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         QString("FPS: %1").arg(m_hudFps, 0, 'f', 1));
+
+        // 光柵線（黃色水平線）
+        if (scaledH > 0) {
+            int gateY = imageOffset.y() + static_cast<int>(m_hudGateRatio * scaledH);
+            painter.setPen(QPen(QColor(255, 220, 0, 180), 1, Qt::DashLine));
+            painter.drawLine(imageOffset.x(), gateY, imageOffset.x() + scaledW, gateY);
+        }
+    }
+
     // 拖拽中：繪製 rubber-band 矩形
     if (m_isDragging && scaledW > 0 && origW > 0) {
         QRect dragRect = QRect(m_dragStart, m_dragEnd).normalized();
@@ -337,6 +365,28 @@ void VideoDisplayWidget::setRoiEditMode(bool enabled)
         }
     }
     update();
+}
+
+void VideoDisplayWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton &&
+        !m_roiEditMode && !m_gateLineEditMode) {
+        emit doubleClicked();
+    }
+}
+
+void VideoDisplayWidget::setHudEnabled(bool enabled)
+{
+    m_hudEnabled = enabled;
+    update();
+}
+
+void VideoDisplayWidget::updateHud(int count, double fps, double gateRatio)
+{
+    m_hudCount = count;
+    m_hudFps   = fps;
+    m_hudGateRatio = gateRatio;
+    if (m_hudEnabled) update();
 }
 
 void VideoDisplayWidget::setGateLineEditMode(bool enabled)

@@ -75,8 +75,20 @@ public slots:
      */
     void setGateLineEditMode(bool enabled);
 
+    /**
+     * @brief 啟用/停用 HUD overlay（計數、FPS、光柵線）
+     * 全螢幕模式下使用，提供最少量操作資訊
+     */
+    void setHudEnabled(bool enabled);
+
+    /**
+     * @brief 更新 HUD 資料（每幀呼叫）
+     */
+    void updateHud(int count, double fps, double gateRatio);
+
 signals:
-    void clicked(const QPoint& pos);  // 點擊事件（圖像座標）
+    void clicked(const QPoint& pos);    // 點擊事件（圖像座標）
+    void doubleClicked();               // 雙擊事件（觸發全螢幕切換）
     /**
      * @brief 用戶拖拽框選完成後發出（影像原始座標）
      */
@@ -93,6 +105,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
     QImage matToQImage(const cv::Mat& mat);
@@ -114,6 +127,12 @@ private:
     // 光柵線點擊設定狀態
     bool m_gateLineEditMode = false;
     int m_gateLineMouseY = -1;  // 滑鼠當前 Y 座標（widget 座標，-1 表示未在影像範圍內）
+
+    // HUD（全螢幕模式疊加資訊）
+    bool m_hudEnabled = false;
+    int m_hudCount = 0;
+    double m_hudFps = 0.0;
+    double m_hudGateRatio = 0.5;
 };
 
 } // namespace basler

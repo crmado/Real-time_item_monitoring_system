@@ -147,9 +147,13 @@ MainWindow
 
 ### P3 — 大型功能
 
-- [ ] **全螢幕影像模式**
+- [x] **全螢幕影像模式**（2026-02-24）
   按 F11 或雙擊影像，讓 `VideoDisplayWidget` 撐滿全螢幕，
   疊加最少量的 HUD 資訊（計數、FPS、光柵線）
+  → F11 / 雙擊 / ESC 三種觸發方式
+  → 進入全螢幕：隱藏右側 QTabWidget + showFullScreen() + 啟用 HUD
+  → HUD overlay：左上角半透明面板顯示計數 + FPS，黃色虛線光柵線
+  → `m_controlPanel` 提升為成員變數，`toggleFullscreenMode()` 統一管理
 
 - [ ] **演算法中間結果視覺化**
   在調試模式下，左側主畫面可切換顯示：
@@ -207,6 +211,10 @@ MainWindow
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 7）
+
+- [x] P3: 全螢幕影像模式（F11/雙擊/ESC 切換，隱藏右側面板，HUD overlay 計數+FPS+光柵線）
 
 ### 2026-02-24（Session 6）
 

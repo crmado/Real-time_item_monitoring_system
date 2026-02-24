@@ -152,7 +152,8 @@ namespace basler
         m_mainSplitter->addWidget(m_videoDisplay);
 
         // ========== 右側：分頁控制面板 ==========
-        QTabWidget *tabWidget = new QTabWidget();
+        m_controlPanel = new QTabWidget();
+        QTabWidget *tabWidget = m_controlPanel;
         tabWidget->setMinimumWidth(450);
         tabWidget->setMaximumWidth(550);
         tabWidget->setStyleSheet(R"(
@@ -699,6 +700,10 @@ namespace basler
         connect(m_videoDisplay, &VideoDisplayWidget::gateLinePositionSelected,
                 this, &MainWindow::onGateLineFromClick);
 
+        // 雙擊主畫面 → 全螢幕模式切換
+        connect(m_videoDisplay, &VideoDisplayWidget::doubleClicked,
+                this, &MainWindow::toggleFullscreenMode);
+
         // ===== 操作按鈕信號（原先未連接） =====
         connect(m_debugPanel, &DebugPanelWidget::resetTotalCount,
                 m_detectionController.get(), &DetectionController::reset);
@@ -708,6 +713,25 @@ namespace basler
                 [](){ Settings::instance().save(); });
         connect(m_debugPanel, &DebugPanelWidget::loadConfig,
                 [](){ Settings::instance().load(); });
+    }
+
+    void MainWindow::toggleFullscreenMode()
+    {
+        m_isFullscreenMode = !m_isFullscreenMode;
+
+        if (m_isFullscreenMode) {
+            // 隱藏右側控制面板，讓 VideoDisplay 撐滿
+            m_controlPanel->hide();
+            m_videoDisplay->setHudEnabled(true);
+            showFullScreen();
+            m_statusLabel->setText("全螢幕模式  |  按 F11 或 ESC 或雙擊畫面退出");
+        } else {
+            // 恢復右側面板
+            m_controlPanel->show();
+            m_videoDisplay->setHudEnabled(false);
+            showNormal();
+            m_statusLabel->setText("已退出全螢幕模式");
+        }
     }
 
     void MainWindow::setupKeyboardShortcuts()
@@ -748,16 +772,19 @@ namespace basler
             onResetCount();
         });
 
-        // F11：全螢幕 / 一般視窗切換
+        // F11：純視頻全螢幕模式（隱藏右側面板 + OS 全螢幕）
         new QShortcut(Qt::Key_F11, this, [this]()
         {
-            if (isFullScreen()) showNormal();
-            else showFullScreen();
+            toggleFullscreenMode();
         });
 
-        // ESC：取消 ROI 框選模式或光柵線點擊設定模式
+        // ESC：取消編輯模式或退出全螢幕
         new QShortcut(Qt::Key_Escape, this, [this]()
         {
+            if (m_isFullscreenMode) {
+                toggleFullscreenMode();
+                return;
+            }
             m_videoDisplay->setRoiEditMode(false);
             m_videoDisplay->setGateLineEditMode(false);
             m_statusLabel->setText("已取消編輯模式");
@@ -948,6 +975,13 @@ namespace basler
                 m_debugPanel->updateDebugImage(debugFrame);
         }
 
+        // HUD 更新（全螢幕模式下疊加計數/FPS/光柵線）
+        if (m_isFullscreenMode)
+        {
+            double gateRatio = Settings::instance().gate().gateLinePositionRatio;
+            m_videoDisplay->updateHud(m_hudCount, m_hudFps, gateRatio);
+        }
+
         // 儲存處理後的幀用於顯示
         {
             QMutexLocker locker(&m_frameMutex);
@@ -957,6 +991,7 @@ namespace basler
 
     void MainWindow::onFpsUpdated(double fps)
     {
+        m_hudFps = fps;
         m_fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 1));
     }
 
@@ -1179,6 +1214,8 @@ namespace basler
 
     void MainWindow::onCountChanged(int count)
     {
+        m_hudCount = count;  // 供 HUD 使用
+
         // 從 DetectionController 獲取包裝狀態
         auto packagingStatus = m_detectionController->getPackagingStatus();
         m_packagingControl->updateCount(count, packagingStatus.targetCount);

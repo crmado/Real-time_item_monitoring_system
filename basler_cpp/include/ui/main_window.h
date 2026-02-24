@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QLabel>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QMutex>
 #include <memory>
 
@@ -101,6 +102,7 @@ namespace basler
         void onRoiChanged(int x, int y, int width, int height);
         void onRoiSelectedFromDrag(int x, int y, int w, int h);
         void onGateLineFromClick(double ratio);
+        void toggleFullscreenMode();  // 切換全螢幕影像模式（隱藏/顯示右側面板）
 
         // ========== 選單動作 ==========
         void onLoadVideo();
@@ -141,6 +143,7 @@ namespace basler
         VideoDisplayWidget *m_videoDisplay;
         VideoDisplayWidget *m_cameraPreview; // 小型預覽窗口
         DebugPanelWidget *m_debugPanel;
+        QTabWidget *m_controlPanel;          // 右側分頁面板（全螢幕時隱藏）
 
         // 狀態欄
         QLabel *m_statusLabel;
@@ -162,6 +165,11 @@ namespace basler
         // ========== 運行狀態 ==========
         bool m_isDetecting = false;
         bool m_isRecording = false;
+
+        // ========== 全螢幕 HUD 資料 ==========
+        bool m_isFullscreenMode = false;  // 是否為純視頻全螢幕模式
+        int m_hudCount = 0;
+        double m_hudFps = 0.0;
     };
 
 } // namespace basler
