@@ -9,8 +9,12 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QTimer>
+#include <QVector>
 
 namespace basler {
+
+// 前向宣告（實作在 .cpp 內部，不需要公開 header）
+class CountTrendWidget;
 
 /**
  * @brief 計數方法控制面板
@@ -103,6 +107,10 @@ private:
     // 包裝完成視覺提示
     QLabel* m_completionOverlay = nullptr;
     QTimer* m_completionTimer = nullptr;
+
+    // 歷史計數趨勢迷你圖
+    CountTrendWidget* m_trendChart = nullptr;
+    qint64 m_packageStartTime = 0;  // 包裝開始時間戳（ms）
 };
 
 } // namespace basler

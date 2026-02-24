@@ -116,9 +116,12 @@ MainWindow
   → 「刪除」：確認對話框後移除 JSON 檔、刷新列表
   → 同步修正 syncFromConfig() 空 stub，完整實作 SpinBox 靜默更新（blockSignals）
 
-- [ ] **歷史計數趨勢迷你圖**
+- [x] **歷史計數趨勢迷你圖**（2026-02-24）
   在 `CountingMethodPanel` 計數旁加一個小折線圖，顯示最近 N 包的計數速率趨勢
-  → 可用 QPainter 自繪，不需外部庫
+  → `CountTrendWidget`（QPainter 自繪，70px 高）定義在 .cpp 內，不新增檔案
+  → 每包完成時記錄速率（件/秒）= targetCount / elapsed_seconds，最多保留 20 點
+  → 折線 + 填充面積 + 最新速率標籤 + Y 軸 max/min 標籤
+  → `setPackagingState(true)` 記錄開始時間戳，`showPackagingCompleted()` 計算並推入資料點
 
 - [x] **鍵盤快捷鍵**（2026-02-24）
   常用操作應有快捷鍵：
@@ -204,6 +207,10 @@ MainWindow
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 6）
+
+- [x] P2: 歷史計數趨勢迷你圖（CountTrendWidget QPainter 折線圖，件/秒速率，最多 20 點，進度組內嵌）
 
 ### 2026-02-24（Session 5）
 

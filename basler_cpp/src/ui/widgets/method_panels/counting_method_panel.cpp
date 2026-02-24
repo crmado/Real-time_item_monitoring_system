@@ -4,8 +4,121 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QTimer>
+#include <QPainter>
+#include <QPainterPath>
+#include <QDateTime>
+#include <algorithm>
 
 namespace basler {
+
+// ============================================================================
+// CountTrendWidget — QPainter 自繪折線圖，顯示最近 N 包計數速率（件/秒）
+// ============================================================================
+class CountTrendWidget : public QWidget {
+public:
+    explicit CountTrendWidget(QWidget* parent = nullptr) : QWidget(parent)
+    {
+        setMinimumHeight(70);
+        setMaximumHeight(70);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setToolTip(tr("最近 %1 包的計數速率趨勢（件/秒）").arg(MAX_POINTS));
+    }
+
+    void addDataPoint(double ratePerSec)
+    {
+        m_data.append(ratePerSec);
+        if (m_data.size() > MAX_POINTS)
+            m_data.removeFirst();
+        update();
+    }
+
+    void clearData() { m_data.clear(); update(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        // 背景
+        p.fillRect(rect(), QColor(10, 14, 35));
+        p.setPen(QPen(QColor(31, 58, 95), 1));
+        p.drawRect(rect().adjusted(0, 0, -1, -1));
+
+        // 標題
+        p.setPen(QColor(0, 212, 255));
+        p.setFont(QFont("Arial", 8));
+        p.drawText(QRect(4, 2, width(), 14), Qt::AlignLeft | Qt::AlignTop,
+                   tr("📈 計數速率趨勢（件/秒）"));
+
+        if (m_data.size() < 2) {
+            p.setPen(QColor(100, 100, 100));
+            p.setFont(QFont("Arial", 9));
+            p.drawText(rect().adjusted(0, 16, 0, 0), Qt::AlignCenter,
+                       tr("等待更多包裝數據..."));
+            return;
+        }
+
+        double minVal = *std::min_element(m_data.begin(), m_data.end());
+        double maxVal = *std::max_element(m_data.begin(), m_data.end());
+        if (maxVal - minVal < 0.01) { maxVal = minVal + 0.01; }
+
+        const int padL = 30, padR = 6, padT = 18, padB = 6;
+        int w = width() - padL - padR;
+        int h = height() - padT - padB;
+
+        auto toPoint = [&](int i, double v) -> QPointF {
+            float x = padL + static_cast<float>(i) / (m_data.size() - 1) * w;
+            float y = padT + h - static_cast<float>((v - minVal) / (maxVal - minVal)) * h;
+            return QPointF(x, y);
+        };
+
+        // 填充面積
+        QPolygonF poly;
+        poly << QPointF(padL, padT + h);
+        for (int i = 0; i < m_data.size(); ++i) poly << toPoint(i, m_data[i]);
+        poly << QPointF(padL + w, padT + h);
+        p.setBrush(QColor(0, 212, 255, 25));
+        p.setPen(Qt::NoPen);
+        p.drawPolygon(poly);
+
+        // 折線
+        QPainterPath path;
+        path.moveTo(toPoint(0, m_data[0]));
+        for (int i = 1; i < m_data.size(); ++i) path.lineTo(toPoint(i, m_data[i]));
+        p.setPen(QPen(QColor(0, 212, 255), 1.5));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(path);
+
+        // 最後一點
+        QPointF last = toPoint(m_data.size() - 1, m_data.last());
+        p.setBrush(QColor(0, 212, 255));
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(last, 3, 3);
+
+        // Y 軸 max/min 標籤
+        p.setPen(QColor(120, 140, 160));
+        p.setFont(QFont("Arial", 7));
+        p.drawText(QRect(0, padT - 1, padL - 2, 12),
+                   Qt::AlignRight | Qt::AlignTop,
+                   QString("%1").arg(maxVal, 0, 'f', 1));
+        p.drawText(QRect(0, padT + h - 11, padL - 2, 12),
+                   Qt::AlignRight | Qt::AlignBottom,
+                   QString("%1").arg(minVal, 0, 'f', 1));
+
+        // 最新速率（右下角）
+        p.setPen(QColor(0, 255, 128));
+        p.setFont(QFont("Arial", 8, QFont::Bold));
+        p.drawText(QRect(padL, padT + h - 14, w, 14),
+                   Qt::AlignRight | Qt::AlignBottom,
+                   QString("最新: %1").arg(m_data.last(), 0, 'f', 1));
+    }
+
+private:
+    static constexpr int MAX_POINTS = 20;
+    QVector<double> m_data;
+};
+
 
 CountingMethodPanel::CountingMethodPanel(QWidget* parent)
     : QWidget(parent)
@@ -76,6 +189,10 @@ void CountingMethodPanel::initUi()
     m_completionTimer->setSingleShot(true);
     connect(m_completionTimer, &QTimer::timeout,
             this, [this]() { m_completionOverlay->hide(); });
+
+    // 歷史計數速率趨勢圖
+    m_trendChart = new CountTrendWidget();
+    progressLayout->addWidget(m_trendChart);
 
     m_progressGroup->setLayout(progressLayout);
     mainLayout->addWidget(m_progressGroup);
@@ -197,6 +314,7 @@ void CountingMethodPanel::setPackagingState(bool running)
     m_isRunning = running;
 
     if (running) {
+        m_packageStartTime = QDateTime::currentMSecsSinceEpoch();  // 記錄開始時間
         m_startBtn->setText(tr("⏹ 包裝中..."));
         m_startBtn->setStyleSheet("QPushButton { background-color: #FF9800; color: white; padding: 10px; }");
         m_startBtn->setEnabled(false);
@@ -214,6 +332,17 @@ void CountingMethodPanel::setPackagingState(bool running)
 void CountingMethodPanel::showPackagingCompleted()
 {
     m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff80;");
+
+    // 計算此包的速率並記錄到趨勢圖
+    if (m_packageStartTime > 0) {
+        qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_packageStartTime;
+        if (elapsed > 0) {
+            double rate = static_cast<double>(m_targetCount) / (elapsed / 1000.0);
+            m_trendChart->addDataPoint(rate);
+        }
+        m_packageStartTime = 0;
+    }
+
     setPackagingState(false);
 
     // 顯示大字完成提示，4 秒後自動消失
