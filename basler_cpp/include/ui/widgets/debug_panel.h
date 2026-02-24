@@ -131,6 +131,7 @@ signals:
     // 其他
     void resetTotalCount();
     void debugViewToggled(bool show);
+    void splitViewToggleRequested();   // 請求主視窗切換分割顯示模式
 
     /**
      * @brief 主畫面視覺化模式變更（0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終）
@@ -225,6 +226,7 @@ private:
     // 調試視圖
     QCheckBox* m_showDebugViewCheck;
     QComboBox* m_debugViewModeCombo;  // 主畫面視覺化模式選擇
+    QPushButton* m_splitViewBtn;       // 分割顯示切換按鈕
     QLabel* m_debugImageLabel;
     bool m_showDebugView = false;
 

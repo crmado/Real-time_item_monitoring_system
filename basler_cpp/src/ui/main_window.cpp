@@ -146,10 +146,23 @@ namespace basler
         // 主分割器
         m_mainSplitter = new QSplitter(Qt::Horizontal);
 
-        // ========== 左側：主視頻顯示區（大） ==========
+        // ========== 左側：顯示區（主視頻 + 可選的分割第二視頻） ==========
+        m_displaySplitter = new QSplitter(Qt::Horizontal);
+        m_displaySplitter->setCollapsible(0, false);
+        m_displaySplitter->setCollapsible(1, false);
+        m_displaySplitter->setHandleWidth(4);
+
         m_videoDisplay = new VideoDisplayWidget();
-        m_videoDisplay->setMinimumSize(600, 500);
-        m_mainSplitter->addWidget(m_videoDisplay);
+        m_videoDisplay->setMinimumSize(400, 500);
+        m_displaySplitter->addWidget(m_videoDisplay);
+
+        m_videoDisplay2 = new VideoDisplayWidget();
+        m_videoDisplay2->setMinimumSize(400, 500);
+        m_videoDisplay2->showPlaceholder("分割視圖  |  啟動分割顯示後顯示互補幀");
+        m_videoDisplay2->hide();
+        m_displaySplitter->addWidget(m_videoDisplay2);
+
+        m_mainSplitter->addWidget(m_displaySplitter);
 
         // ========== 右側：分頁控制面板 ==========
         m_controlPanel = new QTabWidget();
@@ -717,6 +730,10 @@ namespace basler
         // 主畫面視覺化模式：0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終形態學
         connect(m_debugPanel, &DebugPanelWidget::debugViewModeChanged,
                 [this](int mode){ m_debugViewMode = mode; });
+
+        // 分割顯示模式（Debug Panel 按鈕觸發）
+        connect(m_debugPanel, &DebugPanelWidget::splitViewToggleRequested,
+                this, &MainWindow::toggleSplitView);
     }
 
     void MainWindow::toggleFullscreenMode()
@@ -724,17 +741,35 @@ namespace basler
         m_isFullscreenMode = !m_isFullscreenMode;
 
         if (m_isFullscreenMode) {
-            // 隱藏右側控制面板，讓 VideoDisplay 撐滿
+            // 隱藏右側控制面板 + 分割視圖第二面板，讓 m_videoDisplay 撐滿
             m_controlPanel->hide();
+            if (m_isSplitView) m_videoDisplay2->hide();
             m_videoDisplay->setHudEnabled(true);
             showFullScreen();
             m_statusLabel->setText("全螢幕模式  |  按 F11 或 ESC 或雙擊畫面退出");
         } else {
             // 恢復右側面板
             m_controlPanel->show();
+            if (m_isSplitView) m_videoDisplay2->show();  // 恢復分割視圖
             m_videoDisplay->setHudEnabled(false);
             showNormal();
             m_statusLabel->setText("已退出全螢幕模式");
+        }
+    }
+
+    void MainWindow::toggleSplitView()
+    {
+        m_isSplitView = !m_isSplitView;
+
+        if (m_isSplitView) {
+            m_videoDisplay2->show();
+            // 等比分配左側顯示區給兩個面板
+            m_displaySplitter->setSizes({m_displaySplitter->width() / 2,
+                                         m_displaySplitter->width() / 2});
+            m_statusLabel->setText("分割顯示  |  左：選定視圖  右：互補幀  |  F9 關閉");
+        } else {
+            m_videoDisplay2->hide();
+            m_statusLabel->setText("已關閉分割顯示");
         }
     }
 
@@ -776,6 +811,12 @@ namespace basler
             onResetCount();
         });
 
+        // F9：分割顯示模式（左右並排兩個視角）
+        new QShortcut(Qt::Key_F9, this, [this]()
+        {
+            toggleSplitView();
+        });
+
         // F11：純視頻全螢幕模式（隱藏右側面板 + OS 全螢幕）
         new QShortcut(Qt::Key_F11, this, [this]()
         {
@@ -794,7 +835,7 @@ namespace basler
             m_statusLabel->setText("已取消編輯模式");
         });
 
-        qDebug() << "[MainWindow] 鍵盤快捷鍵已設定 (Space/←/→/Ctrl+R/F5/F11/ESC)";
+        qDebug() << "[MainWindow] 鍵盤快捷鍵已設定 (Space/←/→/Ctrl+R/F5/F9/F11/ESC)";
     }
 
     // ============================================================================
@@ -1059,6 +1100,21 @@ namespace basler
             displayMat = frame;
         }
         m_videoDisplay->displayFrame(displayMat);
+
+        // 分割視圖第二面板（非全螢幕時才更新）
+        if (m_isSplitView && m_videoDisplay2 && m_videoDisplay2->isVisible())
+        {
+            // 左面板顯示選定中間結果時，右面板顯示最終檢測結果（互補）
+            // 左面板顯示最終結果（mode=0）時，右面板顯示原始幀（互補）
+            cv::Mat splitMat;
+            if (m_debugViewMode == 0)
+                splitMat = frame;                           // 互補：原始幀
+            else if (m_isDetecting && !processed.empty())
+                splitMat = processed;                       // 互補：最終檢測結果
+            else
+                splitMat = frame;
+            m_videoDisplay2->displayFrame(splitMat);
+        }
 
         // 更新小型預覽窗口（始終顯示原始畫面）
         if (m_cameraPreview && !frame.empty())

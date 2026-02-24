@@ -562,6 +562,21 @@ QWidget* DebugPanelWidget::createDebugViewGroup()
             this, [this](int index){ emit debugViewModeChanged(index); });
     layout->addWidget(m_debugViewModeCombo);
 
+    // 分割顯示切換按鈕（並排顯示原始幀 + 選定結果，按 F9 或此按鈕切換）
+    m_splitViewBtn = new QPushButton(tr("⊞ 分割顯示"));
+    m_splitViewBtn->setToolTip(tr("並排顯示兩個視角（F9）\n左：選定視圖  右：互補幀"));
+    m_splitViewBtn->setCheckable(true);
+    m_splitViewBtn->setStyleSheet(R"(
+        QPushButton { background-color: #1a1f3d; color: #e0e6f1; border: 1px solid #1f3a5f;
+                      border-radius: 4px; padding: 4px; }
+        QPushButton:checked { background-color: #0d4a7a; color: #00d4ff;
+                              border-color: #00d4ff; }
+        QPushButton:hover { background-color: #1e5a8e; }
+    )");
+    connect(m_splitViewBtn, &QPushButton::clicked,
+            this, &DebugPanelWidget::splitViewToggleRequested);
+    layout->addWidget(m_splitViewBtn);
+
     m_debugImageLabel = new QLabel();
     m_debugImageLabel->setFixedSize(200, 100);
     m_debugImageLabel->setStyleSheet("background-color: #1a1a1a; border: 1px solid #333;");

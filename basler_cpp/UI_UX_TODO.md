@@ -168,9 +168,13 @@ MainWindow
   → 勾選「顯示調試視圖」後 ComboBox 才啟用；取消勾選自動重設為原始幀（mode=0）
   → `MainWindow::updateDisplay()` 依 `m_debugViewMode` 取中間 Mat，灰階自動轉 BGR 後顯示
 
-- [ ] **多視窗分割顯示**
-  並排顯示原始幀 + 處理結果（4格或2格），方便調參時比對
-  → 可用 `QSplitter` 實作，最多 2x2 格
+- [x] **多視窗分割顯示**（2026-02-24）
+  並排顯示原始幀 + 處理結果（2格），方便調參時比對
+  → `m_displaySplitter`（QSplitter 水平）包裝 `m_videoDisplay` + `m_videoDisplay2`
+  → 左面板：選定視圖（由 debugViewMode ComboBox 控制）
+  → 右面板：互補幀（debugViewMode=0 時顯示原始幀；否則顯示最終檢測結果）
+  → F9 快捷鍵 + Debug Panel「⊞ 分割顯示」按鈕切換
+  → 全螢幕模式時自動隱藏右面板，退出全螢幕後自動恢復
 
 - [ ] **操作日誌面板**
   在 Tab 3 增加一個摺疊式的操作日誌區域，顯示最近的：

@@ -103,6 +103,7 @@ namespace basler
         void onRoiSelectedFromDrag(int x, int y, int w, int h);
         void onGateLineFromClick(double ratio);
         void toggleFullscreenMode();  // 切換全螢幕影像模式（隱藏/顯示右側面板）
+        void toggleSplitView();       // 切換分割顯示模式（左右並排兩個視角）
 
         // ========== 選單動作 ==========
         void onLoadVideo();
@@ -141,6 +142,8 @@ namespace basler
 
         // 視頻顯示
         VideoDisplayWidget *m_videoDisplay;
+        VideoDisplayWidget *m_videoDisplay2; // 分割視圖第二面板（預設隱藏）
+        QSplitter *m_displaySplitter;        // 左側顯示區分割器
         VideoDisplayWidget *m_cameraPreview; // 小型預覽窗口
         DebugPanelWidget *m_debugPanel;
         QTabWidget *m_controlPanel;          // 右側分頁面板（全螢幕時隱藏）
@@ -173,6 +176,9 @@ namespace basler
 
         // ========== 調試視覺化模式 ==========
         int m_debugViewMode = 0;  // 0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終形態學
+
+        // ========== 分割顯示狀態 ==========
+        bool m_isSplitView = false;  // 是否為分割顯示模式（左：選定視圖，右：互補幀）
     };
 
 } // namespace basler
