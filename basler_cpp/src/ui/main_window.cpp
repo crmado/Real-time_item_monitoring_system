@@ -11,6 +11,7 @@
 
 #include <QMenuBar>
 #include <QStatusBar>
+#include <QShortcut>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QScrollArea>
@@ -62,6 +63,9 @@ namespace basler
 
         // 啟動系統監控
         m_systemMonitor->startMonitoring();
+
+        // 設置鍵盤快捷鍵
+        setupKeyboardShortcuts();
 
         qDebug() << "[MainWindow] 初始化完成";
     }
@@ -332,8 +336,20 @@ namespace basler
         m_fpsLabel = new QLabel("FPS: --");
         m_detectionLabel = new QLabel("檢測: 停止");
         m_recordingLabel = new QLabel("");
+        m_objectCountLabel = new QLabel("物件: --");
+        m_roiLabel = new QLabel("ROI: --");
+        m_bgStabilityLabel = new QLabel("背景: --");
+
+        // 灰色樣式作為初始狀態（檢測啟動後會變色）
+        QString dimStyle = "color: #888888;";
+        m_objectCountLabel->setStyleSheet(dimStyle);
+        m_roiLabel->setStyleSheet(dimStyle);
+        m_bgStabilityLabel->setStyleSheet(dimStyle);
 
         statusBar()->addWidget(m_statusLabel, 1);
+        statusBar()->addPermanentWidget(m_objectCountLabel);
+        statusBar()->addPermanentWidget(m_roiLabel);
+        statusBar()->addPermanentWidget(m_bgStabilityLabel);
         statusBar()->addPermanentWidget(m_detectionLabel);
         statusBar()->addPermanentWidget(m_recordingLabel);
         statusBar()->addPermanentWidget(m_fpsLabel);
@@ -654,6 +670,54 @@ namespace basler
                 [](){ Settings::instance().load(); });
     }
 
+    void MainWindow::setupKeyboardShortcuts()
+    {
+        // Space：播放 / 暫停視頻（僅影片模式有效）
+        new QShortcut(Qt::Key_Space, this, [this]()
+        {
+            auto *vp = m_sourceManager->videoPlayer();
+            if (!vp) return;
+            if (vp->isPaused()) vp->resume();
+            else if (vp->isPlaying()) vp->pause();
+        });
+
+        // ←：上一幀
+        new QShortcut(Qt::Key_Left, this, [this]()
+        {
+            auto *vp = m_sourceManager->videoPlayer();
+            if (vp) vp->previousFrame();
+        });
+
+        // →：下一幀
+        new QShortcut(Qt::Key_Right, this, [this]()
+        {
+            auto *vp = m_sourceManager->videoPlayer();
+            if (vp) vp->nextFrame();
+        });
+
+        // Ctrl+R：開始 / 停止錄製（Ctrl+S 已在 MenuBar 處理）
+        new QShortcut(QKeySequence("Ctrl+R"), this, [this]()
+        {
+            if (m_isRecording) onStopRecording();
+            else onStartRecording();
+        });
+
+        // F5：重置計數
+        new QShortcut(Qt::Key_F5, this, [this]()
+        {
+            onResetCount();
+        });
+
+        // F11：全螢幕 / 一般視窗切換
+        new QShortcut(Qt::Key_F11, this, [this]()
+        {
+            if (isFullScreen()) showNormal();
+            else showFullScreen();
+        });
+
+        qDebug() << "[MainWindow] 鍵盤快捷鍵已設定 (Space/←/→/Ctrl+R/F5/F11)";
+    }
+
     // ============================================================================
     // 相機控制槽函數
     // ============================================================================
@@ -801,6 +865,32 @@ namespace basler
         // 送入檢測控制器
         std::vector<DetectedObject> detectedObjects;
         cv::Mat processedFrame = m_detectionController->processFrame(frame, detectedObjects);
+
+        // ===== StatusBar 即時更新 =====
+        // 1. 即時偵測物件數
+        m_objectCountLabel->setText(QString("物件: %1").arg(static_cast<int>(detectedObjects.size())));
+
+        // 2. ROI 尺寸
+        const auto &det = Settings::instance().detection();
+        if (det.roiEnabled)
+            m_roiLabel->setText(QString("ROI: %1×%2").arg(frame.cols).arg(det.roiHeight));
+        else
+            m_roiLabel->setText("ROI: 關閉");
+
+        // 3. 背景減除器穩定性（已處理幀數 vs bgHistory）
+        int processed = m_detectionController->totalProcessedFrames();
+        int bgHistory = det.bgHistory;
+        if (processed >= bgHistory)
+        {
+            m_bgStabilityLabel->setText("背景: 穩定");
+            m_bgStabilityLabel->setStyleSheet("color: #00ff80;");
+        }
+        else
+        {
+            int pct = (bgHistory > 0) ? (processed * 100 / bgHistory) : 0;
+            m_bgStabilityLabel->setText(QString("背景: 學習 %1%").arg(pct));
+            m_bgStabilityLabel->setStyleSheet("color: #ffcc00;");
+        }
 
         // 調試視圖：將二值化遮罩傳給 Debug Panel 顯示
         if (m_debugPanel && m_debugPanel->isShowingDebugView())

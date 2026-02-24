@@ -109,22 +109,23 @@ MainWindow
   在 `CountingMethodPanel` 計數旁加一個小折線圖，顯示最近 N 包的計數速率趨勢
   → 可用 QPainter 自繪，不需外部庫
 
-- [ ] **鍵盤快捷鍵**
+- [x] **鍵盤快捷鍵**（2026-02-24）
   常用操作應有快捷鍵：
   | 快捷鍵 | 功能 |
   |--------|------|
   | Space | 播放/暫停視頻 |
   | ← / → | 上一幀/下一幀 |
-  | Ctrl+S | 儲存設定 |
+  | Ctrl+S | 儲存設定（已在 MenuBar） |
   | Ctrl+R | 開始/停止錄製 |
   | F5 | 重置計數 |
   | F11 | 全螢幕切換 |
+  → 已用 `QShortcut`（`Qt::WindowShortcut`）實作，SpinBox/Button 聚焦時自然優先消費
 
-- [ ] **StatusBar 強化**
+- [x] **StatusBar 強化**（2026-02-24）
   目前 StatusBar 只有文字，建議加入：
-  - 偵測到的物件數（即時）
-  - 當前 ROI 尺寸
-  - 背景減除器狀態（是否已穩定）
+  - 偵測到的物件數（即時）→ 已加，`processFrame()` 每幀更新
+  - 當前 ROI 尺寸 → 已加，顯示 `ROI: W×H` 或 `ROI: 關閉`
+  - 背景減除器狀態 → 已加，`背景: 學習 N%` / `背景: 穩定`（綠/黃色標示）
 
 ---
 
@@ -195,6 +196,8 @@ MainWindow
 
 ### 2026-02-24（Session 3）
 
+- [x] P2: 鍵盤快捷鍵（Space/←/→/Ctrl+R/F5/F11，`QShortcut` 實作）
+- [x] P2: StatusBar 強化（物件數、ROI 尺寸、背景穩定度，每幀更新）
 - [x] P0: 瑕疵統計信號鏈完整連接（`DetectionController::defectStatsUpdated` → `MainWindow` → `DefectDetectionMethodPanel::updateStats`）
   - 新增 `defectStatsUpdated(double, int, int)` 信號、`m_defectPassCount/m_defectFailCount` 計數器
   - 新增 `resetDefectStats()` slot（不影響計數/追蹤，只清瑕疵統計）

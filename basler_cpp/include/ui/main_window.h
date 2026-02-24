@@ -110,6 +110,7 @@ namespace basler
         void setupUi();
         void setupMenuBar();
         void setupStatusBar();
+        void setupKeyboardShortcuts();
         void connectCameraSignals();
         void connectRecordingSignals();
         void connectPackagingSignals();
@@ -144,6 +145,9 @@ namespace basler
         QLabel *m_fpsLabel;
         QLabel *m_detectionLabel;
         QLabel *m_recordingLabel;
+        QLabel *m_objectCountLabel;  // 即時偵測物件數
+        QLabel *m_roiLabel;          // 當前 ROI 尺寸
+        QLabel *m_bgStabilityLabel;  // 背景減除器穩定狀態
 
         // ========== 更新定時器 ==========
         QTimer *m_updateTimer;
