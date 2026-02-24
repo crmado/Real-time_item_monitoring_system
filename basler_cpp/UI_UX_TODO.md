@@ -1,6 +1,6 @@
 # UI/UX 改善 Todolist
 
-> 最後更新：2026-02-24
+> 最後更新：2026-02-24（Session 10 — 代碼審計 + 警告清零）
 > 分支：feature/cpp-rewrite → master
 > 專案：Basler 工業視覺系統 v2.0 (Qt6 C++)
 
@@ -229,7 +229,60 @@ MainWindow
 
 ---
 
+## 🔧 代碼品質（Code Audit 2026-02-24）
+
+### 審計發現 — 已修復
+
+- [x] **C4267 警告 × 3** — `detection_controller.cpp`（2026-02-24）
+  `usedObjectIds` 從 `std::set<int>` 改為 `std::set<size_t>`，與 `objIdx(size_t)` 型別一致
+
+- [x] **C4267 警告 × 2** — `debug_panel.cpp`（2026-02-24）
+  `image.step` / `rgb.step` 加 `static_cast<int>`，消除 QImage 建構時的隱式轉換警告
+
+- [x] **C4701 警告 × 1** — `video_display.cpp`（2026-02-24）
+  `Qt::AspectRatioMode aspectMode` 加預設值 `= Qt::KeepAspectRatio`，消除未初始化警告
+
+- [x] **趨勢圖重置後不清除** — `counting_method_panel`（2026-02-24）
+  新增 `resetTrendChart()` 方法；`onResetCount()` 後呼叫，確保重置計數時圖表歸零
+
+### 審計發現 — 設計缺口（暫緩）
+
+- [ ] **roiWidth 沒有對應 config 欄位**
+  `DetectionConfig` 只有 `roiX/roiY/roiHeight`，無 `roiWidth`。
+  `m_roiWidthSpin` 在 `syncFromConfig()` 中無法同步，顯示初始值 0。
+  → 需要決策：是否加入 `roiWidth` 欄位，或改為「自動等於畫面寬度」並隱藏 SpinBox
+
+- [ ] **vibrator_controller.cpp TODO**
+  `// TODO: 實現實際硬體控制器`（第 217 行）
+  目前為模擬模式，若有實際 RS-232/Modbus 震動機控制器需要對接
+
+### 潛在優化建議（Backlog）
+
+- [ ] **統一使用 `Settings::instance()`，移除 `getConfig()` 別名**
+  目前兩者都定義在 `settings.h`，但代碼中全用 `Settings::instance()`，`getConfig()` 未使用，可移除避免混亂
+
+- [ ] **CSV 報告補充欄位**
+  目前記錄 5 個參數，可考慮加入：gateLinePositionRatio、roiEnabled、skip frames
+
+- [ ] **操作日誌持久化**
+  目前日誌只在執行期存在，關閉後消失。可在 `Documents/BaslerReports/` 同時寫入 `operation_YYYYMMDD.log`
+
+- [ ] **SetupWizard「重新顯示向導」選單項**
+  目前 `wizardDone=true` 後無法再觸發，建議在「說明」選單加「重新執行設定向導」
+
+- [ ] **Light Theme 完整性**
+  目前淺色主題只覆蓋主框架（QMainWindow/MenuBar/TabWidget），
+  各 Widget 的硬編碼深色 StyleSheet 仍有效。若要完整淺色主題，
+  需將 Widget StyleSheet 改用 `Style::` 常量（長期重構）
+
+---
+
 ## ✅ 已完成
+
+### 2026-02-24（Session 10）
+
+- [x] Code Audit: 清零全部 6 個預先存在的編譯警告（C4267×5 + C4701×1）
+- [x] Code Audit: 修復趨勢圖重置邏輯（`resetTrendChart()` 新增）
 
 ### 2026-02-24（Session 9）
 

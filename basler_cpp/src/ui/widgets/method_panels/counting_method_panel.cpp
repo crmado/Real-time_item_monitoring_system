@@ -372,4 +372,11 @@ void CountingMethodPanel::onSlowThresholdChanged(double value)
     emit thresholdChanged(m_fullThresholdSpin->value(), m_mediumThresholdSpin->value(), value);
 }
 
+void CountingMethodPanel::resetTrendChart()
+{
+    if (m_trendChart)
+        m_trendChart->clearData();
+    m_packageStartTime = 0;
+}
+
 } // namespace basler

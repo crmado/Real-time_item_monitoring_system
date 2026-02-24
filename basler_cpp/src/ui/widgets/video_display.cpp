@@ -91,7 +91,7 @@ void VideoDisplayWidget::updateScaledImage()
         return;
     }
 
-    Qt::AspectRatioMode aspectMode;
+    Qt::AspectRatioMode aspectMode = Qt::KeepAspectRatio;  // 預設值消除 C4701
     switch (m_scaleMode) {
         case ScaleMode::KeepAspectRatio:
             aspectMode = Qt::KeepAspectRatio;

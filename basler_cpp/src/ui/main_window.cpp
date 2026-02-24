@@ -1368,6 +1368,7 @@ namespace basler
 
         // 重置 UI 狀態
         m_packagingControl->countingPanel()->setPackagingState(false);
+        m_packagingControl->countingPanel()->resetTrendChart();  // 清除趨勢圖歷史
         auto &pkg = getConfig().packaging();
         m_packagingControl->updateCount(0, pkg.targetCount);
         m_packagingControl->updateVibratorStatus(false, false, 0);

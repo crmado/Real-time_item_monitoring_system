@@ -875,12 +875,12 @@ void DebugPanelWidget::updateDebugImage(const cv::Mat& image)
     QImage qImg;
     if (image.channels() == 1) {
         qImg = QImage(image.data, image.cols, image.rows,
-                      image.step, QImage::Format_Grayscale8);
+                      static_cast<int>(image.step), QImage::Format_Grayscale8);
     } else if (image.channels() == 3) {
         cv::Mat rgb;
         cv::cvtColor(image, rgb, cv::COLOR_BGR2RGB);
         qImg = QImage(rgb.data, rgb.cols, rgb.rows,
-                      rgb.step, QImage::Format_RGB888);
+                      static_cast<int>(rgb.step), QImage::Format_RGB888);
     }
 
     // 縮放並顯示

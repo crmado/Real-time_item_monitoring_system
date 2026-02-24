@@ -928,8 +928,8 @@ namespace basler
     void DetectionController::updateObjectTracks(const std::vector<DetectedObject> &objects)
     {
         std::map<int, ObjectTrack> newTracks;
-        std::set<int> usedTrackIds;
-        std::set<int> usedObjectIds;
+        std::set<int>    usedTrackIds;
+        std::set<size_t> usedObjectIds;  // 與 objIdx(size_t) 型別一致，消除 C4267 警告
 
         // 第一階段：為現有追蹤更新速度和預測
         for (auto &[trackId, track] : m_objectTracks)

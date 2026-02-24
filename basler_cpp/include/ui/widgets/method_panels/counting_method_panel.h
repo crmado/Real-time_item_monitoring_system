@@ -32,6 +32,9 @@ public:
     /** 回傳目前目標計數（供 MainWindow 導出報告使用）*/
     int targetCount() const { return m_targetCount; }
 
+    /** 清除趨勢圖歷史資料（重置計數時呼叫）*/
+    void resetTrendChart();
+
 public slots:
     /**
      * @brief 更新計數顯示
