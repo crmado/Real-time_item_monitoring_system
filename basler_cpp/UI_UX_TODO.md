@@ -176,11 +176,13 @@ MainWindow
   → F9 快捷鍵 + Debug Panel「⊞ 分割顯示」按鈕切換
   → 全螢幕模式時自動隱藏右面板，退出全螢幕後自動恢復
 
-- [ ] **操作日誌面板**
-  在 Tab 3 增加一個摺疊式的操作日誌區域，顯示最近的：
-  - 參數變更記錄（什麼時間改了什麼值）
-  - 計數事件（第幾幀觸發計數）
-  - 錯誤訊息
+- [x] **操作日誌面板**（2026-02-24）
+  在 Tab 3 調試視圖下方加入摺疊式操作日誌面板：
+  - 時間戳（HH:mm:ss）+ 色彩分級：參數變更=青色、計數=綠色、錯誤=紅色
+  - 自動記錄 8 種關鍵參數變更（minArea/maxArea/bgVarThreshold/canny/gateLineRatio/ROI/profileLoaded）
+  - 計數事件：MainWindow `onCountChanged()` → `logCountEvent(count, frame)`
+  - 錯誤訊息：相機/錄影錯誤自動寫入日誌
+  - `▼/▶` 按鈕摺疊/展開；清除按鈕清空；`setMaximumBlockCount(100)` 自動修剪
 
 - [ ] **設定向導（第一次使用）**
   首次啟動時顯示 QWizard，引導用戶：

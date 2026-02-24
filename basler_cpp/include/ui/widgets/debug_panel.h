@@ -13,6 +13,8 @@
 #include <QScrollArea>
 #include <opencv2/core.hpp>
 
+class QTextEdit;  // 前向宣告，避免 debug_panel.h 引入重量級 Qt 頭文件
+
 namespace basler {
 
 /**
@@ -27,6 +29,11 @@ class DebugPanelWidget : public QWidget {
 public:
     explicit DebugPanelWidget(QWidget* parent = nullptr);
     ~DebugPanelWidget() = default;
+
+    /**
+     * @brief 操作日誌等級
+     */
+    enum class LogLevel { Info, Param, Count, Error };
 
     /**
      * @brief 是否顯示調試視圖
@@ -61,6 +68,11 @@ public slots:
 
     // 參數同步（從配置載入）
     void syncFromConfig();
+
+    // 操作日誌
+    void appendLog(const QString& message, LogLevel level = LogLevel::Info);
+    void logCountEvent(int count, int frame);   // 計數事件（由 MainWindow 呼叫）
+    void logError(const QString& message);      // 錯誤訊息（由 MainWindow 呼叫）
 
     // YOLO 狀態更新
     void updateYoloModelStatus(bool loaded);
@@ -180,6 +192,7 @@ private:
     QWidget* createVideoControlGroup();
     QWidget* createYoloGroup();
     QWidget* createDebugViewGroup();
+    QWidget* createOperationLogGroup();
     QWidget* createActionButtonsGroup();
 
     // 檢測參數
@@ -229,6 +242,9 @@ private:
     QPushButton* m_splitViewBtn;       // 分割顯示切換按鈕
     QLabel* m_debugImageLabel;
     bool m_showDebugView = false;
+
+    // 操作日誌
+    QTextEdit* m_logTextEdit = nullptr;
 
     // 視頻控制
     QPushButton* m_loadVideoBtn;

@@ -948,6 +948,7 @@ namespace basler
     void MainWindow::onCameraError(const QString &error)
     {
         m_statusLabel->setText(QString("錯誤: %1").arg(error));
+        m_debugPanel->logError("相機：" + error);
         QMessageBox::warning(this, "相機錯誤", error);
     }
 
@@ -1177,6 +1178,7 @@ namespace basler
 
     void MainWindow::onRecordingError(const QString &error)
     {
+        m_debugPanel->logError("錄影：" + error);
         QMessageBox::warning(this, "錄製錯誤", error);
     }
 
@@ -1302,6 +1304,7 @@ namespace basler
     void MainWindow::onCountChanged(int count)
     {
         m_hudCount = count;  // 供 HUD 使用
+        m_debugPanel->logCountEvent(count, m_detectionController->totalProcessedFrames());
 
         // 從 DetectionController 獲取包裝狀態
         auto packagingStatus = m_detectionController->getPackagingStatus();

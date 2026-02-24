@@ -14,6 +14,9 @@
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QRegularExpression>
+#include <QTextEdit>
+#include <QScrollBar>
+#include <QTime>
 #include <opencv2/imgproc.hpp>
 
 namespace basler {
@@ -73,6 +76,7 @@ void DebugPanelWidget::initUi()
     // 以下區域不受鎖定影響（始終可操作）
     scrollLayout->addWidget(createYoloGroup());
     scrollLayout->addWidget(createDebugViewGroup());
+    scrollLayout->addWidget(createOperationLogGroup());
     scrollLayout->addWidget(createVideoControlGroup());
     scrollLayout->addWidget(createActionButtonsGroup());
     scrollLayout->addStretch();
@@ -81,6 +85,24 @@ void DebugPanelWidget::initUi()
     for (auto* w : m_paramGroupWidgets) {
         w->setEnabled(false);
     }
+
+    // 操作日誌：自動記錄關鍵參數變更
+    connect(this, &DebugPanelWidget::minAreaChanged,
+            [this](int v){ appendLog(QString("minArea → %1").arg(v), LogLevel::Param); });
+    connect(this, &DebugPanelWidget::maxAreaChanged,
+            [this](int v){ appendLog(QString("maxArea → %1").arg(v), LogLevel::Param); });
+    connect(this, &DebugPanelWidget::bgVarThresholdChanged,
+            [this](double v){ appendLog(QString("bgVarThreshold → %1").arg(v, 0, 'f', 1), LogLevel::Param); });
+    connect(this, &DebugPanelWidget::cannyLowChanged,
+            [this](int v){ appendLog(QString("cannyLow → %1").arg(v), LogLevel::Param); });
+    connect(this, &DebugPanelWidget::cannyHighChanged,
+            [this](int v){ appendLog(QString("cannyHigh → %1").arg(v), LogLevel::Param); });
+    connect(this, &DebugPanelWidget::gateLinePositionChanged,
+            [this](double v){ appendLog(QString("gateLineRatio → %1").arg(v, 0, 'f', 3), LogLevel::Param); });
+    connect(this, &DebugPanelWidget::roiEnabledChanged,
+            [this](bool v){ appendLog(v ? "ROI → 啟用" : "ROI → 停用", LogLevel::Param); });
+    connect(this, &DebugPanelWidget::profileLoaded,
+            [this](const QString& name){ appendLog(QString("載入模板：%1").arg(name), LogLevel::Info); });
 
     m_scrollArea->setWidget(scrollContent);
     mainLayout->addWidget(m_scrollArea);
@@ -698,6 +720,103 @@ QWidget* DebugPanelWidget::createYoloGroup()
 
     group->setLayout(layout);
     return group;
+}
+
+QWidget* DebugPanelWidget::createOperationLogGroup()
+{
+    QGroupBox* group = new QGroupBox();
+    QVBoxLayout* outerLayout = new QVBoxLayout();
+    outerLayout->setSpacing(4);
+    outerLayout->setContentsMargins(6, 6, 6, 6);
+
+    // 標題列（帶折疊按鈕 + 清除按鈕）
+    QHBoxLayout* headerLayout = new QHBoxLayout();
+    QLabel* titleLabel = new QLabel(tr("📋 操作日誌"));
+    titleLabel->setStyleSheet("color: #00d4ff; font-weight: bold;");
+    headerLayout->addWidget(titleLabel);
+    headerLayout->addStretch();
+
+    QPushButton* clearBtn = new QPushButton(tr("清除"));
+    clearBtn->setMaximumWidth(48);
+    clearBtn->setStyleSheet("QPushButton { background: #1a1f3d; color: #888; border: 1px solid #333;"
+                            " border-radius: 3px; padding: 2px 4px; font-size: 8pt; }"
+                            "QPushButton:hover { color: #e0e6f1; }");
+    headerLayout->addWidget(clearBtn);
+
+    QPushButton* collapseBtn = new QPushButton(tr("▼"));
+    collapseBtn->setMaximumWidth(28);
+    collapseBtn->setCheckable(true);
+    collapseBtn->setStyleSheet("QPushButton { background: #1a1f3d; color: #888; border: 1px solid #333;"
+                               " border-radius: 3px; padding: 2px; font-size: 9pt; }"
+                               "QPushButton:checked { color: #00d4ff; }");
+    headerLayout->addWidget(collapseBtn);
+    outerLayout->addLayout(headerLayout);
+
+    // 可折疊內容區
+    QWidget* contentWidget = new QWidget();
+    QVBoxLayout* contentLayout = new QVBoxLayout(contentWidget);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_logTextEdit = new QTextEdit();
+    m_logTextEdit->setReadOnly(true);
+    m_logTextEdit->setMaximumHeight(150);
+    m_logTextEdit->setMinimumHeight(60);
+    m_logTextEdit->document()->setMaximumBlockCount(100); // 自動移除最舊記錄
+    m_logTextEdit->setStyleSheet(R"(
+        QTextEdit {
+            background-color: #060810;
+            color: #c0c8e0;
+            border: 1px solid #1f3a5f;
+            border-radius: 4px;
+            font-family: "Menlo", "Consolas", monospace;
+            font-size: 8pt;
+        }
+    )");
+    contentLayout->addWidget(m_logTextEdit);
+    outerLayout->addWidget(contentWidget);
+
+    // 折疊 / 展開
+    connect(collapseBtn, &QPushButton::toggled, [contentWidget, collapseBtn](bool collapsed) {
+        contentWidget->setVisible(!collapsed);
+        collapseBtn->setText(collapsed ? "▶" : "▼");
+    });
+    connect(clearBtn, &QPushButton::clicked, [this]() {
+        if (m_logTextEdit) m_logTextEdit->clear();
+    });
+
+    group->setLayout(outerLayout);
+    return group;
+}
+
+void DebugPanelWidget::appendLog(const QString& message, LogLevel level)
+{
+    if (!m_logTextEdit) return;
+
+    const QString time = QTime::currentTime().toString("HH:mm:ss");
+    QString colorStr;
+    switch (level) {
+        case LogLevel::Param: colorStr = "#00d4ff"; break;
+        case LogLevel::Count: colorStr = "#00ff80"; break;
+        case LogLevel::Error: colorStr = "#ff4444"; break;
+        default:              colorStr = "#9099b0"; break;
+    }
+
+    const QString html = QString("<span style='color:#44475a'>[%1]</span>"
+                                 "&nbsp;<span style='color:%2'>%3</span>")
+                         .arg(time, colorStr, message.toHtmlEscaped());
+    m_logTextEdit->append(html);
+    // document()->setMaximumBlockCount() 已自動修剪，無需手動清除
+    m_logTextEdit->verticalScrollBar()->setValue(m_logTextEdit->verticalScrollBar()->maximum());
+}
+
+void DebugPanelWidget::logCountEvent(int count, int frame)
+{
+    appendLog(QString("計數 #%1（幀 %2）").arg(count).arg(frame), LogLevel::Count);
+}
+
+void DebugPanelWidget::logError(const QString& message)
+{
+    appendLog("⚠ " + message, LogLevel::Error);
 }
 
 QWidget* DebugPanelWidget::createActionButtonsGroup()
