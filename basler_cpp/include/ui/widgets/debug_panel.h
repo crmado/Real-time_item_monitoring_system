@@ -132,6 +132,11 @@ signals:
     void resetTotalCount();
     void debugViewToggled(bool show);
 
+    /**
+     * @brief 主畫面視覺化模式變更（0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終）
+     */
+    void debugViewModeChanged(int mode);
+
 private slots:
     void onMinAreaChanged(int value);
     void onMaxAreaChanged(int value);
@@ -219,6 +224,7 @@ private:
 
     // 調試視圖
     QCheckBox* m_showDebugViewCheck;
+    QComboBox* m_debugViewModeCombo;  // 主畫面視覺化模式選擇
     QLabel* m_debugImageLabel;
     bool m_showDebugView = false;
 

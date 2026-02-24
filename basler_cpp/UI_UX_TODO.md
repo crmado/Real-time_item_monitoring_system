@@ -155,14 +155,18 @@ MainWindow
   → HUD overlay：左上角半透明面板顯示計數 + FPS，黃色虛線光柵線
   → `m_controlPanel` 提升為成員變數，`toggleFullscreenMode()` 統一管理
 
-- [ ] **演算法中間結果視覺化**
+- [x] **演算法中間結果視覺化**（2026-02-24）
   在調試模式下，左側主畫面可切換顯示：
   - 原始幀
   - 背景減除結果（前景遮罩）
   - Canny 邊緣
   - 形態學處理後結果
   - 最終合併結果
-  → 建議用 QComboBox 或 QButtonGroup 切換
+  → `DetectionController` 在 `standardProcessing()` 中保存 `m_lastFgMask`、`m_lastCannyEdges`、
+    `m_lastCombined`、`m_lastDebugFrame`，線程安全 clone() 存取
+  → `DebugPanelWidget` 調試視圖區塊加入 QComboBox（5 選項）
+  → 勾選「顯示調試視圖」後 ComboBox 才啟用；取消勾選自動重設為原始幀（mode=0）
+  → `MainWindow::updateDisplay()` 依 `m_debugViewMode` 取中間 Mat，灰階自動轉 BGR 後顯示
 
 - [ ] **多視窗分割顯示**
   並排顯示原始幀 + 處理結果（4格或2格），方便調參時比對

@@ -713,6 +713,10 @@ namespace basler
                 [](){ Settings::instance().save(); });
         connect(m_debugPanel, &DebugPanelWidget::loadConfig,
                 [](){ Settings::instance().load(); });
+
+        // 主畫面視覺化模式：0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終形態學
+        connect(m_debugPanel, &DebugPanelWidget::debugViewModeChanged,
+                [this](int mode){ m_debugViewMode = mode; });
     }
 
     void MainWindow::toggleFullscreenMode()
@@ -1017,23 +1021,50 @@ namespace basler
             }
         }
 
-        // 顯示處理後的幀（如果有），否則顯示原始幀（主顯示區）
+        // 根據調試模式選擇主畫面顯示幀
+        cv::Mat displayMat;
         if (m_isDetecting && !processed.empty())
         {
-            m_videoDisplay->displayFrame(processed);
+            if (m_debugViewMode == 0)
+            {
+                displayMat = processed;
+            }
+            else
+            {
+                // 取得對應中間結果（灰階 Mat，需轉 BGR 才能疊加 UI 繪製）
+                cv::Mat debugGray;
+                switch (m_debugViewMode)
+                {
+                    case 1: debugGray = m_detectionController->lastFgMask();    break;
+                    case 2: debugGray = m_detectionController->lastCannyEdges(); break;
+                    case 3: debugGray = m_detectionController->lastCombined();   break;
+                    case 4: debugGray = m_detectionController->lastDebugFrame(); break;
+                    default: break;
+                }
+                if (!debugGray.empty())
+                {
+                    if (debugGray.channels() == 1)
+                        cv::cvtColor(debugGray, displayMat, cv::COLOR_GRAY2BGR);
+                    else
+                        displayMat = debugGray;
+                }
+                else
+                {
+                    displayMat = processed; // 中間幀尚未就緒，回退原始結果
+                }
+            }
         }
         else
         {
-            m_videoDisplay->displayFrame(frame);
+            displayMat = frame;
         }
+        m_videoDisplay->displayFrame(displayMat);
 
         // 更新小型預覽窗口（始終顯示原始畫面）
         if (m_cameraPreview && !frame.empty())
         {
             m_cameraPreview->displayFrame(frame);
         }
-
-        // TODO: 偵錯圖像功能尚未實現
     }
 
     // ============================================================================

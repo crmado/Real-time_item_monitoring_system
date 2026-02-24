@@ -123,11 +123,26 @@ namespace basler
         DetectionMode detectionMode() const { return m_detectionMode; }
         bool isYoloModelLoaded() const;
 
-        // 調試用：取得最後一次 standardProcessing 的二值化遮罩
+        // 調試用：取得最後一次 standardProcessing 的中間幀
         cv::Mat lastDebugFrame() const
         {
             QMutexLocker locker(&m_mutex);
             return m_lastDebugFrame.clone();
+        }
+        cv::Mat lastFgMask() const
+        {
+            QMutexLocker locker(&m_mutex);
+            return m_lastFgMask.clone();
+        }
+        cv::Mat lastCannyEdges() const
+        {
+            QMutexLocker locker(&m_mutex);
+            return m_lastCannyEdges.clone();
+        }
+        cv::Mat lastCombined() const
+        {
+            QMutexLocker locker(&m_mutex);
+            return m_lastCombined.clone();
         }
 
         // ===== 幀處理 =====
@@ -230,8 +245,11 @@ namespace basler
         cv::Ptr<cv::BackgroundSubtractorMOG2> m_bgSubtractor;
         double m_currentLearningRate = 0.001;
 
-        // 調試視圖：保存最後的二值化遮罩供 UI 顯示
-        cv::Mat m_lastDebugFrame;
+        // 調試視圖：保存中間幀供 UI 視覺化切換
+        cv::Mat m_lastDebugFrame;   // 最終形態學結果（= postProcessed）
+        cv::Mat m_lastFgMask;       // 背景減除後清理遮罩（fgCleaned）
+        cv::Mat m_lastCannyEdges;   // Canny 邊緣（sensitiveEdges）
+        cv::Mat m_lastCombined;     // 三重聯合結果（combined）
 
         // 狀態
         bool m_enabled = false;

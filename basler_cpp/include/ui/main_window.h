@@ -170,6 +170,9 @@ namespace basler
         bool m_isFullscreenMode = false;  // 是否為純視頻全螢幕模式
         int m_hudCount = 0;
         double m_hudFps = 0.0;
+
+        // ========== 調試視覺化模式 ==========
+        int m_debugViewMode = 0;  // 0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終形態學
     };
 
 } // namespace basler

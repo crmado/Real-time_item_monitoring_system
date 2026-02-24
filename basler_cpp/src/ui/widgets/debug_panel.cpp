@@ -548,6 +548,20 @@ QWidget* DebugPanelWidget::createDebugViewGroup()
             this, &DebugPanelWidget::onShowDebugViewChanged);
     layout->addWidget(m_showDebugViewCheck);
 
+    // 主畫面視覺化模式（0=原始, 1=前景遮罩, 2=Canny, 3=三重聯合, 4=最終結果）
+    m_debugViewModeCombo = new QComboBox();
+    m_debugViewModeCombo->addItem(tr("原始幀"));
+    m_debugViewModeCombo->addItem(tr("前景遮罩（背景減除）"));
+    m_debugViewModeCombo->addItem(tr("Canny 邊緣"));
+    m_debugViewModeCombo->addItem(tr("三重聯合結果"));
+    m_debugViewModeCombo->addItem(tr("最終形態學結果"));
+    m_debugViewModeCombo->setCurrentIndex(0);
+    m_debugViewModeCombo->setToolTip(tr("選擇主畫面顯示的中間處理結果（需勾選顯示調試視圖）"));
+    m_debugViewModeCombo->setEnabled(false);
+    connect(m_debugViewModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index){ emit debugViewModeChanged(index); });
+    layout->addWidget(m_debugViewModeCombo);
+
     m_debugImageLabel = new QLabel();
     m_debugImageLabel->setFixedSize(200, 100);
     m_debugImageLabel->setStyleSheet("background-color: #1a1a1a; border: 1px solid #333;");
@@ -871,6 +885,14 @@ void DebugPanelWidget::onShowDebugViewChanged(bool show)
 {
     m_showDebugView = show;
     m_debugImageLabel->setVisible(show);
+    m_debugViewModeCombo->setEnabled(show);
+    // 關閉調試視圖時重設為原始幀，避免主畫面停留在中間結果
+    if (!show) {
+        m_debugViewModeCombo->blockSignals(true);
+        m_debugViewModeCombo->setCurrentIndex(0);
+        m_debugViewModeCombo->blockSignals(false);
+        emit debugViewModeChanged(0);
+    }
     emit debugViewToggled(show);
 }
 

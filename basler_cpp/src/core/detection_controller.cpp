@@ -335,9 +335,15 @@ namespace basler
         cv::Mat fgCleaned;
         cv::morphologyEx(fgStep2, fgCleaned, cv::MORPH_OPEN, finalKernel, cv::Point(-1, -1), 1);
 
+        // 儲存前景遮罩中間幀（步驟 3 完成後）
+        m_lastFgMask = fgCleaned.clone();
+
         // 4. Canny 邊緣檢測 - 使用敏感邊緣（Python: canny_low//2, canny_high//2）
         cv::Mat sensitiveEdges;
         cv::Canny(blurred, sensitiveEdges, m_cannyLowThreshold / 2, m_cannyHighThreshold / 2);
+
+        // 儲存 Canny 邊緣中間幀
+        m_lastCannyEdges = sensitiveEdges.clone();
 
         // 5. 自適應閾值檢測
         cv::Mat grayRoi;
@@ -369,6 +375,9 @@ namespace basler
         cv::bitwise_or(fgCleaned, edgeThresh, tempCombined);
         cv::Mat combined;
         cv::bitwise_or(tempCombined, adaptiveThreshClean, combined);
+
+        // 儲存三重聯合結果中間幀
+        m_lastCombined = combined.clone();
 
         // 8. 後聯合形態學處理（參考 Python basler_mvc，預設跳過，可由 UI 調整啟用）
         cv::Mat postProcessed = combined;
