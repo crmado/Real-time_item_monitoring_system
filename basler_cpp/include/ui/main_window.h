@@ -95,7 +95,6 @@ namespace basler
         void onCountChanged(int count);
         void onVibratorSpeedChanged(VibratorSpeed speed);
         void onPackagingCompleted();
-        // 注意: onDefectStatsUpdated 尚未連接（功能未實現）
         void onDefectStatsUpdated(double passRate, int passCount, int failCount);
 
         // ========== Debug 參數 ==========

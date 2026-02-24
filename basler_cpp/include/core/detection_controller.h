@@ -178,6 +178,9 @@ namespace basler
         void setSpeedThresholds(double full, double medium, double slow);
         void resetPackaging();
 
+        // 瑕疵統計控制
+        void resetDefectStats();
+
     signals:
         void enabledChanged(bool enabled);
         void countChanged(int count);
@@ -187,6 +190,8 @@ namespace basler
         void detectionModeChanged(DetectionMode mode);
         void yoloModelLoaded(bool success);
         void yoloInferenceTimeUpdated(double ms);
+        // 瑕疵統計：每次計數事件後更新
+        void defectStatsUpdated(double passRate, int passCount, int failCount);
 
     private:
         // 處理流程
@@ -310,6 +315,10 @@ namespace basler
         double m_weightIoU = 0.0;       // IoU 權重（禁用，小零件不適用）
         double m_matchThreshold = 0.15; // 匹配閾值
         double m_directionConsistencyRatio = 0.7; // 方向一致性要求（70% 幀間 Y 遞增）
+
+        // 瑕疵統計（所有穿越光柵的物件均計為「已檢測」，初期全部視為合格）
+        int m_defectPassCount = 0;
+        int m_defectFailCount = 0;
 
         // 包裝控制
         bool m_packagingEnabled = false;

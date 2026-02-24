@@ -575,6 +575,12 @@ namespace basler
                 emit countChanged(m_crossingCounter);
                 emit objectsCrossedGate(m_crossingCounter);
 
+                // 瑕疵統計：目前全部計為合格（未來可在此接入實際瑕疵判斷結果）
+                m_defectPassCount++;
+                int total = m_defectPassCount + m_defectFailCount;
+                double passRate = (total > 0) ? (static_cast<double>(m_defectPassCount) / total * 100.0) : 100.0;
+                emit defectStatsUpdated(passRate, m_defectPassCount, m_defectFailCount);
+
                 // 自動包裝模式：更新震動機速度
                 if (m_packagingEnabled)
                 {
@@ -771,8 +777,21 @@ namespace basler
         m_yoloTracks.clear();
         m_nextYoloTrackId = 1;
 
+        m_defectPassCount = 0;
+        m_defectFailCount = 0;
+
         emit countChanged(0);
+        emit defectStatsUpdated(100.0, 0, 0);
         qDebug() << "[DetectionController] 檢測狀態已重置";
+    }
+
+    void DetectionController::resetDefectStats()
+    {
+        QMutexLocker locker(&m_mutex);
+        m_defectPassCount = 0;
+        m_defectFailCount = 0;
+        emit defectStatsUpdated(100.0, 0, 0);
+        qDebug() << "[DetectionController] 瑕疵統計已重置";
     }
 
     void DetectionController::setMinArea(int area)
@@ -1340,6 +1359,12 @@ namespace basler
 
                         emit countChanged(m_crossingCounter);
                         emit objectsCrossedGate(m_crossingCounter);
+
+                        // 瑕疵統計：YOLO 模式下同步更新（目前全部計為合格）
+                        m_defectPassCount++;
+                        int total = m_defectPassCount + m_defectFailCount;
+                        double passRate = (total > 0) ? (static_cast<double>(m_defectPassCount) / total * 100.0) : 100.0;
+                        emit defectStatsUpdated(passRate, m_defectPassCount, m_defectFailCount);
 
                         if (m_packagingEnabled)
                         {

@@ -1,6 +1,6 @@
 # UI/UX 改善 Todolist
 
-> 最後更新：2026-02-23
+> 最後更新：2026-02-24
 > 分支：feature/cpp-rewrite → master
 > 專案：Basler 工業視覺系統 v2.0 (Qt6 C++)
 
@@ -39,10 +39,13 @@ MainWindow
 
 ### P0 — Bug / 功能缺失
 
-- [ ] **瑕疵統計未連接**
+- [x] **瑕疵統計未連接**（2026-02-24）
   `onDefectStatsUpdated(double, int, int)` 已在 `main_window.h` 宣告，
   但 `connectDetectionSignals()` 從未連接，`DefectDetectionMethodPanel::updateStats()` 永遠不會被呼叫。
-  → 修正：在 `connectDetectionSignals()` 補上信號連接（需先確認 `DetectionController` 有對應信號）
+  → 已新增 `DetectionController::defectStatsUpdated` 信號（含 passCount/failCount 計數器）、
+    `resetDefectStats()` slot，在傳統計數與 YOLO 計數兩條路徑均 emit 信號，
+    並連接至 `MainWindow::onDefectStatsUpdated` → `PackagingControlWidget::updateDefectStats` →
+    `DefectDetectionMethodPanel::updateStats()`。`onClearDefectStats()` 改用 `resetDefectStats()` 而非全量 reset。
 
 - [x] **System Monitor 在 Windows 未實作**（2026-02-23）
   `system_monitor.cpp` 的 CPU/記憶體讀取只有 macOS/Linux 實作，Windows 會顯示 0%。
@@ -189,6 +192,14 @@ MainWindow
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 3）
+
+- [x] P0: 瑕疵統計信號鏈完整連接（`DetectionController::defectStatsUpdated` → `MainWindow` → `DefectDetectionMethodPanel::updateStats`）
+  - 新增 `defectStatsUpdated(double, int, int)` 信號、`m_defectPassCount/m_defectFailCount` 計數器
+  - 新增 `resetDefectStats()` slot（不影響計數/追蹤，只清瑕疵統計）
+  - 傳統 MOG2 與 YOLO 兩條計數路徑均同步 emit
+  - `onClearDefectStats()` 改為精確重置（不再 reset 整個 DetectionController）
 
 ### 2026-02-23（Session 2）
 

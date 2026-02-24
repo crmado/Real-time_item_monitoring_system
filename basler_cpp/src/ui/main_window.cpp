@@ -441,7 +441,8 @@ namespace basler
                 this, &MainWindow::onVibratorSpeedChanged);
         connect(m_detectionController.get(), &DetectionController::packagingCompleted,
                 this, &MainWindow::onPackagingCompleted);
-        // 注意: defectStatsUpdated 信號尚未實現
+        connect(m_detectionController.get(), &DetectionController::defectStatsUpdated,
+                this, &MainWindow::onDefectStatsUpdated);
 
         // 震動機控制
         connect(m_detectionController.get(), &DetectionController::vibratorSpeedChanged,
@@ -1025,8 +1026,7 @@ namespace basler
 
     void MainWindow::onClearDefectStats()
     {
-        // TODO: 瑕疵統計功能尚未實現
-        m_detectionController->reset();
+        m_detectionController->resetDefectStats();
     }
 
     void MainWindow::onDefectSensitivityChanged(double sensitivity)

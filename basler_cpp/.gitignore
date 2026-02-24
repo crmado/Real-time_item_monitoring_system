@@ -43,6 +43,9 @@ qrc_*.cpp
 *.pro.user*
 *.qbs.user*
 
+# 語言伺服器快取
+.cache/
+
 # macOS
 .DS_Store
 *.dSYM/
