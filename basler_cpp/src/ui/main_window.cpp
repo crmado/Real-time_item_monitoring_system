@@ -1,4 +1,5 @@
 #include "ui/main_window.h"
+#include "ui/setup_wizard.h"
 #include "ui/widgets/video_display.h"
 #include "ui/widgets/camera_control.h"
 #include "ui/widgets/recording_control.h"
@@ -26,6 +27,8 @@
 #include <QStandardPaths>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QTextStream>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 
@@ -66,6 +69,18 @@ namespace basler
 
         // 設置鍵盤快捷鍵
         setupKeyboardShortcuts();
+
+        // 首次使用：延遲 500ms 後顯示設定向導（讓主視窗先完整渲染）
+        if (SetupWizard::isFirstRun())
+        {
+            QTimer::singleShot(500, this, [this]()
+            {
+                SetupWizard wizard(this);
+                wizard.exec();
+                // 向導完成後刷新 Debug Panel 顯示值
+                m_debugPanel->syncFromConfig();
+            });
+        }
 
         qDebug() << "[MainWindow] 初始化完成";
     }
@@ -1188,6 +1203,7 @@ namespace basler
 
     void MainWindow::onStartPackaging()
     {
+        m_packagingStartTime = QDateTime::currentMSecsSinceEpoch();  // 記錄包裝開始時間
         m_isDetecting = true;
         m_detectionController->enable();
         m_detectionController->enablePackagingMode(true);
@@ -1325,22 +1341,82 @@ namespace basler
 
     void MainWindow::onPackagingCompleted()
     {
+        // 計算耗時
+        double elapsedSec = 0.0;
+        if (m_packagingStartTime > 0)
+        {
+            elapsedSec = (QDateTime::currentMSecsSinceEpoch() - m_packagingStartTime) / 1000.0;
+            m_packagingStartTime = 0;
+        }
+
         // 停止所有操作
         m_vibratorManager->stop();
         m_isDetecting = false;
         m_detectionController->disable();
         m_detectionLabel->setText("包裝完成");
 
-        // 更新 UI 狀態
+        // 更新 UI 狀態（CountingMethodPanel 的 overlay 已顯示「✅ 包裝完成！」，不再彈 QMessageBox）
         m_packagingControl->countingPanel()->showPackagingCompleted();
         m_packagingControl->updateVibratorStatus(false, false, 0);
 
-        // 提示用戶
-        QMessageBox::information(this, "包裝完成",
-                                 QString("已達到目標數量！\n當前計數: %1")
-                                     .arg(m_detectionController->count()));
+        // 自動導出 CSV 報告
+        int target  = m_packagingControl->countingPanel()->targetCount();
+        int actual  = m_detectionController->count();
+        exportPackagingReport(target, actual, elapsedSec);
 
-        qDebug() << "[MainWindow] 包裝完成！計數:" << m_detectionController->count();
+        qDebug() << "[MainWindow] 包裝完成！計數:" << actual << "耗時:" << elapsedSec << "s";
+    }
+
+    void MainWindow::exportPackagingReport(int target, int actual, double elapsedSec)
+    {
+        // 建立報告目錄 Documents/BaslerReports/
+        QString reportsDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                             + "/BaslerReports";
+        QDir().mkpath(reportsDir);
+
+        // 當天的累積 CSV（每天一個檔案，多包追加）
+        QString dateStr   = QDate::currentDate().toString("yyyyMMdd");
+        QString filePath  = QString("%1/report_%2.csv").arg(reportsDir, dateStr);
+
+        QFile file(filePath);
+        bool isNew = !file.exists();
+        if (!file.open(QIODevice::Append | QIODevice::Text))
+        {
+            m_statusLabel->setText("⚠ 無法寫入報告檔案: " + filePath);
+            return;
+        }
+
+        QTextStream out(&file);
+        out.setCodec("UTF-8");
+
+        // 標頭（僅新檔案寫一次）
+        if (isNew)
+        {
+            out << "時間戳,零件類型,檢測方法,目標數量,實際數量,"
+                   "耗時(秒),速率(件/秒),minArea,maxArea,"
+                   "bgVarThreshold,cannyLow,cannyHigh\n";
+        }
+
+        const auto& det  = Settings::instance().detection();
+        double rate      = (elapsedSec > 0) ? actual / elapsedSec : 0.0;
+        QString partId   = m_packagingControl->currentPartId();
+        QString methodId = m_packagingControl->currentMethodId();
+
+        out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << ","
+            << partId   << ","
+            << methodId << ","
+            << target   << ","
+            << actual   << ","
+            << QString::number(elapsedSec, 'f', 1) << ","
+            << QString::number(rate, 'f', 2) << ","
+            << det.minArea << ","
+            << det.maxArea << ","
+            << det.bgVarThreshold << ","
+            << det.cannyLowThreshold << ","
+            << det.cannyHighThreshold << "\n";
+
+        m_statusLabel->setText(QString("📄 報告已儲存: %1").arg(filePath));
+        qDebug() << "[MainWindow] 導出報告:" << filePath;
     }
 
     void MainWindow::onDefectStatsUpdated(double passRate, int passCount, int failCount)

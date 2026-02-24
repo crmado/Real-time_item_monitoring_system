@@ -102,10 +102,13 @@ set(CONFIG_HEADERS
 
 set(UI_SOURCES
     src/ui/main_window.cpp
+    src/ui/setup_wizard.cpp
 )
 
 set(UI_HEADERS
     include/ui/main_window.h
+    include/ui/setup_wizard.h
+    include/ui/style.h
 )
 
 # ============================================================================

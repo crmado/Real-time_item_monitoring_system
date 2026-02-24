@@ -124,6 +124,7 @@ namespace basler
 
         void processFrame(const cv::Mat &frame);
         void updateButtonStates();
+        void exportPackagingReport(int target, int actual, double elapsedSec);
 
         // ========== 核心控制器 ==========
         std::unique_ptr<SourceManager> m_sourceManager;
@@ -168,6 +169,7 @@ namespace basler
         // ========== 運行狀態 ==========
         bool m_isDetecting = false;
         bool m_isRecording = false;
+        qint64 m_packagingStartTime = 0;  // 包裝開始時間戳（ms），用於計算耗時/速率
 
         // ========== 全螢幕 HUD 資料 ==========
         bool m_isFullscreenMode = false;  // 是否為純視頻全螢幕模式

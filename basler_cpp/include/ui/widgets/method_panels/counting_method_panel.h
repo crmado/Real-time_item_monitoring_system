@@ -29,6 +29,9 @@ public:
     explicit CountingMethodPanel(QWidget* parent = nullptr);
     ~CountingMethodPanel() = default;
 
+    /** 回傳目前目標計數（供 MainWindow 導出報告使用）*/
+    int targetCount() const { return m_targetCount; }
+
 public slots:
     /**
      * @brief 更新計數顯示

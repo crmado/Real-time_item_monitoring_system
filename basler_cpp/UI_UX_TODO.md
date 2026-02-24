@@ -184,18 +184,20 @@ MainWindow
   - 錯誤訊息：相機/錄影錯誤自動寫入日誌
   - `▼/▶` 按鈕摺疊/展開；清除按鈕清空；`setMaximumBlockCount(100)` 自動修剪
 
-- [ ] **設定向導（第一次使用）**
+- [x] **設定向導（第一次使用）**（2026-02-24）
   首次啟動時顯示 QWizard，引導用戶：
-  1. 連接相機或選擇測試視頻
-  2. 設定 ROI 區域
-  3. 調整面積閾值（預覽效果）
-  4. 設定目標計數
+  1. 連接相機或選擇測試視頻（說明頁）
+  2. 設定面積閾值與背景敏感度（SpinBox 直接套用）
+  3. 設定目標計數
+  → `SetupWizard : QWizard` 4 頁面，`isFirstRun()` 讀取 QSettings，
+    Finish 後自動 `save()` 並設 `wizardDone=true`，延遲 500ms 顯示避免視窗未渲染
 
-- [ ] **導出報告**
-  每次包裝完成後可以 export 一份 CSV/PDF，包含：
-  - 時間戳、目標數量、實際計數
-  - 各參數設定值
-  - 零件類型/方法
+- [x] **導出報告（CSV）**（2026-02-24）
+  每次包裝完成後自動 export CSV，包含：
+  - 時間戳、零件類型 ID、檢測方法 ID、目標數量、實際計數
+  - 耗時（秒）、速率（件/秒）、minArea/maxArea/bgVarThreshold/canny 參數
+  → `Documents/BaslerReports/report_YYYYMMDD.csv`（當天累積追加）
+  → StatusBar 顯示儲存路徑；移除了原來干擾操作流程的 QMessageBox
 
 ---
 
@@ -203,9 +205,11 @@ MainWindow
 
 ### 視覺一致性
 
-- [ ] **統一按鈕樣式**
+- [x] **統一按鈕樣式**（2026-02-24）
   目前各 widget 的按鈕 stylesheet 略有不一致（顏色、圓角、padding）
-  → 建議：抽取共用 stylesheet 到 `include/ui/style.h` 常數
+  → 已建立 `include/ui/style.h`：`primaryBtn()` / `successBtn()` / `dangerBtn()` /
+    `warningBtn()` / `secondaryBtn()` / `toolBtn()` + 色票常量（BG_DARK/SUCCESS/etc.）
+  → 新 Widget 可直接 `#include "ui/style.h"` 並呼叫 `Style::primaryBtn()` 取得一致樣式
 
 - [ ] **響應式佈局**
   視窗縮小到 1400px 以下時，右側面板可自動摺疊成更緊湊的版本
@@ -221,6 +225,12 @@ MainWindow
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 8）
+
+- [x] P3: 設定向導 SetupWizard（4 頁面 QWizard，isFirstRun/QSettings，首次啟動自動顯示）
+- [x] P3: CSV 導出報告（Documents/BaslerReports/report_YYYYMMDD.csv，包裝完成自動寫入）
+- [x] Style: 統一按鈕樣式 style.h（6 個 inline 函數 + 色票常量，新 Widget 可直接引用）
 
 ### 2026-02-24（Session 7）
 
