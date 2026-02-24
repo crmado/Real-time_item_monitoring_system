@@ -106,10 +106,15 @@ MainWindow
   → 點擊完成後自動退出模式，更新 Settings / DetectionController / SpinBox
   → ESC 可取消（與 ROI 框選模式共用 ESC 快捷鍵）
 
-- [ ] **參數預設模板（Profile）**
+- [x] **參數預設模板（Profile）**（2026-02-24）
   不同零件/場景需要完全不同的一組參數，切換很麻煩。
-  → 建議：在 Debug Panel 頂部加 Profile 下拉選單（如「小螺絲」「大齒輪」）
-  → 每個 profile 是一組 JSON，`Settings::load()` 支援指定路徑可複用
+  → Debug Panel 頂部新增「📋 參數預設模板」群組（不受參數鎖定影響）
+  → QComboBox 列出 AppDataLocation/profiles/ 目錄內的所有 JSON 模板
+  → 「另存新模板」：QInputDialog 輸入名稱 → 序列化 detection+gate 為 JSON
+  → 「載入」：反序列化 → 更新 Settings → syncFromConfig() → emit profileLoaded()
+  → MainWindow 收到 profileLoaded() 立即將所有參數套用到 DetectionController
+  → 「刪除」：確認對話框後移除 JSON 檔、刷新列表
+  → 同步修正 syncFromConfig() 空 stub，完整實作 SpinBox 靜默更新（blockSignals）
 
 - [ ] **歷史計數趨勢迷你圖**
   在 `CountingMethodPanel` 計數旁加一個小折線圖，顯示最近 N 包的計數速率趨勢
@@ -199,6 +204,10 @@ MainWindow
 ---
 
 ## ✅ 已完成
+
+### 2026-02-24（Session 5）
+
+- [x] P2: 參數預設模板 Profile（Debug Panel 頂部 QComboBox + 儲存/載入/刪除，AppDataLocation/profiles/，detection+gate JSON，syncFromConfig 完整實作）
 
 ### 2026-02-24（Session 4）
 

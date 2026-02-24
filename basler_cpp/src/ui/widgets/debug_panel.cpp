@@ -1,9 +1,19 @@
 #include "ui/widgets/debug_panel.h"
+#include "config/settings.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QFormLayout>
 #include <QPainter>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
+#include <QRegularExpression>
 #include <opencv2/imgproc.hpp>
 
 namespace basler {
@@ -28,6 +38,9 @@ void DebugPanelWidget::initUi()
     QWidget* scrollContent = new QWidget();
     QVBoxLayout* scrollLayout = new QVBoxLayout(scrollContent);
     scrollLayout->setSpacing(4);
+
+    // Profile 預設模板群組（不受鎖定影響，始終可操作）
+    scrollLayout->addWidget(createProfileGroup());
 
     // 參數鎖定 checkbox（預設鎖定，防止滑鼠滾輪誤改參數）
     m_lockParamsCheck = new QCheckBox(tr("🔒 鎖定參數"));
@@ -71,6 +84,202 @@ void DebugPanelWidget::initUi()
 
     m_scrollArea->setWidget(scrollContent);
     mainLayout->addWidget(m_scrollArea);
+}
+
+// ============================================================================
+// Profile 預設模板管理
+// ============================================================================
+
+QString DebugPanelWidget::profileDir() const
+{
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                  + "/profiles";
+    QDir().mkpath(dir);
+    return dir;
+}
+
+void DebugPanelWidget::refreshProfileList()
+{
+    m_profileCombo->blockSignals(true);
+    QString current = m_profileCombo->currentText();
+    m_profileCombo->clear();
+
+    QDir dir(profileDir());
+    const auto files = dir.entryList({"*.json"}, QDir::Files, QDir::Name);
+    for (const QString& file : files) {
+        m_profileCombo->addItem(QFileInfo(file).baseName());
+    }
+
+    // 恢復選中項
+    int idx = m_profileCombo->findText(current);
+    if (idx >= 0) m_profileCombo->setCurrentIndex(idx);
+
+    m_profileCombo->blockSignals(false);
+
+    // 有 profile 才能載入/刪除
+    bool hasItems = m_profileCombo->count() > 0;
+    m_deleteProfileBtn->setEnabled(hasItems);
+}
+
+QWidget* DebugPanelWidget::createProfileGroup()
+{
+    QGroupBox* group = new QGroupBox(tr("📋 參數預設模板"));
+    QVBoxLayout* layout = new QVBoxLayout();
+
+    // 下拉選單 + 載入按鈕（橫排）
+    QHBoxLayout* row1 = new QHBoxLayout();
+    m_profileCombo = new QComboBox();
+    m_profileCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_profileCombo->setToolTip(tr("選擇預設模板（儲存的偵測 + 光柵設定）"));
+
+    QPushButton* loadBtn = new QPushButton(tr("載入"));
+    loadBtn->setFixedWidth(52);
+    loadBtn->setStyleSheet(
+        "QPushButton { background-color: #1a3a5a; color: #00d4ff; border: 1px solid #00d4ff;"
+        "              border-radius: 4px; padding: 3px; }"
+        "QPushButton:hover { background-color: #1e4a7a; }"
+        "QPushButton:disabled { color: #555; border-color: #333; }");
+    row1->addWidget(m_profileCombo, 1);
+    row1->addWidget(loadBtn);
+
+    // 儲存 + 刪除按鈕（橫排）
+    QHBoxLayout* row2 = new QHBoxLayout();
+    m_saveProfileBtn = new QPushButton(tr("💾 另存新模板"));
+    m_saveProfileBtn->setStyleSheet(
+        "QPushButton { background-color: #1a3a2a; color: #00ff80; border: 1px solid #00ff80;"
+        "              border-radius: 4px; padding: 4px; }"
+        "QPushButton:hover { background-color: #1e4a3a; }");
+
+    m_deleteProfileBtn = new QPushButton(tr("🗑 刪除"));
+    m_deleteProfileBtn->setFixedWidth(60);
+    m_deleteProfileBtn->setEnabled(false);
+    m_deleteProfileBtn->setStyleSheet(
+        "QPushButton { background-color: #3a1a1a; color: #ff4444; border: 1px solid #ff4444;"
+        "              border-radius: 4px; padding: 4px; }"
+        "QPushButton:hover { background-color: #4a1a1a; }"
+        "QPushButton:disabled { color: #555; border-color: #333; }");
+    row2->addWidget(m_saveProfileBtn, 1);
+    row2->addWidget(m_deleteProfileBtn);
+
+    layout->addLayout(row1);
+    layout->addLayout(row2);
+    group->setLayout(layout);
+
+    // 初始化列表
+    refreshProfileList();
+
+    // ===== 連接按鈕 =====
+    connect(loadBtn, &QPushButton::clicked, this, [this]()
+    {
+        if (m_profileCombo->count() == 0) return;
+        QString name = m_profileCombo->currentText();
+        QString path = profileDir() + "/" + name + ".json";
+
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, tr("載入失敗"), tr("無法讀取檔案：%1").arg(path));
+            return;
+        }
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        f.close();
+        if (!doc.isObject()) return;
+
+        QJsonObject root = doc.object();
+        // 更新 Settings（只覆蓋 detection + gate）
+        auto& s = Settings::instance();
+        if (root.contains("detection"))
+            s.detection() = DetectionConfig::fromJson(root["detection"].toObject());
+        if (root.contains("gate"))
+            s.gate() = GateConfig::fromJson(root["gate"].toObject());
+
+        // 同步 SpinBox 顯示
+        syncFromConfig();
+        emit profileLoaded(name);
+    });
+
+    connect(m_saveProfileBtn, &QPushButton::clicked, this, [this]()
+    {
+        bool ok = false;
+        QString name = QInputDialog::getText(this, tr("儲存模板"),
+                                             tr("模板名稱（不含副檔名）："),
+                                             QLineEdit::Normal, QString(), &ok);
+        if (!ok || name.trimmed().isEmpty()) return;
+
+        // 清理非法字元
+        name = name.trimmed().replace(QRegularExpression("[/\\\\:*?\"<>|]"), "_");
+
+        QJsonObject root;
+        root["detection"] = Settings::instance().detection().toJson();
+        root["gate"]      = Settings::instance().gate().toJson();
+
+        QString path = profileDir() + "/" + name + ".json";
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) {
+            QMessageBox::warning(this, tr("儲存失敗"), tr("無法寫入檔案：%1").arg(path));
+            return;
+        }
+        f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        f.close();
+
+        refreshProfileList();
+        // 選中剛儲存的項目
+        int idx = m_profileCombo->findText(name);
+        if (idx >= 0) m_profileCombo->setCurrentIndex(idx);
+    });
+
+    connect(m_deleteProfileBtn, &QPushButton::clicked, this, [this]()
+    {
+        if (m_profileCombo->count() == 0) return;
+        QString name = m_profileCombo->currentText();
+        auto reply = QMessageBox::question(this, tr("確認刪除"),
+                                           tr("確定要刪除模板「%1」？").arg(name));
+        if (reply != QMessageBox::Yes) return;
+
+        QFile::remove(profileDir() + "/" + name + ".json");
+        refreshProfileList();
+    });
+
+    return group;
+}
+
+// ============================================================================
+// syncFromConfig — 從 Settings 更新所有 SpinBox（靜默，不觸發信號迴圈）
+// ============================================================================
+
+void DebugPanelWidget::syncFromConfig()
+{
+    const auto& det  = Settings::instance().detection();
+    const auto& gate = Settings::instance().gate();
+
+    auto setInt = [](QSpinBox* sb, int v) {
+        sb->blockSignals(true); sb->setValue(v); sb->blockSignals(false);
+    };
+    auto setDbl = [](QDoubleSpinBox* sb, double v) {
+        sb->blockSignals(true); sb->setValue(v); sb->blockSignals(false);
+    };
+
+    setInt(m_minAreaSpin,          det.minArea);
+    setInt(m_maxAreaSpin,          det.maxArea);
+    setInt(m_bgHistorySpin,        det.bgHistory);
+    setInt(m_bgVarThresholdSpin,   det.bgVarThreshold);
+    setDbl(m_bgLearningRateSpin,   det.bgLearningRate);
+    setInt(m_cannyLowSpin,         det.cannyLowThreshold);
+    setInt(m_cannyHighSpin,        det.cannyHighThreshold);
+    setInt(m_morphKernelSizeSpin,  det.morphKernelSize);
+    setInt(m_morphIterationsSpin,  det.morphIterations);
+
+    m_roiEnabledCheck->blockSignals(true);
+    m_roiEnabledCheck->setChecked(det.roiEnabled);
+    m_roiEnabledCheck->blockSignals(false);
+
+    setInt(m_roiXSpin,     det.roiX);
+    setInt(m_roiYSpin,     det.roiY);
+    setInt(m_roiHeightSpin, det.roiHeight);
+
+    setInt(m_gateYPositionSpin,     gate.yPosition);
+    setInt(m_gateTriggerRadiusSpin, gate.triggerRadius);
+    setInt(m_gateHistoryFramesSpin, gate.gateHistoryFrames);
+    setDbl(m_gateLinePositionSpin,  gate.gateLinePositionRatio);
 }
 
 QWidget* DebugPanelWidget::createDetectionParamsGroup()
@@ -530,11 +739,6 @@ void DebugPanelWidget::updateDebugImage(const cv::Mat& image)
     QPixmap pixmap = QPixmap::fromImage(qImg).scaled(
         m_debugImageLabel->size(), Qt::KeepAspectRatio, Qt::FastTransformation);
     m_debugImageLabel->setPixmap(pixmap);
-}
-
-void DebugPanelWidget::syncFromConfig()
-{
-    // TODO: 從配置載入參數並更新 UI
 }
 
 void DebugPanelWidget::onMinAreaChanged(int value)

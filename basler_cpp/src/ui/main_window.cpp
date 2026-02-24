@@ -668,6 +668,27 @@ namespace basler
                     cfg.targetProcessingWidth = (width > 0) ? width : 99999;
                 });
 
+        // Profile 載入後將新設定套用到 DetectionController
+        connect(m_debugPanel, &DebugPanelWidget::profileLoaded,
+                [this](const QString& profileName)
+                {
+                    const auto& det  = Settings::instance().detection();
+                    const auto& gate = Settings::instance().gate();
+                    m_detectionController->setMinArea(det.minArea);
+                    m_detectionController->setMaxArea(det.maxArea);
+                    m_detectionController->setBgHistory(det.bgHistory);
+                    m_detectionController->setBgVarThreshold(det.bgVarThreshold);
+                    m_detectionController->setBgLearningRate(det.bgLearningRate);
+                    m_detectionController->setCannyThresholds(det.cannyLowThreshold, det.cannyHighThreshold);
+                    m_detectionController->setMorphParams(det.morphKernelSize, det.morphIterations);
+                    m_detectionController->setRoiEnabled(det.roiEnabled);
+                    m_detectionController->setRoiHeight(det.roiHeight);
+                    m_detectionController->setGateTriggerRadius(gate.triggerRadius);
+                    m_detectionController->setGateHistoryFrames(gate.gateHistoryFrames);
+                    m_detectionController->setGateLinePositionRatio(gate.gateLinePositionRatio);
+                    m_statusLabel->setText(QString("已載入模板：%1").arg(profileName));
+                });
+
         // 光柵線點擊設定：按鈕 → 啟動點擊模式，VideoDisplay 點擊完成 → 更新設定
         connect(m_debugPanel, &DebugPanelWidget::gateLineEditModeRequested,
                 [this]()

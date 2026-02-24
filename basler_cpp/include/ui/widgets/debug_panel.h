@@ -45,6 +45,11 @@ public slots:
     void setRoiValues(int x, int y, int w, int h);
 
     /**
+     * @brief 重新掃描 profiles 目錄，刷新下拉選單
+     */
+    void refreshProfileList();
+
+    /**
      * @brief 從點擊結果更新光柵線 SpinBox 值（靜默，不觸發重複信號）
      */
     void setGateLineRatio(double ratio);
@@ -67,6 +72,12 @@ signals:
     void roiEnabledChanged(bool enabled);
     void roiEditModeRequested();      // 請求主視窗啟動 ROI 拖拽模式
     void gateLineEditModeRequested(); // 請求主視窗啟動光柵線點擊設定模式
+
+    /**
+     * @brief Profile 載入完成後發出，通知 MainWindow 將新設定套用到 DetectionController
+     * @param profileName 已載入的 profile 名稱
+     */
+    void profileLoaded(const QString& profileName);
 
     // ===== 背景減除參數 =====
     void bgHistoryChanged(int history);
@@ -151,6 +162,8 @@ private slots:
 
 private:
     void initUi();
+    QWidget* createProfileGroup();    // 頂部 Profile 下拉選單 + 操作按鈕
+    QString profileDir() const;       // 返回 profiles 目錄路徑（自動建立）
     QWidget* createDetectionParamsGroup();
     QWidget* createBgSubtractorGroup();
     QWidget* createEdgeDetectionGroup();
@@ -232,6 +245,11 @@ private:
     QPushButton* m_loadYoloModelBtn;
     QLabel* m_yoloStatusLabel;
     QLabel* m_yoloInferenceLabel;
+
+    // Profile 預設模板
+    QComboBox* m_profileCombo;
+    QPushButton* m_saveProfileBtn;
+    QPushButton* m_deleteProfileBtn;
 
     // 參數鎖定
     QCheckBox* m_lockParamsCheck;
