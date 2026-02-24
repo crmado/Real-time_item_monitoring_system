@@ -221,6 +221,19 @@ QWidget* DebugPanelWidget::createRoiGroup()
     gridLayout->addWidget(m_roiHeightSpin, 1, 3);
 
     mainLayout->addLayout(gridLayout);
+
+    // 拖拽框選 ROI 按鈕
+    m_roiEditBtn = new QPushButton(tr("✎ 在畫面上框選 ROI"));
+    m_roiEditBtn->setStyleSheet(
+        "QPushButton { background-color: #1a3a5a; color: #00d4ff; border: 1px solid #00d4ff;"
+        "              border-radius: 4px; padding: 5px; }"
+        "QPushButton:hover { background-color: #1e4a7a; }"
+        "QPushButton:pressed { background-color: #0d4a7a; }"
+    );
+    connect(m_roiEditBtn, &QPushButton::clicked,
+            this, &DebugPanelWidget::roiEditModeRequested);
+    mainLayout->addWidget(m_roiEditBtn);
+
     group->setLayout(mainLayout);
     return group;
 }
@@ -704,6 +717,25 @@ void DebugPanelWidget::updateYoloInferenceTime(double ms)
     {
         m_yoloInferenceLabel->setStyleSheet("color: #ff4444;");
     }
+}
+
+void DebugPanelWidget::setRoiValues(int x, int y, int w, int h)
+{
+    // 靜默更新 4 個 SpinBox，避免觸發 roiChanged 4 次
+    m_roiXSpin->blockSignals(true);
+    m_roiYSpin->blockSignals(true);
+    m_roiWidthSpin->blockSignals(true);
+    m_roiHeightSpin->blockSignals(true);
+
+    m_roiXSpin->setValue(x);
+    m_roiYSpin->setValue(y);
+    m_roiWidthSpin->setValue(w);
+    m_roiHeightSpin->setValue(h);
+
+    m_roiXSpin->blockSignals(false);
+    m_roiYSpin->blockSignals(false);
+    m_roiWidthSpin->blockSignals(false);
+    m_roiHeightSpin->blockSignals(false);
 }
 
 } // namespace basler

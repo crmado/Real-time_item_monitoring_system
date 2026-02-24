@@ -40,6 +40,11 @@ public slots:
     void updateDetectionCount(int count);
 
     /**
+     * @brief 從拖拽結果更新 ROI SpinBox 值（靜默，不觸發重複信號）
+     */
+    void setRoiValues(int x, int y, int w, int h);
+
+    /**
      * @brief 更新調試圖像顯示
      */
     void updateDebugImage(const cv::Mat& image);
@@ -55,6 +60,7 @@ signals:
     // ===== ROI 參數 =====
     void roiChanged(int x, int y, int width, int height);
     void roiEnabledChanged(bool enabled);
+    void roiEditModeRequested();  // 請求主視窗啟動 ROI 拖拽模式
 
     // ===== 背景減除參數 =====
     void bgHistoryChanged(int history);
@@ -174,6 +180,7 @@ private:
     QSpinBox* m_roiYSpin;
     QSpinBox* m_roiWidthSpin;
     QSpinBox* m_roiHeightSpin;
+    QPushButton* m_roiEditBtn;  // 啟動拖拽框選模式的按鈕
 
     // 虛擬光柵參數
     QSpinBox* m_gateYPositionSpin;

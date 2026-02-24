@@ -117,18 +117,65 @@ void VideoDisplayWidget::paintEvent(QPaintEvent* event)
     // 填充背景
     painter.fillRect(rect(), QColor(26, 26, 26));
 
-    QMutexLocker locker(&m_mutex);
+    int scaledW = 0, scaledH = 0, origW = 0, origH = 0;
+    QPoint imageOffset;
 
-    if (!m_scaledImage.isNull()) {
-        // 計算居中位置
-        int x = (width() - m_scaledImage.width()) / 2;
-        int y = (height() - m_scaledImage.height()) / 2;
-        painter.drawImage(x, y, m_scaledImage);
-    } else if (!m_message.isEmpty()) {
-        // 顯示消息
-        painter.setPen(QColor(136, 136, 136));
-        painter.setFont(QFont("Microsoft YaHei", 14));
-        painter.drawText(rect(), Qt::AlignCenter, m_message);
+    {
+        QMutexLocker locker(&m_mutex);
+
+        if (!m_scaledImage.isNull()) {
+            // 計算居中位置
+            imageOffset.setX((width() - m_scaledImage.width()) / 2);
+            imageOffset.setY((height() - m_scaledImage.height()) / 2);
+            scaledW = m_scaledImage.width();
+            scaledH = m_scaledImage.height();
+            origW = m_currentImage.width();
+            origH = m_currentImage.height();
+            painter.drawImage(imageOffset, m_scaledImage);
+        } else if (!m_message.isEmpty()) {
+            painter.setPen(QColor(136, 136, 136));
+            painter.setFont(QFont("Microsoft YaHei", 14));
+            painter.drawText(rect(), Qt::AlignCenter, m_message);
+        }
+    } // mutex 在此釋放，之後繪製 overlay 不持鎖
+
+    // ===== ROI 編輯模式 overlay（主線程，無需 mutex）=====
+    if (m_roiEditMode) {
+        // 藍色虛線邊框提示目前處於框選模式
+        painter.setPen(QPen(QColor(0, 212, 255), 2, Qt::DashLine));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(rect().adjusted(1, 1, -1, -1));
+
+        // 頂部提示文字
+        painter.setPen(QColor(0, 212, 255));
+        painter.setFont(QFont("Arial", 11, QFont::Bold));
+        painter.drawText(rect().adjusted(0, 6, 0, 0),
+                         Qt::AlignTop | Qt::AlignHCenter,
+                         tr("拖拽以框選 ROI  |  ESC 取消"));
+    }
+
+    // 拖拽中：繪製 rubber-band 矩形
+    if (m_isDragging && scaledW > 0 && origW > 0) {
+        QRect dragRect = QRect(m_dragStart, m_dragEnd).normalized();
+
+        painter.setPen(QPen(QColor(0, 212, 255), 2, Qt::DashLine));
+        painter.setBrush(QColor(0, 212, 255, 40));
+        painter.drawRect(dragRect);
+
+        // 在矩形右下角顯示尺寸（影像原始座標）
+        double scaleX = static_cast<double>(origW) / scaledW;
+        double scaleY = static_cast<double>(origH) / scaledH;
+        int vw = static_cast<int>(dragRect.width() * scaleX);
+        int vh = static_cast<int>(dragRect.height() * scaleY);
+
+        painter.setBrush(QColor(0, 0, 0, 140));
+        QRect sizeHint(dragRect.right() - 70, dragRect.bottom() - 20, 70, 20);
+        painter.setPen(Qt::NoPen);
+        painter.drawRect(sizeHint);
+        painter.setPen(Qt::white);
+        painter.setFont(QFont("Arial", 9));
+        painter.drawText(sizeHint, Qt::AlignCenter,
+                         QString("%1×%2").arg(vw).arg(vh));
     }
 }
 
@@ -146,28 +193,88 @@ void VideoDisplayWidget::mousePressEvent(QMouseEvent* event)
         return;
     }
 
-    // 計算圖像在 widget 中的偏移
+    if (m_roiEditMode && event->button() == Qt::LeftButton) {
+        // ROI 框選模式：開始拖拽
+        m_isDragging = true;
+        m_dragStart = event->pos();
+        m_dragEnd = event->pos();
+        update();
+        return;
+    }
+
+    // 一般模式：發出 clicked 信號（影像原始座標）
     int offsetX = (width() - m_scaledImage.width()) / 2;
     int offsetY = (height() - m_scaledImage.height()) / 2;
-
-    // 轉換為圖像座標
     QPoint clickPos = event->pos();
     int imgX = clickPos.x() - offsetX;
     int imgY = clickPos.y() - offsetY;
 
-    // 檢查是否在圖像範圍內
     if (imgX >= 0 && imgX < m_scaledImage.width() &&
         imgY >= 0 && imgY < m_scaledImage.height()) {
+        double scaleX = static_cast<double>(m_currentImage.width()) / m_scaledImage.width();
+        double scaleY = static_cast<double>(m_currentImage.height()) / m_scaledImage.height();
+        emit clicked(QPoint(static_cast<int>(imgX * scaleX),
+                            static_cast<int>(imgY * scaleY)));
+    }
+}
 
-        // 縮放到原始圖像座標
+void VideoDisplayWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    if (m_isDragging) {
+        m_dragEnd = event->pos();
+        update();  // 觸發 paintEvent 重繪 rubber-band
+    }
+}
+
+void VideoDisplayWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (!m_isDragging || event->button() != Qt::LeftButton) {
+        return;
+    }
+
+    m_isDragging = false;
+    m_dragEnd = event->pos();
+
+    // 轉換拖拽矩形到影像原始座標
+    QMutexLocker locker(&m_mutex);
+    if (!m_scaledImage.isNull() && !m_currentImage.isNull()) {
+        int offsetX = (width() - m_scaledImage.width()) / 2;
+        int offsetY = (height() - m_scaledImage.height()) / 2;
         double scaleX = static_cast<double>(m_currentImage.width()) / m_scaledImage.width();
         double scaleY = static_cast<double>(m_currentImage.height()) / m_scaledImage.height();
 
-        int origX = static_cast<int>(imgX * scaleX);
-        int origY = static_cast<int>(imgY * scaleY);
+        // 轉換兩端點並正規化矩形
+        int x1 = static_cast<int>((m_dragStart.x() - offsetX) * scaleX);
+        int y1 = static_cast<int>((m_dragStart.y() - offsetY) * scaleY);
+        int x2 = static_cast<int>((m_dragEnd.x() - offsetX) * scaleX);
+        int y2 = static_cast<int>((m_dragEnd.y() - offsetY) * scaleY);
+        locker.unlock();
 
-        emit clicked(QPoint(origX, origY));
+        QRect roi = QRect(QPoint(x1, y1), QPoint(x2, y2)).normalized();
+
+        // 限制在影像範圍內
+        roi = roi.intersected(QRect(0, 0, m_currentImage.width(), m_currentImage.height()));
+
+        if (roi.width() > 4 && roi.height() > 4) {
+            emit roiSelected(roi.x(), roi.y(), roi.width(), roi.height());
+        }
     }
+
+    // 拖拽完成後自動退出框選模式
+    setRoiEditMode(false);
+}
+
+void VideoDisplayWidget::setRoiEditMode(bool enabled)
+{
+    m_roiEditMode = enabled;
+    m_isDragging = false;
+
+    if (enabled) {
+        setCursor(Qt::CrossCursor);
+    } else {
+        unsetCursor();
+    }
+    update();
 }
 
 } // namespace basler

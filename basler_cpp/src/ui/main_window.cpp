@@ -473,6 +473,15 @@ namespace basler
         // ROI 參數
         connect(m_debugPanel, &DebugPanelWidget::roiChanged,
                 this, &MainWindow::onRoiChanged);
+        // ROI 拖拽框選：按鈕 → 啟動框選模式，VideoDisplay 框選完成 → 更新設定
+        connect(m_debugPanel, &DebugPanelWidget::roiEditModeRequested,
+                [this]()
+                {
+                    m_videoDisplay->setRoiEditMode(true);
+                    m_statusLabel->setText("ROI 框選模式：在主畫面拖拽框選區域，ESC 取消");
+                });
+        connect(m_videoDisplay, &VideoDisplayWidget::roiSelected,
+                this, &MainWindow::onRoiSelectedFromDrag);
         connect(m_debugPanel, &DebugPanelWidget::roiEnabledChanged,
                 [this](bool enabled)
                 {
@@ -1184,6 +1193,24 @@ namespace basler
         config.roiY = y;
         config.roiHeight = height;
         m_detectionController->setRoiHeight(height);
+    }
+
+    void MainWindow::onRoiSelectedFromDrag(int x, int y, int w, int h)
+    {
+        // 更新 Settings
+        auto &config = Settings::instance().detection();
+        config.roiX = x;
+        config.roiY = y;
+        config.roiHeight = h;
+
+        // 更新偵測控制器
+        m_detectionController->setRoiHeight(h);
+
+        // 同步 Debug Panel SpinBox（靜默，不重複觸發信號）
+        m_debugPanel->setRoiValues(x, y, w, h);
+
+        m_statusLabel->setText(
+            QString("ROI 已更新：(%1, %2)  %3 × %4 px").arg(x).arg(y).arg(w).arg(h));
     }
 
     // ============================================================================

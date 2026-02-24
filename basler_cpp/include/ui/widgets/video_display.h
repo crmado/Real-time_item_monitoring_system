@@ -63,13 +63,25 @@ public slots:
      */
     void showPlaceholder(const QString& message) { showMessage(message); }
 
+    /**
+     * @brief 啟用/停用 ROI 拖拽框選模式
+     * @param enabled true = 進入框選模式（游標變十字，可拖拽框選）
+     */
+    void setRoiEditMode(bool enabled);
+
 signals:
     void clicked(const QPoint& pos);  // 點擊事件（圖像座標）
+    /**
+     * @brief 用戶拖拽框選完成後發出（影像原始座標）
+     */
+    void roiSelected(int x, int y, int w, int h);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
     QImage matToQImage(const cv::Mat& mat);
@@ -81,6 +93,12 @@ private:
     QSize m_imageSize;
     ScaleMode m_scaleMode = ScaleMode::KeepAspectRatio;
     QMutex m_mutex;
+
+    // ROI 拖拽編輯狀態（均在主線程存取，無需 mutex）
+    bool m_roiEditMode = false;
+    bool m_isDragging = false;
+    QPoint m_dragStart;  // 拖拽起點（widget 座標）
+    QPoint m_dragEnd;    // 拖拽終點（widget 座標，即時更新）
 };
 
 } // namespace basler

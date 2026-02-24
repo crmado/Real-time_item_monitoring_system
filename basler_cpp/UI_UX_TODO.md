@@ -91,10 +91,12 @@ MainWindow
 
 ### P2 — 功能補強
 
-- [ ] **ROI 視覺化拖拽編輯器**
+- [x] **ROI 視覺化拖拽編輯器**（2026-02-24）
   目前只能在 Debug Panel 輸入 X/Y/W/H 數字，不直覺。
-  → 建議：在 `VideoDisplayWidget` 上覆蓋一個可拖拽的矩形，讓用戶直接在畫面上框選 ROI
-  → 實作提示：`VideoDisplayWidget::clicked(QPoint)` 信號已存在，可延伸為 drag 事件
+  → Debug Panel ROI 組加入「✎ 在畫面上框選 ROI」按鈕
+  → 點擊後主畫面進入框選模式（游標變十字、藍色虛線邊框提示）
+  → 拖拽完成後自動退出框選模式，更新 Settings / DetectionController / SpinBox
+  → `roiSelected(x,y,w,h)` 信號在影像原始座標系發出，完整信號鏈閉合
 
 - [ ] **光柵線位置可視化拖拽**
   目前光柵線只能輸入 ratio（0.0-1.0）數字，不直覺。
@@ -196,6 +198,7 @@ MainWindow
 
 ### 2026-02-24（Session 3）
 
+- [x] P2: ROI 視覺化拖拽編輯器（VideoDisplayWidget 新增拖拽模式 + rubberband overlay，Debug Panel 加框選按鈕）
 - [x] P2: 鍵盤快捷鍵（Space/←/→/Ctrl+R/F5/F11，`QShortcut` 實作）
 - [x] P2: StatusBar 強化（物件數、ROI 尺寸、背景穩定度，每幀更新）
 - [x] P0: 瑕疵統計信號鏈完整連接（`DetectionController::defectStatsUpdated` → `MainWindow` → `DefectDetectionMethodPanel::updateStats`）
