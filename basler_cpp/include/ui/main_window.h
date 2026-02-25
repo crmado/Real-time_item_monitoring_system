@@ -136,33 +136,33 @@ namespace basler
         std::unique_ptr<DualVibratorManager> m_vibratorManager;
 
         // ========== UI 組件 ==========
-        QSplitter *m_mainSplitter;
+        QSplitter *m_mainSplitter         = nullptr;
 
         // 控制面板組件
-        CameraControlWidget *m_cameraControl;
-        RecordingControlWidget *m_recordingControl;
-        PackagingControlWidget *m_packagingControl;
-        SystemMonitorWidget *m_systemMonitor;
+        CameraControlWidget    *m_cameraControl     = nullptr;
+        RecordingControlWidget *m_recordingControl  = nullptr;
+        PackagingControlWidget *m_packagingControl  = nullptr;
+        SystemMonitorWidget    *m_systemMonitor     = nullptr;
 
         // 視頻顯示
-        VideoDisplayWidget *m_videoDisplay;
-        VideoDisplayWidget *m_videoDisplay2; // 分割視圖第二面板（預設隱藏）
-        QSplitter *m_displaySplitter;        // 左側顯示區分割器
-        VideoDisplayWidget *m_cameraPreview; // 小型預覽窗口
-        DebugPanelWidget *m_debugPanel;
-        QTabWidget *m_controlPanel;          // 右側分頁面板（全螢幕時隱藏）
+        VideoDisplayWidget *m_videoDisplay   = nullptr;
+        VideoDisplayWidget *m_videoDisplay2  = nullptr; // 分割視圖第二面板（預設隱藏）
+        QSplitter          *m_displaySplitter = nullptr; // 左側顯示區分割器
+        VideoDisplayWidget *m_cameraPreview  = nullptr; // 小型預覽窗口
+        DebugPanelWidget   *m_debugPanel     = nullptr;
+        QTabWidget         *m_controlPanel   = nullptr; // 右側分頁面板（全螢幕時隱藏）
 
         // 狀態欄
-        QLabel *m_statusLabel;
-        QLabel *m_fpsLabel;
-        QLabel *m_detectionLabel;
-        QLabel *m_recordingLabel;
-        QLabel *m_objectCountLabel;  // 即時偵測物件數
-        QLabel *m_roiLabel;          // 當前 ROI 尺寸
-        QLabel *m_bgStabilityLabel;  // 背景減除器穩定狀態
+        QLabel *m_statusLabel      = nullptr;
+        QLabel *m_fpsLabel         = nullptr;
+        QLabel *m_detectionLabel   = nullptr;
+        QLabel *m_recordingLabel   = nullptr;
+        QLabel *m_objectCountLabel = nullptr;  // 即時偵測物件數
+        QLabel *m_roiLabel         = nullptr;  // 當前 ROI 尺寸
+        QLabel *m_bgStabilityLabel = nullptr;  // 背景減除器穩定狀態
 
         // ========== 更新定時器 ==========
-        QTimer *m_updateTimer;
+        QTimer *m_updateTimer = nullptr;
 
         // ========== 幀緩衝 ==========
         cv::Mat m_latestFrame;
