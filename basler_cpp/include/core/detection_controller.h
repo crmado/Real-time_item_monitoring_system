@@ -170,6 +170,8 @@ namespace basler
         void setBgVarThreshold(int threshold);
         void setBgLearningRate(double rate);
         void setRoiEnabled(bool enabled);
+        void setRoiX(int x);
+        void setRoiWidth(int width);   // 0 = 自動使用全幀寬度
         void setRoiHeight(int height);
         void setRoiPositionRatio(double ratio);
         void setGateTriggerRadius(int radius);
@@ -282,9 +284,13 @@ namespace basler
 
         // ROI 參數（basler_mvc 驗證值）
         bool m_roiEnabled = true;
+        int m_roiX = 0;
+        int m_roiWidth = 0;            // 0 = 自動使用全幀寬度
         int m_roiHeight = 120;
         double m_roiPositionRatio = 0.12;
+        int m_currentRoiX = 0;
         int m_currentRoiY = 0;
+        int m_currentRoiWidth = 0;     // 本幀實際使用的 ROI 寬度
         int m_currentRoiHeight = 120;
 
         // 高速模式參數

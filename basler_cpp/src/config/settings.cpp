@@ -34,6 +34,8 @@ QJsonObject DetectionConfig::toJson() const
         {"openingIterations", openingIterations},
         {"connectivity", connectivity},
         {"roiEnabled", roiEnabled},
+        {"roiX", roiX},
+        {"roiWidth", roiWidth},
         {"roiHeight", roiHeight},
         {"roiPositionRatio", roiPositionRatio},
         {"ultraHighSpeedMode", ultraHighSpeedMode},
@@ -60,6 +62,8 @@ DetectionConfig DetectionConfig::fromJson(const QJsonObject& json)
     config.detectShadows = json.value("detectShadows").toBool(config.detectShadows);
     config.bgLearningRate = json.value("bgLearningRate").toDouble(config.bgLearningRate);
     config.roiEnabled = json.value("roiEnabled").toBool(config.roiEnabled);
+    config.roiX      = json.value("roiX").toInt(config.roiX);
+    config.roiWidth  = json.value("roiWidth").toInt(config.roiWidth);
     config.roiHeight = json.value("roiHeight").toInt(config.roiHeight);
     config.roiPositionRatio = json.value("roiPositionRatio").toDouble(config.roiPositionRatio);
     config.ultraHighSpeedMode = json.value("ultraHighSpeedMode").toBool(config.ultraHighSpeedMode);

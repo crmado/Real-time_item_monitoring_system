@@ -1515,7 +1515,7 @@ namespace basler
         }
 
         QTextStream out(&file);
-        out.setCodec("UTF-8");
+        out.setEncoding(QStringConverter::Utf8);
 
         // 標頭（僅新檔案寫一次）
         if (isNew)
@@ -1556,12 +1556,15 @@ namespace basler
     // Debug 參數
     // ============================================================================
 
-    void MainWindow::onRoiChanged(int x, int y, int /*width*/, int height)
+    void MainWindow::onRoiChanged(int x, int y, int width, int height)
     {
         auto &config = Settings::instance().detection();
-        config.roiX = x;
-        config.roiY = y;
+        config.roiX      = x;
+        config.roiY      = y;
+        config.roiWidth  = width;
         config.roiHeight = height;
+        m_detectionController->setRoiX(x);
+        m_detectionController->setRoiWidth(width);
         m_detectionController->setRoiHeight(height);
     }
 
@@ -1569,11 +1572,14 @@ namespace basler
     {
         // 更新 Settings
         auto &config = Settings::instance().detection();
-        config.roiX = x;
-        config.roiY = y;
+        config.roiX      = x;
+        config.roiY      = y;
+        config.roiWidth  = w;
         config.roiHeight = h;
 
         // 更新偵測控制器
+        m_detectionController->setRoiX(x);
+        m_detectionController->setRoiWidth(w);
         m_detectionController->setRoiHeight(h);
 
         // 同步 Debug Panel SpinBox（靜默，不重複觸發信號）

@@ -296,6 +296,7 @@ void DebugPanelWidget::syncFromConfig()
 
     setInt(m_roiXSpin,     det.roiX);
     setInt(m_roiYSpin,     det.roiY);
+    setInt(m_roiWidthSpin,  det.roiWidth);  // 0 = 自動全幀寬度
     setInt(m_roiHeightSpin, det.roiHeight);
 
     setInt(m_gateYPositionSpin,     gate.yPosition);
@@ -437,8 +438,8 @@ QWidget* DebugPanelWidget::createRoiGroup()
 
     gridLayout->addWidget(new QLabel("寬:"), 1, 0);
     m_roiWidthSpin = new QSpinBox();
-    m_roiWidthSpin->setRange(10, 1920);
-    m_roiWidthSpin->setValue(640);
+    m_roiWidthSpin->setRange(0, 1920); // 0 = 自動全幀寬度
+    m_roiWidthSpin->setValue(0);
     connect(m_roiWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &DebugPanelWidget::onRoiWidthChanged);
     gridLayout->addWidget(m_roiWidthSpin, 1, 1);

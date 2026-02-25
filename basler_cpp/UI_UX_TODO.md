@@ -247,10 +247,10 @@ MainWindow
 
 ### 審計發現 — 設計缺口（暫緩）
 
-- [ ] **roiWidth 沒有對應 config 欄位**
-  `DetectionConfig` 只有 `roiX/roiY/roiHeight`，無 `roiWidth`。
-  `m_roiWidthSpin` 在 `syncFromConfig()` 中無法同步，顯示初始值 0。
-  → 需要決策：是否加入 `roiWidth` 欄位，或改為「自動等於畫面寬度」並隱藏 SpinBox
+- [x] **roiWidth 沒有對應 config 欄位**
+  已加入 `DetectionConfig.roiWidth`（0=自動全幀寬度），JSON 序列化、
+  `DetectionController::setRoiX/setRoiWidth`、ROI 繪製、邊界框 X 偏移全部修正。
+  `syncFromConfig()` 現在會同步 `m_roiWidthSpin`（範圍 0-1920，0=自動）。
 
 - [ ] **vibrator_controller.cpp TODO**
   `// TODO: 實現實際硬體控制器`（第 217 行）

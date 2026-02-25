@@ -56,6 +56,7 @@ struct DetectionConfig {
     bool roiEnabled = true;
     int roiX = 0;
     int roiY = 0;
+    int roiWidth = 0;              // 0 = 自動使用全幀寬度（向後相容舊配置）
     int roiHeight = 120;           // Python basler_mvc 驗證值 (原 150)
     double roiPositionRatio = 0.12; // Python basler_mvc 驗證值 (原 0.10)
 

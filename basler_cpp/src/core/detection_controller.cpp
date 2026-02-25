@@ -47,6 +47,8 @@ namespace basler
 
         // ROI 參數
         m_roiEnabled = det.roiEnabled;
+        m_roiX = det.roiX;
+        m_roiWidth = det.roiWidth;
         m_roiHeight = det.roiHeight;
         m_roiPositionRatio = det.roiPositionRatio;
 
@@ -144,6 +146,8 @@ namespace basler
 
         // 只在讀取配置時短暫鎖定
         bool roiEnabled;
+        int roiX;
+        int roiWidth;
         int roiHeight;
         double roiPositionRatio;
         bool ultraHighSpeedMode;
@@ -151,6 +155,8 @@ namespace basler
         {
             QMutexLocker locker(&m_mutex);
             roiEnabled = m_roiEnabled;
+            roiX = m_roiX;
+            roiWidth = m_roiWidth;
             roiHeight = m_roiHeight;
             roiPositionRatio = m_roiPositionRatio;
             ultraHighSpeedMode = m_ultraHighSpeedMode;
@@ -185,23 +191,36 @@ namespace basler
 
             const int frameWidth  = workFrame.cols;
             const int frameHeight = workFrame.rows;
+            int currentRoiX = 0;
             int currentRoiY = 0;
+            int currentRoiW = frameWidth;
             int currentRoiHeight = frameHeight;
 
             // ROI 區域提取（在縮放幀上操作）
             cv::Mat processRegion;
             if (roiEnabled)
             {
+                // X 方向：roiX + roiWidth（0 = 全幀寬度）
+                currentRoiX = std::max(0, std::min(roiX, frameWidth - 1));
+                currentRoiW = (roiWidth > 0)
+                    ? std::min(roiWidth, frameWidth - currentRoiX)
+                    : (frameWidth - currentRoiX);
+
+                // Y 方向：依比例定位
                 currentRoiY = static_cast<int>(frameHeight * roiPositionRatio);
                 currentRoiHeight = std::min(roiHeight, frameHeight - currentRoiY);
-                if (currentRoiHeight > 0 && currentRoiY < frameHeight)
+
+                if (currentRoiHeight > 0 && currentRoiY < frameHeight && currentRoiW > 0)
                 {
-                    processRegion = workFrame(cv::Rect(0, currentRoiY, frameWidth, currentRoiHeight));
+                    processRegion = workFrame(cv::Rect(currentRoiX, currentRoiY,
+                                                       currentRoiW, currentRoiHeight));
                 }
                 else
                 {
                     processRegion = workFrame;
+                    currentRoiX = 0;
                     currentRoiY = 0;
+                    currentRoiW = frameWidth;
                     currentRoiHeight = frameHeight;
                 }
             }
@@ -217,7 +236,9 @@ namespace basler
                 m_frameWidth  = origW;
                 m_processingScale = scale;
                 // ROI 座標映射回原始解析度
+                m_currentRoiX      = static_cast<int>(currentRoiX / scale);
                 m_currentRoiY      = static_cast<int>(currentRoiY / scale);
+                m_currentRoiWidth  = static_cast<int>(currentRoiW / scale);
                 m_currentRoiHeight = static_cast<int>(currentRoiHeight / scale);
             }
 
@@ -462,13 +483,14 @@ namespace basler
             }
 
             // 座標由縮放空間映射回原始相機解析度（供 overlay 繪製與光柵計數使用）
+            // 注意：processRegion 是 ROI 子圖，所以需加回 ROI 原點偏移
             double invScale = (m_processingScale > 0.0) ? (1.0 / m_processingScale) : 1.0;
-            int x = static_cast<int>(stats.at<int>(i, cv::CC_STAT_LEFT)  * invScale);
+            int x = static_cast<int>(stats.at<int>(i, cv::CC_STAT_LEFT)  * invScale) + m_currentRoiX;
             int y = static_cast<int>(stats.at<int>(i, cv::CC_STAT_TOP)   * invScale) + m_currentRoiY;
             int w = static_cast<int>(stats.at<int>(i, cv::CC_STAT_WIDTH)  * invScale);
             int h = static_cast<int>(stats.at<int>(i, cv::CC_STAT_HEIGHT) * invScale);
 
-            int cx = static_cast<int>(centroids.at<double>(i, 0) * invScale);
+            int cx = static_cast<int>(centroids.at<double>(i, 0) * invScale) + m_currentRoiX;
             int cy = static_cast<int>(centroids.at<double>(i, 1) * invScale) + m_currentRoiY;
 
             // 形狀驗證
@@ -638,8 +660,8 @@ namespace basler
         if (m_roiEnabled)
         {
             cv::rectangle(frame,
-                          cv::Point(0, m_currentRoiY),
-                          cv::Point(m_frameWidth, m_currentRoiY + m_currentRoiHeight),
+                          cv::Point(m_currentRoiX, m_currentRoiY),
+                          cv::Point(m_currentRoiX + m_currentRoiWidth, m_currentRoiY + m_currentRoiHeight),
                           cv::Scalar(255, 255, 0), 2);
         }
 
@@ -828,6 +850,16 @@ namespace basler
     void DetectionController::setRoiEnabled(bool enabled)
     {
         m_roiEnabled = enabled;
+    }
+
+    void DetectionController::setRoiX(int x)
+    {
+        m_roiX = x;
+    }
+
+    void DetectionController::setRoiWidth(int width)
+    {
+        m_roiWidth = width; // 0 = 自動使用全幀寬度
     }
 
     void DetectionController::setRoiHeight(int height)
