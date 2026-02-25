@@ -1,4 +1,5 @@
 #include "ui/widgets/method_panels/defect_detection_method_panel.h"
+#include "ui/theme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -129,20 +130,20 @@ void DefectDetectionMethodPanel::updateStats(double passRate, int passCount, int
     m_passRateLabel->setText(QString("%1%").arg(passRate, 0, 'f', 1));
     m_passRateBar->setValue(static_cast<int>(passRate));
 
-    // 根據合格率改變顏色
+    // 根據合格率改變顏色（使用主題顏色）
+    m_lastPassRate = passRate;
+    ThemeColors tc(m_isDark);
     QString color;
-    if (passRate >= 95) {
-        color = "#00ff00";  // 綠色
-    } else if (passRate >= 80) {
-        color = "#ffff00";  // 黃色
-    } else {
-        color = "#ff4444";  // 紅色
-    }
-    m_passRateLabel->setStyleSheet(QString("font-size: 48px; font-weight: bold; color: %1;").arg(color));
+    if (passRate >= 95)      color = tc.success;
+    else if (passRate >= 80) color = tc.warning;
+    else                      color = tc.danger;
+    m_passRateLabel->setStyleSheet(
+        QString("font-size: 48px; font-weight: bold; color: %1;").arg(color));
+    const QString barBg = m_isDark ? "#1a1a1a" : "#e0e0e0";
     m_passRateBar->setStyleSheet(QString(
-        "QProgressBar { border: 1px solid #333; background-color: #1a1a1a; }"
-        "QProgressBar::chunk { background-color: %1; }"
-    ).arg(color));
+        "QProgressBar { border: 1px solid #bbb; background-color: %1; }"
+        "QProgressBar::chunk { background-color: %2; }"
+    ).arg(barBg, color));
 
     // 更新計數
     m_passCountLabel->setText(tr("合格: %1").arg(passCount));
@@ -166,6 +167,36 @@ void DefectDetectionMethodPanel::setDetectionState(bool running)
 void DefectDetectionMethodPanel::onSensitivityChanged(double value)
 {
     emit sensitivityChanged(value);
+}
+
+void DefectDetectionMethodPanel::applyTheme(bool isDark)
+{
+    m_isDark = isDark;
+    ThemeColors tc(isDark);
+
+    // 重新套用按鈕樣式
+    m_startBtn->setStyleSheet(tc.btnStyle(tc.btnInfo));
+
+    // 通用 hint 色
+    m_sensitivityHint->setStyleSheet(
+        QString("color: %1; font-size: 11px;").arg(tc.hint));
+    m_passCountLabel->setStyleSheet(
+        QString("color: %1;").arg(tc.success));
+    m_failCountLabel->setStyleSheet(
+        QString("color: %1;").arg(tc.danger));
+
+    // 重新套用合格率顏色（符合當前 passRate）
+    QString color;
+    if (m_lastPassRate >= 95)      color = tc.success;
+    else if (m_lastPassRate >= 80) color = tc.warning;
+    else                            color = tc.danger;
+    m_passRateLabel->setStyleSheet(
+        QString("font-size: 48px; font-weight: bold; color: %1;").arg(color));
+    const QString barBg = isDark ? "#1a1a1a" : "#e0e0e0";
+    m_passRateBar->setStyleSheet(QString(
+        "QProgressBar { border: 1px solid #bbb; background-color: %1; }"
+        "QProgressBar::chunk { background-color: %2; }"
+    ).arg(barBg, color));
 }
 
 } // namespace basler

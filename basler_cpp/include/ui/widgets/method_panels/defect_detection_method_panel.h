@@ -25,6 +25,9 @@ public:
     ~DefectDetectionMethodPanel() = default;
 
 public slots:
+    /** 主題切換：更新所有顏色相關 StyleSheet */
+    void applyTheme(bool isDark);
+
     /**
      * @brief 更新統計數據
      * @param passRate 合格率 (0-100)
@@ -85,6 +88,8 @@ private:
 
     // 狀態
     bool m_isRunning = false;
+    bool m_isDark = true;       // 當前主題（供動態 StyleSheet 使用）
+    double m_lastPassRate = 100.0;
 };
 
 } // namespace basler

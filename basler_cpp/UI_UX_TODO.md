@@ -272,10 +272,12 @@ MainWindow
 - [x] **SetupWizard「重新顯示向導」選單項**
   「幫助」選單新增「重新執行設定向導(&W)」，完成後呼叫 `m_debugPanel->syncFromConfig()` 刷新 UI。
 
-- [ ] **Light Theme 完整性**
-  目前淺色主題只覆蓋主框架（QMainWindow/MenuBar/TabWidget），
-  各 Widget 的硬編碼深色 StyleSheet 仍有效。若要完整淺色主題，
-  需將 Widget StyleSheet 改用 `Style::` 常量（長期重構）
+- [x] **Light Theme 完整性**
+  新增 `include/ui/theme.h`（ThemeColors 結構，深/淺雙主題語義色彩）。
+  `CountingMethodPanel` + `DefectDetectionMethodPanel` 新增 `applyTheme(bool)` slot，
+  動態 StyleSheet（計數顏色、震動機狀態、合格率顏色、按鈕）改用 ThemeColors。
+  `MainWindow::applyTheme()` 擴充：全局 QSS 涵蓋 QGroupBox/QLabel/QSpinBox/QPushButton 等，
+  並同步通知子 panel；`bgStabilityLabel` 和 `recordingLabel` 動態顏色也改用語義色。
 
 ---
 

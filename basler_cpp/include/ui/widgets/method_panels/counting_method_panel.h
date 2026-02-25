@@ -36,6 +36,9 @@ public:
     void resetTrendChart();
 
 public slots:
+    /** 主題切換：更新所有顏色相關 StyleSheet */
+    void applyTheme(bool isDark);
+
     /**
      * @brief 更新計數顯示
      * @param current 當前計數
@@ -107,6 +110,7 @@ private:
 
     // 狀態
     bool m_isRunning = false;
+    bool m_isDark = true;           // 當前主題（供動態 StyleSheet 使用）
     int m_currentCount = 0;
     int m_targetCount = 150;
 

@@ -5,7 +5,9 @@
 #include "ui/widgets/recording_control.h"
 #include "ui/widgets/packaging_control.h"
 #include "ui/widgets/method_panels/counting_method_panel.h"
+#include "ui/widgets/method_panels/defect_detection_method_panel.h"
 #include "ui/widgets/debug_panel.h"
+#include "ui/theme.h"
 #include "ui/widgets/system_monitor.h"
 #include "config/settings.h"
 #include "core/video_player.h"
@@ -183,6 +185,8 @@ namespace basler
     // ============================================================================
     void MainWindow::applyTheme(bool isDark)
     {
+        ThemeColors tc(isDark);
+
         if (isDark)
         {
             // 深色：清除全局 QSS（各 widget 自帶深色 StyleSheet）
@@ -190,9 +194,14 @@ namespace basler
         }
         else
         {
-            // 淺色：覆蓋主框架元素（widget 層級的 StyleSheet 仍有優先權）
+            // 淺色：主框架 + 通用 widget 覆蓋
             qApp->setStyleSheet(
                 "QMainWindow { background-color: #f0f2f5; }"
+                "QWidget { background-color: #f0f2f5; color: #2c3e50; }"
+                "QGroupBox { background-color: #f5f7fa; color: #2c3e50;"
+                "             border: 1px solid #c8cdd4; border-radius: 4px; margin-top: 8px; padding-top: 4px; }"
+                "QGroupBox::title { color: #2c3e50; }"
+                "QLabel { color: #2c3e50; background-color: transparent; }"
                 "QMenuBar { background-color: #e8eaed; color: #2c3e50; }"
                 "QMenuBar::item:selected { background-color: #bdc3c7; }"
                 "QMenu { background-color: #ffffff; color: #2c3e50; border: 1px solid #bdc3c7; }"
@@ -207,7 +216,31 @@ namespace basler
                 "QScrollBar::handle:vertical { background-color: #909497; border-radius: 4px; }"
                 "QScrollBar:horizontal { background-color: #d0d3d4; height: 10px; }"
                 "QScrollBar::handle:horizontal { background-color: #909497; border-radius: 4px; }"
+                "QSpinBox, QDoubleSpinBox, QLineEdit { background-color: #ffffff; color: #2c3e50;"
+                "  border: 1px solid #bdc3c7; border-radius: 3px; }"
+                "QCheckBox { color: #2c3e50; }"
+                "QComboBox { background-color: #ffffff; color: #2c3e50; border: 1px solid #bdc3c7; }"
+                "QSlider::groove:horizontal { background-color: #bdc3c7; height: 4px; }"
+                "QSlider::handle:horizontal { background-color: #5d6d7e; width: 12px; border-radius: 6px; }"
+                "QPushButton { background-color: #d0d3d4; color: #2c3e50;"
+                "  border: 1px solid #bdc3c7; border-radius: 3px; padding: 4px 8px; }"
+                "QPushButton:hover { background-color: #bdc3c7; }"
+                "QTextEdit { background-color: #ffffff; color: #2c3e50; border: 1px solid #bdc3c7; }"
+                "QProgressBar { background-color: #e0e0e0; border: 1px solid #bdc3c7; }"
+                "QProgressBar::chunk { background-color: #3498db; }"
             );
+        }
+
+        // 通知各子 Widget 重設主題色彩（有動態 StyleSheet 的 panel）
+        if (m_packagingControl) {
+            m_packagingControl->countingPanel()->applyTheme(isDark);
+            m_packagingControl->defectPanel()->applyTheme(isDark);
+        }
+
+        // 重設狀態列動態 Label（下次更新時會用新主題色重繪）
+        if (m_bgStabilityLabel) {
+            m_bgStabilityLabel->setStyleSheet(
+                QString("color: %1;").arg(tc.hint));
         }
     }
 
@@ -1151,16 +1184,21 @@ namespace basler
         // 3. 背景減除器穩定性（已處理幀數 vs bgHistory）
         int processed = m_detectionController->totalProcessedFrames();
         int bgHistory = det.bgHistory;
-        if (processed >= bgHistory)
         {
-            m_bgStabilityLabel->setText("背景: 穩定");
-            m_bgStabilityLabel->setStyleSheet("color: #00ff80;");
-        }
-        else
-        {
-            int pct = (bgHistory > 0) ? (processed * 100 / bgHistory) : 0;
-            m_bgStabilityLabel->setText(QString("背景: 學習 %1%").arg(pct));
-            m_bgStabilityLabel->setStyleSheet("color: #ffcc00;");
+            ThemeColors tc(m_isDarkTheme);
+            if (processed >= bgHistory)
+            {
+                m_bgStabilityLabel->setText("背景: 穩定");
+                m_bgStabilityLabel->setStyleSheet(
+                    QString("color: %1;").arg(tc.success));
+            }
+            else
+            {
+                int pct = (bgHistory > 0) ? (processed * 100 / bgHistory) : 0;
+                m_bgStabilityLabel->setText(QString("背景: 學習 %1%").arg(pct));
+                m_bgStabilityLabel->setStyleSheet(
+                    QString("color: %1;").arg(tc.warning));
+            }
         }
 
         // 調試視圖：將二值化遮罩傳給 Debug Panel 顯示
@@ -1315,7 +1353,8 @@ namespace basler
     {
         m_isRecording = true;
         m_recordingLabel->setText("🔴 錄製中");
-        m_recordingLabel->setStyleSheet("color: #ff4444;");
+        m_recordingLabel->setStyleSheet(
+            QString("color: %1;").arg(ThemeColors(m_isDarkTheme).danger));
         m_recordingControl->setRecording(true);
     }
 

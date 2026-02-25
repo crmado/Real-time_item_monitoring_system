@@ -1,5 +1,6 @@
 #include "ui/widgets/method_panels/counting_method_panel.h"
 #include "config/settings.h"
+#include "ui/theme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -288,23 +289,28 @@ void CountingMethodPanel::updateCount(int current, int target)
     int progress = (target > 0) ? (current * 100 / target) : 0;
     m_progressBar->setValue(progress);
 
-    // 根據進度改變顏色
-    if (progress >= 100) {
-        m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff00;");
-    } else if (progress >= 90) {
-        m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #ffff00;");
-    } else {
-        m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #ffffff;");
-    }
+    // 根據進度改變顏色（使用主題顏色）
+    ThemeColors tc(m_isDark);
+    QString color;
+    if (progress >= 100)      color = tc.success;
+    else if (progress >= 90)  color = tc.warning;
+    else                       color = m_isDark ? "#ffffff" : "#1a1a1a";
+    m_countLabel->setStyleSheet(
+        QString("font-size: 48px; font-weight: bold; color: %1;").arg(color));
 }
 
 void CountingMethodPanel::updateVibratorStatus(bool vibrator1Running, bool vibrator2Running, int speedPercent)
 {
+    ThemeColors tc(m_isDark);
     m_vibrator1StatusLabel->setText(vibrator1Running ? tr("運行中") : tr("停止"));
-    m_vibrator1StatusLabel->setStyleSheet(vibrator1Running ? "color: #00ff00;" : "color: #888;");
+    m_vibrator1StatusLabel->setStyleSheet(vibrator1Running
+        ? QString("color: %1;").arg(tc.success)
+        : QString("color: %1;").arg(tc.neutral));
 
     m_vibrator2StatusLabel->setText(vibrator2Running ? tr("運行中") : tr("停止"));
-    m_vibrator2StatusLabel->setStyleSheet(vibrator2Running ? "color: #00ff00;" : "color: #888;");
+    m_vibrator2StatusLabel->setStyleSheet(vibrator2Running
+        ? QString("color: %1;").arg(tc.success)
+        : QString("color: %1;").arg(tc.neutral));
 
     m_speedLabel->setText(tr("%1%").arg(speedPercent));
 }
@@ -313,16 +319,17 @@ void CountingMethodPanel::setPackagingState(bool running)
 {
     m_isRunning = running;
 
+    ThemeColors tc(m_isDark);
     if (running) {
         m_packageStartTime = QDateTime::currentMSecsSinceEpoch();  // 記錄開始時間
         m_startBtn->setText(tr("⏹ 包裝中..."));
-        m_startBtn->setStyleSheet("QPushButton { background-color: #FF9800; color: white; padding: 10px; }");
+        m_startBtn->setStyleSheet(tc.btnStyle(tc.btnStop));
         m_startBtn->setEnabled(false);
         m_pauseBtn->setEnabled(true);
         m_resetBtn->setEnabled(false);
     } else {
         m_startBtn->setText(tr("▶ 開始包裝"));
-        m_startBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 10px; }");
+        m_startBtn->setStyleSheet(tc.btnStyle(tc.btnStart));
         m_startBtn->setEnabled(true);
         m_pauseBtn->setEnabled(false);
         m_resetBtn->setEnabled(true);
@@ -331,7 +338,9 @@ void CountingMethodPanel::setPackagingState(bool running)
 
 void CountingMethodPanel::showPackagingCompleted()
 {
-    m_countLabel->setStyleSheet("font-size: 48px; font-weight: bold; color: #00ff80;");
+    ThemeColors tc(m_isDark);
+    m_countLabel->setStyleSheet(
+        QString("font-size: 48px; font-weight: bold; color: %1;").arg(tc.success));
 
     // 計算此包的速率並記錄到趨勢圖
     if (m_packageStartTime > 0) {
@@ -377,6 +386,39 @@ void CountingMethodPanel::resetTrendChart()
     if (m_trendChart)
         m_trendChart->clearData();
     m_packageStartTime = 0;
+}
+
+void CountingMethodPanel::applyTheme(bool isDark)
+{
+    m_isDark = isDark;
+    ThemeColors tc(isDark);
+
+    // 靜態初始 StyleSheet
+    m_countLabel->setStyleSheet(
+        QString("font-size: 48px; font-weight: bold; color: %1;")
+        .arg(isDark ? "#00ff00" : "#1b7a3a"));
+    m_targetLabel->setStyleSheet(
+        QString("font-size: 18px; color: %1;").arg(tc.hint));
+    m_vibrator1StatusLabel->setStyleSheet(
+        QString("color: %1;").arg(tc.neutral));
+    m_vibrator2StatusLabel->setStyleSheet(
+        QString("color: %1;").arg(tc.neutral));
+
+    // 重新套用按鈕樣式（符合當前 running 狀態）
+    if (m_isRunning) {
+        m_startBtn->setStyleSheet(tc.btnStyle(tc.btnStop));
+    } else {
+        m_startBtn->setStyleSheet(tc.btnStyle(tc.btnStart));
+    }
+
+    // 重新套用計數顏色（符合當前進度）
+    int progress = (m_targetCount > 0) ? (m_currentCount * 100 / m_targetCount) : 0;
+    QString color;
+    if (progress >= 100)     color = tc.success;
+    else if (progress >= 90) color = tc.warning;
+    else                      color = isDark ? "#ffffff" : "#1a1a1a";
+    m_countLabel->setStyleSheet(
+        QString("font-size: 48px; font-weight: bold; color: %1;").arg(color));
 }
 
 } // namespace basler
