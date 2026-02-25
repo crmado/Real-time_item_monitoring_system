@@ -40,7 +40,7 @@ void MethodSelectorWidget::updateMethodsForPart(const QString& partId)
     m_comboBox->clear();
     m_availableMethods.clear();
 
-    const auto& config = getConfig();
+    const auto& config = Settings::instance();
     const auto* profile = config.getPartProfile(partId);
 
     if (!profile) {

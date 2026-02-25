@@ -126,7 +126,7 @@ CountingMethodPanel::CountingMethodPanel(QWidget* parent)
     initUi();
 
     // 從配置載入預設值
-    const auto& config = getConfig();
+    const auto& config = Settings::instance();
     m_targetCount = config.packaging().targetCount;
     m_targetCountSpin->setValue(m_targetCount);
 }

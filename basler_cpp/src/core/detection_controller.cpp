@@ -14,7 +14,7 @@ namespace basler
         : QObject(parent)
     {
         // 從配置載入參數
-        const auto &config = getConfig();
+        const auto &config = Settings::instance();
         const auto &det = config.detection();
         const auto &gate = config.gate();
         const auto &pkg = config.packaging();
@@ -172,7 +172,7 @@ namespace basler
             // ========== 解析度縮放 ==========
             // 根據 targetProcessingWidth 計算縮放比例，使處理影像寬度恆為目標值。
             // 目的：讓檢測參數（minArea / roiHeight 等）在任何相機解析度下都有一致的物理意義。
-            int targetW = getConfig().performance().targetProcessingWidth;
+            int targetW = Settings::instance().performance().targetProcessingWidth;
             double scale = (targetW > 0 && origW > targetW)
                                ? static_cast<double>(targetW) / origW
                                : 1.0;
@@ -1461,7 +1461,7 @@ namespace basler
         if (success)
         {
             // 更新配置
-            auto &config = getConfig();
+            auto &config = Settings::instance();
             config.yolo().modelPath = modelPath;
             qDebug() << "[DetectionController] YOLO 模型已載入:" << modelPath;
         }

@@ -332,11 +332,6 @@ private:
     QString m_configFilePath;
 };
 
-// 便捷函數
-inline AppConfig& getConfig() {
-    return AppConfig::instance();
-}
-
 // 別名：Settings = AppConfig（相容性）
 using Settings = AppConfig;
 

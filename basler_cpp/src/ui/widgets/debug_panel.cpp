@@ -17,6 +17,8 @@
 #include <QTextEdit>
 #include <QScrollBar>
 #include <QTime>
+#include <QDate>
+#include <QTextStream>
 #include <opencv2/imgproc.hpp>
 
 namespace basler {
@@ -808,6 +810,20 @@ void DebugPanelWidget::appendLog(const QString& message, LogLevel level)
     m_logTextEdit->append(html);
     // document()->setMaximumBlockCount() 已自動修剪，無需手動清除
     m_logTextEdit->verticalScrollBar()->setValue(m_logTextEdit->verticalScrollBar()->maximum());
+
+    // 持久化：同步寫入 Documents/BaslerReports/operation_YYYYMMDD.log
+    const QString logsDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                            + "/BaslerReports";
+    QDir().mkpath(logsDir);
+    const QString logFile = logsDir + "/operation_"
+                            + QDate::currentDate().toString("yyyyMMdd") + ".log";
+    QFile f(logFile);
+    if (f.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&f);
+        out.setEncoding(QStringConverter::Utf8);
+        // 純文字格式：[HH:mm:ss] 原始訊息
+        out << "[" << time << "] " << message << "\n";
+    }
 }
 
 void DebugPanelWidget::logCountEvent(int count, int frame)

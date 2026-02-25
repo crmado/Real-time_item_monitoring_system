@@ -473,6 +473,14 @@ namespace basler
         // ========== 幫助選單 ==========
         QMenu *helpMenu = menuBar()->addMenu("幫助(&H)");
 
+        QAction *setupWizardAction = helpMenu->addAction("重新執行設定向導(&W)");
+        connect(setupWizardAction, &QAction::triggered, [this]() {
+            SetupWizard wizard(this);
+            wizard.exec();
+            m_debugPanel->syncFromConfig();
+        });
+        helpMenu->addSeparator();
+
         QAction *aboutAction = helpMenu->addAction("關於(&A)");
         connect(aboutAction, &QAction::triggered, [this]()
                 { QMessageBox::about(this, "關於",
@@ -1369,7 +1377,7 @@ namespace basler
         // 重置 UI 狀態
         m_packagingControl->countingPanel()->setPackagingState(false);
         m_packagingControl->countingPanel()->resetTrendChart();  // 清除趨勢圖歷史
-        auto &pkg = getConfig().packaging();
+        auto &pkg = Settings::instance().packaging();
         m_packagingControl->updateCount(0, pkg.targetCount);
         m_packagingControl->updateVibratorStatus(false, false, 0);
 
@@ -1522,10 +1530,13 @@ namespace basler
         {
             out << "時間戳,零件類型,檢測方法,目標數量,實際數量,"
                    "耗時(秒),速率(件/秒),minArea,maxArea,"
-                   "bgVarThreshold,cannyLow,cannyHigh\n";
+                   "bgVarThreshold,cannyLow,cannyHigh,"
+                   "gateLineRatio,roiEnabled,skipFrames\n";
         }
 
         const auto& det  = Settings::instance().detection();
+        const auto& gate = Settings::instance().gate();
+        const auto& perf = Settings::instance().performance();
         double rate      = (elapsedSec > 0) ? actual / elapsedSec : 0.0;
         QString partId   = m_packagingControl->currentPartId();
         QString methodId = m_packagingControl->currentMethodId();
@@ -1541,7 +1552,10 @@ namespace basler
             << det.maxArea << ","
             << det.bgVarThreshold << ","
             << det.cannyLowThreshold << ","
-            << det.cannyHighThreshold << "\n";
+            << det.cannyHighThreshold << ","
+            << QString::number(gate.gateLinePositionRatio, 'f', 3) << ","
+            << (det.roiEnabled ? "true" : "false") << ","
+            << perf.skipFrames << "\n";
 
         m_statusLabel->setText(QString("📄 報告已儲存: %1").arg(filePath));
         qDebug() << "[MainWindow] 導出報告:" << filePath;

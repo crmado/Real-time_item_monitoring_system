@@ -258,17 +258,19 @@ MainWindow
 
 ### 潛在優化建議（Backlog）
 
-- [ ] **統一使用 `Settings::instance()`，移除 `getConfig()` 別名**
-  目前兩者都定義在 `settings.h`，但代碼中全用 `Settings::instance()`，`getConfig()` 未使用，可移除避免混亂
+- [x] **統一使用 `Settings::instance()`，移除 `getConfig()` 別名**
+  7 個呼叫點（detection_controller.cpp × 3、setup_wizard.cpp × 5、part_selector.cpp × 2 等）
+  全數替換為 `Settings::instance()`，並從 settings.h 移除 `getConfig()` inline 函數。
 
-- [ ] **CSV 報告補充欄位**
-  目前記錄 5 個參數，可考慮加入：gateLinePositionRatio、roiEnabled、skip frames
+- [x] **CSV 報告補充欄位**
+  標頭和資料列新增：gateLinePositionRatio、roiEnabled、skipFrames（共 15 欄）。
 
-- [ ] **操作日誌持久化**
-  目前日誌只在執行期存在，關閉後消失。可在 `Documents/BaslerReports/` 同時寫入 `operation_YYYYMMDD.log`
+- [x] **操作日誌持久化**
+  `appendLog()` 寫入 UI 的同時，同步 append 到
+  `Documents/BaslerReports/operation_YYYYMMDD.log`（純文字，UTF-8）。
 
-- [ ] **SetupWizard「重新顯示向導」選單項**
-  目前 `wizardDone=true` 後無法再觸發，建議在「說明」選單加「重新執行設定向導」
+- [x] **SetupWizard「重新顯示向導」選單項**
+  「幫助」選單新增「重新執行設定向導(&W)」，完成後呼叫 `m_debugPanel->syncFromConfig()` 刷新 UI。
 
 - [ ] **Light Theme 完整性**
   目前淺色主題只覆蓋主框架（QMainWindow/MenuBar/TabWidget），

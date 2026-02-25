@@ -40,7 +40,7 @@ void PartSelectorWidget::loadPartTypes()
 {
     m_comboBox->clear();
 
-    const auto& config = getConfig();
+    const auto& config = Settings::instance();
     const auto& profiles = config.partProfiles();
 
     for (const auto& profile : profiles) {
@@ -94,7 +94,7 @@ void PartSelectorWidget::onComboBoxChanged(int index)
     QString partId = m_comboBox->itemData(index).toString();
 
     // 更新描述
-    const auto& config = getConfig();
+    const auto& config = Settings::instance();
     const auto* profile = config.getPartProfile(partId);
     if (profile) {
         m_descriptionLabel->setText(profile->description);

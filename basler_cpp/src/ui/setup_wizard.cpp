@@ -97,21 +97,21 @@ public:
         // minArea
         m_minAreaSpin = new QSpinBox(this);
         m_minAreaSpin->setRange(1, 500);
-        m_minAreaSpin->setValue(getConfig().detection().minArea);
+        m_minAreaSpin->setValue(Settings::instance().detection().minArea);
         m_minAreaSpin->setSuffix(tr(" px²"));
         form->addRow(tr("最小面積（minArea）："), m_minAreaSpin);
 
         // maxArea
         m_maxAreaSpin = new QSpinBox(this);
         m_maxAreaSpin->setRange(100, 50000);
-        m_maxAreaSpin->setValue(getConfig().detection().maxArea);
+        m_maxAreaSpin->setValue(Settings::instance().detection().maxArea);
         m_maxAreaSpin->setSuffix(tr(" px²"));
         form->addRow(tr("最大面積（maxArea）："), m_maxAreaSpin);
 
         // bgVarThreshold
         m_bgVarSpin = new QSpinBox(this);
         m_bgVarSpin->setRange(1, 50);
-        m_bgVarSpin->setValue(static_cast<int>(getConfig().detection().bgVarThreshold));
+        m_bgVarSpin->setValue(static_cast<int>(Settings::instance().detection().bgVarThreshold));
         m_bgVarSpin->setToolTip(tr("背景方差閾值：數字越小越靈敏，越容易偵測微小移動"));
         form->addRow(tr("背景敏感度（bgVarThreshold）："), m_bgVarSpin);
 
@@ -161,7 +161,7 @@ public:
 
         m_targetCountSpin = new QSpinBox(this);
         m_targetCountSpin->setRange(1, 9999);
-        m_targetCountSpin->setValue(getConfig().packaging().targetCount);
+        m_targetCountSpin->setValue(Settings::instance().packaging().targetCount);
         m_targetCountSpin->setSuffix(tr(" 顆"));
         form->addRow(tr("每包目標數量："), m_targetCountSpin);
 
@@ -213,7 +213,7 @@ bool SetupWizard::isFirstRun()
 void SetupWizard::accept()
 {
     // 將向導中的設定值寫入 Settings
-    auto& cfg = getConfig();
+    auto& cfg = Settings::instance();
 
     cfg.detection().minArea        = field("minArea").toInt();
     cfg.detection().maxArea        = field("maxArea").toInt();
