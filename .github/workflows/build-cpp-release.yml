@@ -478,7 +478,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}-${{ steps.version.outputs.VERSION }}
           path: release_output/*
-          retention-days: 30
+          retention-days: 1
 
   # 創建 Release
   create-release:

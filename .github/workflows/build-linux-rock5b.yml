@@ -1,0 +1,214 @@
+name: Build Linux ARM64 (Rock 5B)
+
+# 專為 Rock 5B (RK3588 aarch64) 設計的輕量打包 workflow
+# 特點：直接上傳到 GitHub Release，完全不使用 artifact storage (0 MB-days)
+#
+# 觸發方式：
+#   1. 手動觸發 (workflow_dispatch) → 可選擇是否建立 Release
+#   2. 推送 cpp-v*.*.* 標籤 → 自動建立 Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本號 (例如: 2.0.3)"
+        required: true
+        default: "2.0.0"
+        type: string
+      create_release:
+        description: "是否建立 GitHub Release"
+        required: true
+        type: boolean
+        default: false
+
+  push:
+    tags:
+      - "cpp-v*.*.*"
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-aarch64:
+    name: Build Linux ARM64 (aarch64)
+    runs-on: ubuntu-24.04-arm        # GitHub 原生 ARM64 runner（不需模擬，速度快）
+
+    steps:
+      - name: 📥 檢出代碼
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📝 取得版本號
+        id: version
+        # 使用 env: 隔離外部輸入，避免命令注入
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          GIT_REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "$GIT_REF" == refs/tags/cpp-v* ]]; then
+            VERSION="${GIT_REF#refs/tags/cpp-v}"
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          # 確保版本號不含非法字符
+          VERSION_SAFE=$(echo "$VERSION" | tr '/' '-' | tr ':' '-')
+          echo "VERSION=$VERSION_SAFE" >> $GITHUB_OUTPUT
+          echo "📌 版本: $VERSION_SAFE"
+
+      - name: 🔧 安裝依賴 (Qt6 + OpenCV)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev qt6-multimedia-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libopencv-dev \
+            libxcb-xinerama0 libxcb-cursor0 libxkbcommon-x11-0 \
+            libfuse2 wget file
+
+      - name: 🔨 CMake 設定
+        run: |
+          cd basler_cpp
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DSKIP_PYLON=ON
+
+      - name: 🔨 編譯
+        run: cmake --build basler_cpp/build --parallel --config ${{ env.BUILD_TYPE }}
+
+      - name: 🎁 打包 AppImage
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          ARCH: aarch64
+          APP_NAME: BaslerVisionSystem
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          APPIMAGE_NAME="${APP_NAME}_v${VERSION}_Linux-${ARCH}.AppImage"
+
+          # 建立 AppDir 結構
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          cp "basler_cpp/build/$APP_NAME" AppDir/usr/bin/
+          [ -d basler_cpp/assets ] && cp -r basler_cpp/assets  AppDir/usr/bin/ || true
+          [ -d basler_cpp/config ] && cp -r basler_cpp/config  AppDir/usr/bin/ || true
+          [ -d basler_cpp/models ] && cp -r basler_cpp/models  AppDir/usr/bin/ || true
+
+          # .desktop 文件
+          printf '%s\n' \
+            "[Desktop Entry]" \
+            "Type=Application" \
+            "Name=Basler Vision System" \
+            "Comment=Industrial Vision Detection System" \
+            "Exec=BaslerVisionSystem" \
+            "Icon=BaslerVisionSystem" \
+            "Categories=Utility;Development;" \
+            "Terminal=false" \
+            > "AppDir/usr/share/applications/${APP_NAME}.desktop"
+          cp "AppDir/usr/share/applications/${APP_NAME}.desktop" AppDir/
+
+          # 圖標（優先使用現有圖標）
+          ICON_DST="AppDir/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+          if [ -f "basler_cpp/assets/icon.png" ]; then
+            cp basler_cpp/assets/icon.png "$ICON_DST"
+          else
+            python3 -c "
+          import struct, zlib, sys
+          w, h = 256, 256; r, g, b = 30, 120, 200
+          raw = b''.join(b'\x00' + bytes([r, g, b]) * w for _ in range(h))
+          c = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t+d) & 0xffffffff)
+          sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n' + c(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + c(b'IDAT', zlib.compress(raw)) + c(b'IEND', b''))
+          " > "$ICON_DST"
+          fi
+          cp "$ICON_DST" AppDir/
+
+          # 下載 linuxdeploy aarch64
+          BASE_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous"
+          PLUGIN_URL="https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous"
+          wget -q "${BASE_URL}/linuxdeploy-aarch64.AppImage"
+          wget -q "${PLUGIN_URL}/linuxdeploy-plugin-qt-aarch64.AppImage"
+          chmod +x linuxdeploy-*.AppImage
+
+          # 生成 AppImage
+          QMAKE=$(which qmake6 2>/dev/null || which qmake 2>/dev/null || echo "")
+          [ -n "$QMAKE" ] && export QMAKE="$QMAKE" || true
+
+          ./linuxdeploy-aarch64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --desktop-file "AppDir/usr/share/applications/${APP_NAME}.desktop" \
+            --icon-file "$ICON_DST" \
+            --output appimage
+
+          # 找到並重命名 AppImage
+          GENERATED=$(find . -maxdepth 1 -name "*.AppImage" ! -name "linuxdeploy*" -print -quit)
+          if [ -z "$GENERATED" ]; then
+            echo "❌ AppImage 生成失敗"
+            exit 1
+          fi
+          mv "$GENERATED" "$APPIMAGE_NAME"
+
+          SIZE=$(du -sh "$APPIMAGE_NAME" | cut -f1)
+          echo "✅ AppImage: $APPIMAGE_NAME ($SIZE)"
+
+          # 寫入環境變數供後續步驟使用
+          echo "APPIMAGE_PATH=$APPIMAGE_NAME" >> $GITHUB_ENV
+          echo "APPIMAGE_SIZE=$SIZE"          >> $GITHUB_ENV
+
+      # ──────────────────────────────────────────────────────────────────────
+      # 直接建立 GitHub Release（不走 upload-artifact，零 artifact storage）
+      # Release assets 不計入 Actions 500MB 儲存額度
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 🚀 建立 GitHub Release
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cpp-v')) ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cpp-v${{ steps.version.outputs.VERSION }}
+          name: "Basler Vision System v${{ steps.version.outputs.VERSION }} (Linux ARM64)"
+          body: |
+            ## Linux ARM64 (Rock 5B / RK3588 aarch64)
+
+            ### 安裝方式
+            ```bash
+            # 方法一：需要 libfuse2
+            sudo apt install libfuse2
+            chmod +x BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-aarch64.AppImage
+            ./BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-aarch64.AppImage
+
+            # 方法二：不需要 FUSE（直接解壓執行）
+            ./BaslerVisionSystem_v${{ steps.version.outputs.VERSION }}_Linux-aarch64.AppImage --appimage-extract-and-run
+            ```
+
+            ### 系統需求
+            - 架構：aarch64 (ARM64)
+            - 系統：Ubuntu 22.04+ / Debian 12+ / Armbian
+            - 測試平台：Rock 5B (RK3588)
+          files: ${{ env.APPIMAGE_PATH }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Build 摘要
+        if: always()
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          APPIMAGE: ${{ env.APPIMAGE_PATH }}
+          SIZE: ${{ env.APPIMAGE_SIZE }}
+        run: |
+          echo "### Build 結果 (Linux ARM64)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 項目 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| 版本 | $VERSION |" >> $GITHUB_STEP_SUMMARY
+          echo "| 架構 | aarch64 (Rock 5B) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 檔案 | $APPIMAGE |" >> $GITHUB_STEP_SUMMARY
+          echo "| 大小 | $SIZE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact Storage 使用 | **0 MB** |" >> $GITHUB_STEP_SUMMARY
