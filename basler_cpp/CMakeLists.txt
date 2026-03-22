@@ -11,18 +11,28 @@ set(CMAKE_AUTOUIC ON)
 # 依賴查找
 # ============================================================================
 
-# Try Qt6 first, fallback to Qt5
-find_package(Qt6 QUIET COMPONENTS Core Gui Widgets Multimedia MultimediaWidgets Concurrent)
+# 優先使用 Homebrew Qt6（避免 Anaconda Qt5 搶先）
+list(PREPEND CMAKE_PREFIX_PATH
+    "/opt/homebrew/opt/qt@6"
+    "/opt/homebrew/opt/qt6"
+    "/opt/homebrew"
+)
+
+# Qt6（基本模組，不含 MQTT）
+find_package(Qt6 QUIET COMPONENTS Core Gui Widgets Multimedia MultimediaWidgets Concurrent Network)
 
 if(NOT Qt6_FOUND)
     message(STATUS "Qt6 not found, trying Qt5...")
-    find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Multimedia MultimediaWidgets Concurrent)
+    find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Multimedia MultimediaWidgets Concurrent Network)
     set(QT_VERSION_MAJOR 5)
 else()
     set(QT_VERSION_MAJOR 6)
 endif()
 
 message(STATUS "Using Qt${QT_VERSION_MAJOR}")
+
+# MQTT 功能由內建 MinimalMqttClient 提供（QSslSocket），不依賴 Qt MQTT 模組
+message(STATUS "MQTT: 使用內建 MinimalMqttClient (QSslSocket)")
 
 # OpenCV (含 dnn 模組，用於 YOLO ONNX 推理)
 find_package(OpenCV REQUIRED COMPONENTS
@@ -71,6 +81,8 @@ set(CORE_SOURCES
     src/core/source_manager.cpp
     src/core/detection_controller.cpp
     src/core/vibrator_controller.cpp
+    src/core/minimal_mqtt_client.cpp
+    src/core/mqtt_vibrator_controller.cpp
     src/core/yolo_detector.cpp
 )
 
@@ -81,6 +93,8 @@ set(CORE_HEADERS
     include/core/source_manager.h
     include/core/detection_controller.h
     include/core/vibrator_controller.h
+    include/core/minimal_mqtt_client.h
+    include/core/mqtt_vibrator_controller.h
     include/core/yolo_detector.h
 )
 
@@ -120,6 +134,7 @@ set(WIDGET_SOURCES
     src/ui/widgets/camera_control.cpp
     src/ui/widgets/recording_control.cpp
     src/ui/widgets/packaging_control.cpp
+    src/ui/widgets/vibrator_control.cpp
     src/ui/widgets/debug_panel.cpp
     src/ui/widgets/part_selector.cpp
     src/ui/widgets/method_selector.cpp
@@ -133,6 +148,7 @@ set(WIDGET_HEADERS
     include/ui/widgets/camera_control.h
     include/ui/widgets/recording_control.h
     include/ui/widgets/packaging_control.h
+    include/ui/widgets/vibrator_control.h
     include/ui/widgets/debug_panel.h
     include/ui/widgets/part_selector.h
     include/ui/widgets/method_selector.h
@@ -175,6 +191,7 @@ if(QT_VERSION_MAJOR EQUAL 6)
         Qt6::Multimedia
         Qt6::MultimediaWidgets
         Qt6::Concurrent
+        Qt6::Network
         ${OpenCV_LIBS}
     )
 else()
@@ -185,9 +202,11 @@ else()
         Qt5::Multimedia
         Qt5::MultimediaWidgets
         Qt5::Concurrent
+        Qt5::Network
         ${OpenCV_LIBS}
     )
 endif()
+
 
 # 條件性連結 Pylon 庫
 if(NOT SKIP_PYLON AND PYLON_LIBRARY)

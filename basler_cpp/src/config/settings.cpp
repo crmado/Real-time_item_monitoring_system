@@ -204,6 +204,65 @@ PerformanceConfig PerformanceConfig::fromJson(const QJsonObject& json)
     return config;
 }
 
+// ============================================================================
+// MqttConfig
+// ============================================================================
+
+QJsonObject MqttConfig::toJson() const
+{
+    QJsonArray macsArr;
+    for (const auto& mac : deviceMacs) macsArr.append(mac);
+
+    QJsonObject speedsObj;
+    for (auto it = deviceSpeeds.constBegin(); it != deviceSpeeds.constEnd(); ++it)
+        speedsObj[it.key()] = it.value();
+
+    return QJsonObject{
+        {"enabled",      enabled},
+        {"broker",       broker},
+        {"port",         port},
+        {"username",     username},
+        {"password",     password},
+        {"clientId",     clientId},
+        {"useSsl",       useSsl},
+        {"deviceMacs",   macsArr},
+        {"deviceSpeeds", speedsObj}
+    };
+}
+
+MqttConfig MqttConfig::fromJson(const QJsonObject& json)
+{
+    MqttConfig config;
+    config.enabled  = json.value("enabled").toBool(config.enabled);
+    config.broker   = json.value("broker").toString(config.broker);
+    config.port     = json.value("port").toInt(config.port);
+    config.username = json.value("username").toString(config.username);
+    config.password = json.value("password").toString(config.password);
+    config.clientId = json.value("clientId").toString(config.clientId);
+    config.useSsl   = json.value("useSsl").toBool(config.useSsl);
+
+    // 相容舊格式 vibrator1Mac / vibrator2Mac
+    if (json.contains("deviceMacs")) {
+        config.deviceMacs.clear();
+        for (const auto& v : json.value("deviceMacs").toArray())
+            config.deviceMacs << v.toString();
+    } else {
+        config.deviceMacs.clear();
+        QString m1 = json.value("vibrator1Mac").toString();
+        QString m2 = json.value("vibrator2Mac").toString();
+        if (!m1.isEmpty()) config.deviceMacs << m1;
+        if (!m2.isEmpty()) config.deviceMacs << m2;
+        if (config.deviceMacs.isEmpty()) config.deviceMacs << "F22F77";
+    }
+
+    // 載入各設備儲存的速度
+    const QJsonObject speedsObj = json.value("deviceSpeeds").toObject();
+    for (auto it = speedsObj.constBegin(); it != speedsObj.constEnd(); ++it)
+        config.deviceSpeeds[it.key()] = it.value().toInt(0);
+
+    return config;
+}
+
 QJsonObject DebugConfig::toJson() const
 {
     return QJsonObject{
@@ -441,6 +500,7 @@ bool AppConfig::load(const QString& filePath)
     m_debug = DebugConfig::fromJson(root.value("debug").toObject());
     m_ui = UIConfig::fromJson(root.value("ui").toObject());
     m_yolo = YoloConfig::fromJson(root.value("yolo").toObject());
+    m_mqtt = MqttConfig::fromJson(root.value("mqtt").toObject());
 
     // 載入零件配置
     QJsonArray partsArray = root.value("partProfiles").toArray();
@@ -484,6 +544,7 @@ bool AppConfig::save(const QString& filePath) const
     root["debug"] = m_debug.toJson();
     root["ui"] = m_ui.toJson();
     root["yolo"] = m_yolo.toJson();
+    root["mqtt"] = m_mqtt.toJson();
     root["partProfiles"] = partsArray;
     root["currentPartId"] = m_currentPartId;
 

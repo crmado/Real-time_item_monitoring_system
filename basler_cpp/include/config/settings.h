@@ -3,6 +3,8 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
+#include <QMap>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QFile>
@@ -163,6 +165,32 @@ struct YoloConfig {
 };
 
 /**
+ * @brief MQTT 震動機控制配置
+ *
+ * 主題格式：vibratory/{MAC}/cmd/speed  payload: 0~100
+ * 多台設備共用同一個 EMQX 連線，透過 deviceMacs 列表管理。
+ */
+struct MqttConfig {
+    bool enabled = false;
+
+    // Broker 連線參數
+    QString broker   = "www.crmado.tw";  // domain name 讓 SSL SNI 正確匹配憑證
+    int     port     = 8883;             // SSL port（非 SSL 用 1883）
+    QString username = "nuuCSIE01";
+    QString password = "nuuCSIE404";
+    QString clientId = "basler-vision-system";
+    bool    useSsl   = true;
+
+    // 震動機設備 MAC 列表（可動態新增/刪除）
+    QStringList         deviceMacs   = {"F22F77"};
+    // 各設備上次設定的速度（key=MAC, value=0~100），重啟後還原
+    QMap<QString, int>  deviceSpeeds;
+
+    QJsonObject toJson() const;
+    static MqttConfig fromJson(const QJsonObject& json);
+};
+
+/**
  * @brief 調試配置
  */
 struct DebugConfig {
@@ -286,6 +314,9 @@ public:
     UIConfig& ui() { return m_ui; }
     const UIConfig& ui() const { return m_ui; }
 
+    MqttConfig& mqtt() { return m_mqtt; }
+    const MqttConfig& mqtt() const { return m_mqtt; }
+
     // 零件庫
     const std::vector<PartProfile>& partProfiles() const { return m_partProfiles; }
     PartProfile* getPartProfile(const QString& partId);
@@ -330,6 +361,8 @@ private:
     QString m_currentPartId = "default_small_part";
 
     QString m_configFilePath;
+
+    MqttConfig m_mqtt;
 };
 
 // 別名：Settings = AppConfig（相容性）

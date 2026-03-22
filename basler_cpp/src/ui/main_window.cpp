@@ -4,6 +4,7 @@
 #include "ui/widgets/camera_control.h"
 #include "ui/widgets/recording_control.h"
 #include "ui/widgets/packaging_control.h"
+#include "ui/widgets/vibrator_control.h"
 #include "ui/widgets/method_panels/counting_method_panel.h"
 #include "ui/widgets/method_panels/defect_detection_method_panel.h"
 #include "ui/widgets/debug_panel.h"
@@ -11,6 +12,7 @@
 #include "ui/widgets/system_monitor.h"
 #include "config/settings.h"
 #include "core/video_player.h"
+#include "core/minimal_mqtt_client.h"
 
 #include <QMenuBar>
 #include <QStatusBar>
@@ -35,6 +37,8 @@
 #include <QSettings>
 #include <QApplication>
 #include <QActionGroup>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 
@@ -62,7 +66,14 @@ namespace basler
         m_sourceManager = std::make_unique<SourceManager>(this);
         m_detectionController = std::make_unique<DetectionController>(this);
         m_videoRecorder = std::make_unique<VideoRecorder>("recordings", this);
-        m_vibratorManager = createDualVibratorManager("simulated", "震動機A", "震動機B");
+        // MQTT 客戶端（直接連 EMQX，不與震動機管理器耦合）
+        m_mqttClient = new MinimalMqttClient(this);
+
+        // 震動機管理器（使用模擬控制器，供包裝流程的 UI 狀態追蹤）
+        auto simV1 = std::make_unique<SimulatedVibratorController>("震動機A");
+        auto simV2 = std::make_unique<SimulatedVibratorController>("震動機B");
+        m_vibratorManager = std::make_unique<DualVibratorManager>(
+            std::move(simV1), std::move(simV2));
 
         // 設置 UI
         setupUi();
@@ -75,6 +86,7 @@ namespace basler
         connectPackagingSignals();
         connectDetectionSignals();
         connectDebugSignals();
+        connectVibratorSignals();
 
         // UI 更新定時器（60 FPS）
         m_updateTimer = new QTimer(this);
@@ -382,6 +394,10 @@ namespace basler
         m_packagingControl = new PackagingControlWidget();
         monitoringLayout->addWidget(m_packagingControl);
 
+        // 震動機 MQTT 控制（與包裝控制同在監控頁，非檢測期間也可手動操作）
+        m_vibratorControl = new VibratorControlWidget();
+        monitoringLayout->addWidget(m_vibratorControl);
+
         // 系統監控
         m_systemMonitor = new SystemMonitorWidget();
         monitoringLayout->addWidget(m_systemMonitor);
@@ -399,10 +415,10 @@ namespace basler
         // Debug Panel 內部已自帶 QScrollArea，不需要再包一層
         m_debugPanel = new DebugPanelWidget();
 
-        // 添加分頁
-        tabWidget->addTab(settingsScroll, "⚙️ 設定");
-        tabWidget->addTab(monitoringScroll, "📊 監控");
-        tabWidget->addTab(m_debugPanel, "🛠️ 調試");
+        // 添加分頁（震動機已整合進監控頁，不再獨立成 Tab）
+        tabWidget->addTab(settingsScroll,  "⚙️ 設定");
+        tabWidget->addTab(monitoringScroll,"📊 監控");
+        tabWidget->addTab(m_debugPanel,    "🛠️ 調試");
 
         // 預設顯示「檢測監控」頁面
         tabWidget->setCurrentIndex(1);
@@ -917,6 +933,141 @@ namespace basler
         // 分割顯示模式（Debug Panel 按鈕觸發）
         connect(m_debugPanel, &DebugPanelWidget::splitViewToggleRequested,
                 this, &MainWindow::toggleSplitView);
+    }
+
+    // ============================================================================
+    // 震動機 MQTT 控制信號連接
+    // ============================================================================
+
+    void MainWindow::connectVibratorSignals()
+    {
+        if (!m_vibratorControl || !m_mqttClient) return;
+
+        // Widget → MainWindow
+        connect(m_vibratorControl, &VibratorControlWidget::connectRequested,
+                this, &MainWindow::onVibratorConnectRequested);
+        connect(m_vibratorControl, &VibratorControlWidget::disconnectRequested,
+                this, &MainWindow::onVibratorDisconnectRequested);
+        connect(m_vibratorControl, &VibratorControlWidget::publishRequested,
+                this, &MainWindow::onVibratorPublishRequested);
+        connect(m_vibratorControl, &VibratorControlWidget::deviceListChanged,
+                this, &MainWindow::onVibratorDeviceListChanged);
+        // 用戶鬆開滑桿 → 持久化速度到設定檔
+        connect(m_vibratorControl, &VibratorControlWidget::deviceSpeedSaved,
+                this, [this](const QString& mac, int speed) {
+            AppConfig::instance().mqtt().deviceSpeeds[mac] = speed;
+            AppConfig::instance().save();
+            qDebug() << "[MainWindow] 速度已儲存" << mac << "=" << speed;
+        });
+
+        // MinimalMqttClient → Widget（狀態回饋）
+        connect(m_mqttClient, &MinimalMqttClient::connected,
+                this, [this]() {
+            m_vibratorControl->setMqttConnected(true);
+            m_statusLabel->setText("震動機 MQTT 已連接 EMQX");
+            qDebug() << "[MainWindow] MQTT 連線成功";
+
+            // 訂閱各設備的 cmd 主題（發送控制用）
+            const QStringList macs = m_vibratorControl->currentMacs();
+            for (const auto& mac : macs) {
+                m_mqttClient->subscribe(QString("vibratory/%1/cmd/speed").arg(mac));
+                m_mqttClient->subscribe(QString("vibratory/%1/cmd/run").arg(mac));
+            }
+            // 訂閱所有設備的狀態主題（wildcard），用於還原設備速度
+            m_mqttClient->subscribe("vibratory/+/status");
+            m_mqttClient->subscribe("vibratory/+/online");
+        });
+        connect(m_mqttClient, &MinimalMqttClient::disconnected,
+                this, [this]() {
+            m_vibratorControl->setMqttConnected(false);
+            m_statusLabel->setText("震動機 MQTT 已斷線");
+        });
+        connect(m_mqttClient, &MinimalMqttClient::errorOccurred,
+                this, [this](const QString& err) {
+            m_vibratorControl->showMqttError(err);
+            m_statusLabel->setText("MQTT 錯誤：" + err);
+            qWarning() << "[MainWindow] MQTT 錯誤:" << err;
+        });
+        // 收到 EMQX 下行訊息：記錄日誌，並解析 status/online 主題還原設備速度
+        connect(m_mqttClient, &MinimalMqttClient::messageReceived,
+                this, [this](const QString& topic, const QByteArray& payload) {
+            const QString msg = QString("← %1: %2").arg(topic, QString::fromUtf8(payload));
+            if (m_debugPanel) m_debugPanel->appendLog(msg, DebugPanelWidget::LogLevel::Info);
+            qDebug() << "[MQTT RX]" << msg;
+
+            // 解析 vibratory/{MAC}/status 或 vibratory/{MAC}/online
+            const QStringList parts = topic.split('/');
+            if (parts.size() >= 3 && parts[0] == "vibratory"
+                && (parts[2] == "status" || parts[2] == "online"))
+            {
+                const QString mac = parts[1];  // 已是 normalized MAC
+                int speed = -1;
+
+                // 嘗試解析 JSON payload，例如 {"speed": 75} 或 {"speed":75,"run":1}
+                const QJsonDocument doc = QJsonDocument::fromJson(payload);
+                if (!doc.isNull() && doc.isObject()) {
+                    speed = doc.object().value("speed").toInt(-1);
+                } else {
+                    // fallback：payload 直接是數字字串 "75"
+                    bool ok = false;
+                    const int v = QString::fromUtf8(payload).trimmed().toInt(&ok);
+                    if (ok) speed = v;
+                }
+
+                if (speed >= 0 && speed <= 100 && m_vibratorControl) {
+                    m_vibratorControl->setDeviceSpeed(mac, speed);
+                    AppConfig::instance().mqtt().deviceSpeeds[mac] = speed;
+                    qDebug() << "[MainWindow] 從" << parts[2]
+                             << "還原設備" << mac << "速度 =" << speed;
+                }
+            }
+        });
+    }
+
+    // ============================================================================
+    // 震動機控制 Slots
+    // ============================================================================
+
+    void MainWindow::onVibratorConnectRequested(const QString& broker, int port, bool useSsl)
+    {
+        if (!m_mqttClient) return;
+        auto& cfg   = AppConfig::instance().mqtt();
+        cfg.broker  = broker;
+        cfg.port    = port;
+        cfg.useSsl  = useSsl;
+        cfg.deviceMacs = m_vibratorControl ? m_vibratorControl->currentMacs() : cfg.deviceMacs;
+
+        m_mqttClient->connectToHost(broker, static_cast<quint16>(port),
+                                    cfg.clientId, cfg.username, cfg.password, useSsl);
+        m_statusLabel->setText(QString("正在連接 %1:%2 %3")
+                                   .arg(broker).arg(port)
+                                   .arg(useSsl ? "(SSL)" : "(TCP)"));
+    }
+
+    void MainWindow::onVibratorDisconnectRequested()
+    {
+        if (m_mqttClient) m_mqttClient->disconnectFromHost();
+    }
+
+    void MainWindow::onVibratorPublishRequested(const QString& topic, const QByteArray& payload)
+    {
+        if (!m_mqttClient || !m_mqttClient->isConnected()) return;
+        m_mqttClient->publish(topic, payload);
+        qDebug() << "[MainWindow] MQTT publish:" << topic << "=" << payload;
+    }
+
+    void MainWindow::onVibratorDeviceListChanged(const QStringList& macs)
+    {
+        AppConfig::instance().mqtt().deviceMacs = macs;
+        AppConfig::instance().save();  // 立即持久化設備列表
+
+        // 若已連線，對新加入的設備補訂閱
+        if (m_mqttClient && m_mqttClient->isConnected()) {
+            for (const auto& mac : macs) {
+                m_mqttClient->subscribe(QString("vibratory/%1/cmd/speed").arg(mac));
+                m_mqttClient->subscribe(QString("vibratory/%1/cmd/run").arg(mac));
+            }
+        }
     }
 
     void MainWindow::toggleFullscreenMode()

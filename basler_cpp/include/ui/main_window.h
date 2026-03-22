@@ -14,8 +14,8 @@
 #include "core/detection_controller.h"
 #include "core/video_recorder.h"
 #include "core/vibrator_controller.h"
+#include "core/minimal_mqtt_client.h"
 
-// 前向聲明 Widget
 namespace basler
 {
     class VideoDisplayWidget;
@@ -24,6 +24,7 @@ namespace basler
     class PackagingControlWidget;
     class DebugPanelWidget;
     class SystemMonitorWidget;
+    class VibratorControlWidget;
 }
 
 namespace basler
@@ -112,6 +113,12 @@ namespace basler
         void onSaveConfig();
         void onLoadConfig();
 
+        // ========== 震動機 MQTT 控制 ==========
+        void onVibratorConnectRequested(const QString& broker, int port, bool useSsl);
+        void onVibratorDisconnectRequested();
+        void onVibratorPublishRequested(const QString& topic, const QByteArray& payload);
+        void onVibratorDeviceListChanged(const QStringList& macs);
+
     private:
         void setupUi();
         void setupMenuBar();
@@ -122,6 +129,7 @@ namespace basler
         void connectPackagingSignals();
         void connectDetectionSignals();
         void connectDebugSignals();
+        void connectVibratorSignals();
 
         void processFrame(const cv::Mat &frame);
         void updateButtonStates();
@@ -134,6 +142,7 @@ namespace basler
         std::unique_ptr<DetectionController> m_detectionController;
         std::unique_ptr<VideoRecorder> m_videoRecorder;
         std::unique_ptr<DualVibratorManager> m_vibratorManager;
+        MinimalMqttClient* m_mqttClient = nullptr;  // EMQX 連線（owned by this）
 
         // ========== UI 組件 ==========
         QSplitter *m_mainSplitter         = nullptr;
@@ -143,6 +152,7 @@ namespace basler
         RecordingControlWidget *m_recordingControl  = nullptr;
         PackagingControlWidget *m_packagingControl  = nullptr;
         SystemMonitorWidget    *m_systemMonitor     = nullptr;
+        VibratorControlWidget  *m_vibratorControl   = nullptr;
 
         // 視頻顯示
         VideoDisplayWidget *m_videoDisplay   = nullptr;

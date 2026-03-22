@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <QCoreApplication>
 #include <QRegularExpression>
 #include <QTextEdit>
 #include <QScrollBar>
@@ -811,10 +812,15 @@ void DebugPanelWidget::appendLog(const QString& message, LogLevel level)
     // document()->setMaximumBlockCount() 已自動修剪，無需手動清除
     m_logTextEdit->verticalScrollBar()->setValue(m_logTextEdit->verticalScrollBar()->maximum());
 
-    // 持久化：同步寫入 Documents/BaslerReports/operation_YYYYMMDD.log
-    const QString logsDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                            + "/BaslerReports";
-    QDir().mkpath(logsDir);
+    // 持久化：寫入專案 build/logs/operation_YYYYMMDD.log
+    QString exeDir = QCoreApplication::applicationDirPath();
+#ifdef Q_OS_MAC
+    QDir logsDirObj(exeDir + "/../../../logs");
+#else
+    QDir logsDirObj(exeDir + "/logs");
+#endif
+    logsDirObj.mkpath(".");
+    const QString logsDir = logsDirObj.absolutePath();
     const QString logFile = logsDir + "/operation_"
                             + QDate::currentDate().toString("yyyyMMdd") + ".log";
     QFile f(logFile);
